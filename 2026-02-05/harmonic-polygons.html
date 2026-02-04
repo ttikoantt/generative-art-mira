@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Harmonic Polygons - 音響幾何学</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a1a;
+            overflow: hidden;
+            font-family: monospace;
+        }
+        canvas {
+            display: block;
+        }
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.6);
+            font-size: 12px;
+            pointer-events: none;
+        }
+        .hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.4);
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="info">
+        <div>Harmonic Polygons</div>
+        <div id="count">Intersections: 0</div>
+    </div>
+    <div class="hint">クリックで音を有効化 | マウスで速度調整</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let audioStarted = false;
+        let audioCtx;
+
+        // リサイズ
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Audio初期化
+        function initAudio() {
+            if (audioStarted) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            audioStarted = true;
+        }
+
+        // 音生成（ペンタトニックスケール）
+        const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25]; // C pentatonic
+        function playSound(index) {
+            if (!audioStarted) return;
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            const filter = audioCtx.createBiquadFilter();
+
+            const freq = scale[index % scale.length] * (1 + Math.floor(index / scale.length) * 0.5);
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(800, audioCtx.currentTime);
+
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.8);
+        }
+
+        // 多角形クラス
+        class Polygon {
+            constructor(x, y, radius, sides, speed, color, phase) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.sides = sides;
+                this.speed = speed;
+                this.color = color;
+                this.angle = phase;
+                this.vertices = [];
+                this.lastIntersections = new Set();
+            }
+
+            update(speedMult) {
+                this.angle += this.speed * speedMult;
+                this.vertices = [];
+
+                for (let i = 0; i < this.sides; i++) {
+                    const a = this.angle + (i / this.sides) * Math.PI * 2;
+                    this.vertices.push({
+                        x: this.x + Math.cos(a) * this.radius,
+                        y: this.y + Math.sin(a) * this.radius
+                    });
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.moveTo(this.vertices[0].x, this.vertices[0].y);
+                for (let i = 1; i < this.vertices.length; i++) {
+                    ctx.lineTo(this.vertices[i].x, this.vertices[i].y);
+                }
+                ctx.closePath();
+
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // 頂点を描画
+                this.vertices.forEach((v, i) => {
+                    ctx.beginPath();
+                    ctx.arc(v.x, v.y, 4, 0, Math.PI * 2);
+                    ctx.fillStyle = this.color;
+                    ctx.fill();
+                });
+            }
+
+            // 線分の交差検出
+            getSegments() {
+                const segs = [];
+                for (let i = 0; i < this.vertices.length; i++) {
+                    const next = (i + 1) % this.vertices.length;
+                    segs.push([this.vertices[i], this.vertices[next]]);
+                }
+                return segs;
+            }
+        }
+
+        // 線分交差判定
+        function segmentsIntersect(s1, s2) {
+            const [a, b] = s1;
+            const [c, d] = s2;
+
+            const det = (b.x - a.x) * (d.y - c.y) - (d.x - c.x) * (b.y - a.y);
+            if (Math.abs(det) < 0.001) return null;
+
+            const t = ((d.x - c.x) * (a.y - c.y) - (d.y - c.y) * (a.x - c.x)) / det;
+            const u = ((b.x - a.x) * (a.y - c.y) - (b.y - a.y) * (a.x - c.x)) / det;
+
+            if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+                return {
+                    x: a.x + t * (b.x - a.x),
+                    y: a.y + t * (b.y - a.y)
+                };
+            }
+            return null;
+        }
+
+        // 多角形作成
+        const polygons = [
+            new Polygon(canvas.width/2, canvas.height/2, 150, 5, 0.003, '#ff6b6b', 0),
+            new Polygon(canvas.width/2, canvas.height/2, 150, 7, -0.002, '#4ecdc4', Math.PI/6),
+            new Polygon(canvas.width/2, canvas.height/2, 200, 3, 0.004, '#ffe66d', Math.PI/3)
+        ];
+
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let totalIntersections = 0;
+
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        document.addEventListener('click', initAudio);
+
+        // 交差点記録（音を重複させないため）
+        const intersectionMemory = new Set();
+        let memoryIndex = 0;
+
+        function animate() {
+            // マウス位置で速度調整
+            const speedMult = 1 + (mouseX / canvas.width - 0.5) * 2;
+
+            // フェード効果
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 多角形更新
+            polygons.forEach((p, i) => {
+                p.x = canvas.width/2 + Math.sin(Date.now() * 0.0005 * (i+1)) * 50;
+                p.y = canvas.height/2 + Math.cos(Date.now() * 0.0005 * (i+1)) * 30;
+                p.update(speedMult);
+            });
+
+            // 交差点検出
+            const intersections = [];
+            for (let i = 0; i < polygons.length; i++) {
+                for (let j = i + 1; j < polygons.length; j++) {
+                    const segs1 = polygons[i].getSegments();
+                    const segs2 = polygons[j].getSegments();
+
+                    segs1.forEach(s1 => {
+                        segs2.forEach(s2 => {
+                            const intersection = segmentsIntersect(s1, s2);
+                            if (intersection) {
+                                intersections.push(intersection);
+                            }
+                        });
+                    });
+                }
+            }
+
+            // 新しい交差点で音を鳴らす
+            intersections.forEach(pt => {
+                const key = `${Math.round(pt.x)},${Math.round(pt.y)}`;
+                if (!intersectionMemory.has(key)) {
+                    intersectionMemory.add(key);
+                    playSound(totalIntersections % scale.length);
+                    totalIntersections++;
+                    document.getElementById('count').textContent = `Intersections: ${totalIntersections}`;
+                }
+            });
+
+            // 古い交差点を忘れる
+            if (intersectionMemory.size > 100) {
+                const keys = Array.from(intersectionMemory);
+                intersectionMemory.delete(keys[0]);
+            }
+
+            // 交差点を描画
+            intersections.forEach(pt => {
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+
+                // 輝き効果
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 15, 0, Math.PI * 2);
+                const grad = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, 15);
+                grad.addColorStop(0, 'rgba(255,255,255,0.3)');
+                grad.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = grad;
+                ctx.fill();
+            });
+
+            // 多角形描画
+            polygons.forEach(p => p.draw());
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
