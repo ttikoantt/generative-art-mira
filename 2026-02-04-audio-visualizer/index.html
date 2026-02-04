@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Reactive Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+        }
+
+        .start-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 15px 30px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .start-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <button class="start-btn" id="startBtn">🎵 Start Visualizer</button>
+    </div>
+
+    <div class="info">
+        <div>Microphone input → Visual art</div>
+        <div id="fps">FPS: --</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const fpsDisplay = document.getElementById('fps');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let dataArray;
+        let isRunning = false;
+        let particles = [];
+        let hue = 0;
+        let lastTime = 0;
+        let frameCount = 0;
+        let fps = 0;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Particle {
+            constructor(x, y, size, hue, velocity) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.hue = hue;
+                this.velocity = velocity;
+                this.alpha = 1;
+                this.decay = 0.01 + Math.random() * 0.02;
+            }
+
+            update() {
+                this.x += this.velocity.x;
+                this.y += this.velocity.y;
+                this.alpha -= this.decay;
+                this.size *= 0.99;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        async function startAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 512;
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                isRunning = true;
+                startBtn.style.display = 'none';
+                animate();
+            } catch (err) {
+                console.error('Error accessing microphone:', err);
+                alert('マイクへのアクセスができませんでした。\nブラウザの権限を確認してください。');
+            }
+        }
+
+        function getFrequencyData() {
+            analyser.getByteFrequencyData(dataArray);
+            return dataArray;
+        }
+
+        function getAverageFrequency(data) {
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) {
+                sum += data[i];
+            }
+            return sum / data.length;
+        }
+
+        function getBassEnergy(data) {
+            let sum = 0;
+            for (let i = 0; i < 20; i++) {
+                sum += data[i];
+            }
+            return sum / 20;
+        }
+
+        function drawCircular(data, avg, bass) {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const baseRadius = 100 + bass * 0.5;
+
+            // Draw multiple circular patterns
+            for (let ring = 0; ring < 3; ring++) {
+                const radius = baseRadius + ring * 50 + avg * 0.3;
+
+                ctx.beginPath();
+                for (let i = 0; i < data.length; i++) {
+                    const angle = (i / data.length) * Math.PI * 2;
+                    const amplitude = data[i] / 255;
+                    const r = radius + amplitude * 100 * (1 - ring * 0.2);
+                    const x = centerX + Math.cos(angle) * r;
+                    const y = centerY + Math.sin(angle) * r;
+
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.closePath();
+                ctx.strokeStyle = `hsl(${(hue + ring * 30) % 360}, 80%, 60%)`;
+                ctx.lineWidth = 2 - ring * 0.5;
+                ctx.stroke();
+            }
+
+            // Create particles on bass hits
+            if (bass > 180) {
+                const particleCount = Math.floor(bass / 30);
+                for (let i = 0; i < particleCount; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const radius = baseRadius + Math.random() * 50;
+                    const x = centerX + Math.cos(angle) * radius;
+                    const y = centerY + Math.sin(angle) * radius;
+                    const size = Math.random() * 5 + 2;
+                    const velocity = {
+                        x: Math.cos(angle) * (Math.random() * 3 + 1),
+                        y: Math.sin(angle) * (Math.random() * 3 + 1)
+                    };
+                    particles.push(new Particle(x, y, size, hue + Math.random() * 60, velocity));
+                }
+            }
+
+            // Draw center circle
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, baseRadius * 0.5, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.3)`;
+            ctx.fill();
+        }
+
+        function drawWaveform(data) {
+            analyser.getByteTimeDomainData(data);
+
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = `hsla(${(hue + 180) % 360}, 100%, 70%, 0.5)`;
+            ctx.beginPath();
+
+            const sliceWidth = canvas.width / data.length;
+            let x = 0;
+
+            for (let i = 0; i < data.length; i++) {
+                const v = data[i] / 128.0;
+                const y = v * canvas.height / 2;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
+        }
+
+        function animate(currentTime = 0) {
+            if (!isRunning) return;
+
+            // Calculate FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+                fpsDisplay.textContent = `FPS: ${fps}`;
+            }
+
+            // Fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Get audio data
+            const frequencyData = getFrequencyData();
+            const avg = getAverageFrequency(frequencyData);
+            const bass = getBassEnergy(frequencyData);
+
+            // Update hue
+            hue = (hue + avg * 0.01) % 360;
+
+            // Draw visualizations
+            drawCircular(frequencyData, avg, bass);
+            drawWaveform(dataArray);
+
+            // Update and draw particles
+            particles = particles.filter(p => p.alpha > 0 && p.size > 0.5);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // Limit particles
+            if (particles.length > 500) {
+                particles = particles.slice(-500);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        startBtn.addEventListener('click', startAudio);
+    </script>
+</body>
+</html>
