@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flowing Light Particles - ジェネレーティブ・アート</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Courier New', monospace;
+        }
+        canvas {
+            display: block;
+        }
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            pointer-events: none;
+        }
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h2>✨ 流れる光の粒子</h2>
+        <p>Flowing Light Particles</p>
+        <p>クリック: モード切替 | マウス移動: 粒子を誘導</p>
+    </div>
+    <div class="controls">
+        粒子数: <span id="count">0</span> | モード: <span id="mode">attract</span>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let mouse = { x: 0, y: 0, active: false };
+        let mode = 'attract'; // attract | repel | orbit
+
+        // 設定
+        const PARTICLE_COUNT = 300;
+        const MOUSE_RADIUS = 200;
+        const PARTICLE_SPEED = 0.5;
+        const TRAIL_LENGTH = 0.92; // 小さいほど長い軌跡
+
+        // リサイズ
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // HSV to RGB
+        function hsvToRgb(h, s, v) {
+            let r, g, b;
+            const i = Math.floor(h * 6);
+            const f = h * 6 - i;
+            const p = v * (1 - s);
+            const q = v * (1 - f * s);
+            const t = v * (1 - (1 - f) * s);
+
+            switch (i % 6) {
+                case 0: r = v; g = t; b = p; break;
+                case 1: r = q; g = v; b = p; break;
+                case 2: r = p; g = v; b = t; break;
+                case 3: r = p; g = q; b = v; break;
+                case 4: r = t; g = p; b = v; break;
+                case 5: r = v; g = p; b = q; break;
+            }
+            return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+        }
+
+        // 粒子クラス
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.baseX = this.x;
+                this.baseY = this.y;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 2 + 1;
+                this.hue = Math.random() * 60 + 180; // 青〜紫系
+                this.phase = Math.random() * Math.PI * 2;
+                this.amplitude = Math.random() * 50 + 20;
+                this.frequency = Math.random() * 0.02 + 0.01;
+            }
+
+            update(time) {
+                // 基本的な動き（サイン波）
+                const offsetX = Math.sin(time * this.frequency + this.phase) * this.amplitude;
+                const offsetY = Math.cos(time * this.frequency * 0.7 + this.phase) * this.amplitude;
+
+                this.x = this.baseX + offsetX;
+                this.y = this.baseY + offsetY;
+
+                // 色の変化
+                this.hue = (180 + Math.sin(time * 0.001 + this.phase) * 60) % 360;
+
+                // マウスの影響
+                if (mouse.active) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < MOUSE_RADIUS) {
+                        const force = (MOUSE_RADIUS - distance) / MOUSE_RADIUS;
+
+                        if (mode === 'attract') {
+                            this.x += dx * force * 0.1;
+                            this.y += dy * force * 0.1;
+                        } else if (mode === 'repel') {
+                            this.x -= dx * force * 0.2;
+                            this.y -= dy * force * 0.2;
+                        } else if (mode === 'orbit') {
+                            const angle = Math.atan2(dy, dx) + Math.PI / 2;
+                            this.x += Math.cos(angle) * force * 20;
+                            this.y += Math.sin(angle) * force * 20;
+                        }
+                    }
+                }
+
+                // 画面境界処理
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.reset();
+                }
+            }
+
+            draw(ctx) {
+                const color = hsvToRgb(this.hue / 360, 0.8, 1);
+                const alpha = Math.min(1, this.radius / 2);
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
+                ctx.fill();
+
+                // グロー効果（大きく薄い円）
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 3, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha * 0.2})`;
+                ctx.fill();
+            }
+        }
+
+        // 粒子生成
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            particles.push(new Particle());
+        }
+
+        // マウスイベント
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.active = false;
+        });
+
+        canvas.addEventListener('click', () => {
+            const modes = ['attract', 'repel', 'orbit'];
+            const currentIndex = modes.indexOf(mode);
+            mode = modes[(currentIndex + 1) % modes.length];
+            document.getElementById('mode').textContent = mode;
+        });
+
+        // アニメーション
+        let time = 0;
+        function animate() {
+            // 軌跡効果（少し残す）
+            ctx.fillStyle = `rgba(0, 0, 0, ${1 - TRAIL_LENGTH})`;
+            ctx.fillRect(0, 0, width, height);
+
+            // 光る効果
+            ctx.globalCompositeOperation = 'lighter';
+
+            particles.forEach(p => {
+                p.update(time);
+                p.draw(ctx);
+            });
+
+            ctx.globalCompositeOperation = 'source-over';
+
+            // 接続線（近い粒子同士）
+            ctx.strokeStyle = 'rgba(100, 150, 255, 0.05)';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < 50) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            time += 1;
+            document.getElementById('count').textContent = particles.length;
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+        console.log('✨ Flowing Light Particles initialized');
+        console.log(`Particle count: ${PARTICLE_COUNT}`);
+        console.log('Click to change mode: attract → repel → orbit');
+    </script>
+</body>
+</html>
