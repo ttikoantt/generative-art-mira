@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎵 Generative Music Mira</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #eee;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(45deg, #e94560, #f5a623);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle {
+            color: #888;
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+        .visualizer {
+            width: 100%;
+            height: 200px;
+            margin: 2rem 0;
+            position: relative;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            background: rgba(0,0,0,0.3);
+        }
+        .controls {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+        .play-btn {
+            background: linear-gradient(45deg, #e94560, #ff6b6b);
+            color: white;
+        }
+        .play-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(233, 69, 96, 0.4);
+        }
+        .play-btn.playing {
+            background: linear-gradient(45deg, #4ecdc4, #44a08d);
+        }
+        .info {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            max-width: 500px;
+        }
+        .info p {
+            color: #aaa;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+        .stats {
+            display: flex;
+            gap: 2rem;
+            justify-content: center;
+            margin-top: 1rem;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+        .stat-label {
+            font-size: 0.75rem;
+            color: #666;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Generative Music</h1>
+        <p class="subtitle">Mathematical melodies, infinite variations</p>
+
+        <div class="visualizer">
+            <canvas id="viz"></canvas>
+        </div>
+
+        <div class="controls">
+            <button class="play-btn" id="playBtn">▶ Start Music</button>
+        </div>
+
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value" id="noteCount">0</div>
+                <div class="stat-label">Notes Played</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="layerCount">0</div>
+                <div class="stat-label">Active Layers</div>
+            </div>
+        </div>
+
+        <div class="info">
+            <p>
+                <strong>🧠 How it works:</strong> Uses Web Audio API with oscillators,
+                pentatonic scales, and Perlin-like noise for pitch variation.
+                Each layer has its own rhythm and envelope pattern.
+                No two performances are exactly the same.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // ========== AUDIO CONTEXT ==========
+        let audioCtx = null;
+        let isPlaying = false;
+        let noteCount = 0;
+        let layers = [];
+
+        // ========== PENTATONIC SCALE (C Major Pentatonic) ==========
+        // C, D, E, G, A across multiple octaves
+        const PENTATONIC = [
+            130.81, 146.83, 164.81, 196.00, 220.00,  // C3-A3
+            261.63, 293.66, 329.63, 392.00, 440.00,  // C4-A4
+            523.25, 587.33, 659.25, 783.99, 880.00,  // C5-A5
+            1046.50                                 // C6
+        ];
+
+        // ========== PERLIN-LIKE NOISE ==========
+        class SimpleNoise {
+            constructor(seed = Math.random() * 10000) {
+                this.seed = seed;
+                this.perm = [];
+                for (let i = 0; i < 512; i++) {
+                    this.perm[i] = Math.floor(Math.sin(i + seed) * 256);
+                }
+            }
+
+            noise(x) {
+                const X = Math.floor(x) & 255;
+                const xf = x - Math.floor(x);
+                const u = this.fade(xf);
+                return this.lerp(
+                    this.grad(this.perm[X], xf),
+                    this.grad(this.perm[X + 1], xf - 1),
+                    u
+                );
+            }
+
+            fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+            lerp(a, b, t) { return a + t * (b - a); }
+            grad(hash, x) { return (hash & 1) === 0 ? x : -x; }
+        }
+
+        // ========== MUSICAL LAYER ==========
+        class MusicalLayer {
+            constructor(audioCtx, options) {
+                this.audioCtx = audioCtx;
+                this.id = options.id;
+                this.waveType = options.waveType || 'sine';
+                this.baseTempo = options.baseTempo || 2;
+                this.volume = options.volume || 0.15;
+                this.noise = new SimpleNoise(options.seed || Math.random() * 10000);
+                this.phase = options.phase || 0;
+                this.noteDuration = options.noteDuration || 0.5;
+                this.filterFreq = options.filterFreq || 2000;
+                this.delayTime = options.delayTime || 0.3;
+                this.nextNoteTime = 0;
+                this.isActive = false;
+            }
+
+            start() {
+                this.isActive = true;
+                this.nextNoteTime = this.audioCtx.currentTime + this.phase;
+                this.schedule();
+            }
+
+            stop() {
+                this.isActive = false;
+            }
+
+            schedule() {
+                if (!this.isActive) return;
+
+                while (this.nextNoteTime < this.audioCtx.currentTime + 0.1) {
+                    this.playNote(this.nextNoteTime);
+                    const tempoVariation = 0.3 + 0.7 * this.noise.noise(this.nextNoteTime * 0.5);
+                    this.nextNoteTime += this.baseTempo * tempoVariation;
+                }
+
+                setTimeout(() => this.schedule(), 100);
+            }
+
+            playNote(time) {
+                // Use noise to select pitch (biased toward lower/mid range)
+                const noiseValue = (this.noise.noise(time * 0.3) + 1) / 2;
+                const index = Math.floor(noiseValue * (PENTATONIC.length * 0.7));
+                const frequency = PENTATONIC[Math.min(index, PENTATONIC.length - 1)];
+
+                // Create oscillator
+                const osc = this.audioCtx.createOscillator();
+                const gain = this.audioCtx.createGain();
+                const filter = this.audioCtx.createBiquadFilter();
+
+                osc.type = this.waveType;
+                osc.frequency.value = frequency;
+
+                filter.type = 'lowpass';
+                filter.frequency.value = this.filterFreq + noiseValue * 1000;
+
+                // ADSR envelope
+                const attack = 0.05 + Math.random() * 0.1;
+                const decay = 0.1 + Math.random() * 0.2;
+                const sustain = this.volume * (0.5 + Math.random() * 0.5);
+                const release = 0.3 + Math.random() * 0.5;
+
+                gain.gain.setValueAtTime(0, time);
+                gain.gain.linearRampToValueAtTime(sustain, time + attack);
+                gain.gain.linearRampToValueAtTime(sustain * 0.7, time + attack + decay);
+                gain.gain.linearRampToValueAtTime(0, time + this.noteDuration + release);
+
+                // Connect nodes
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.audioCtx.destination);
+
+                // Add delay effect
+                if (this.delayTime > 0) {
+                    const delay = this.audioCtx.createDelay(1);
+                    const delayGain = this.audioCtx.createGain();
+                    delay.delayTime.value = this.delayTime;
+                    delayGain.gain.value = 0.3;
+
+                    filter.connect(delay);
+                    delay.connect(delayGain);
+                    delayGain.connect(this.audioCtx.destination);
+
+                    // Stop delay output after note
+                    delayGain.gain.setValueAtTime(0.3, time);
+                    delayGain.gain.linearRampToValueAtTime(0, time + this.noteDuration + release + 1);
+                }
+
+                osc.start(time);
+                osc.stop(time + this.noteDuration + release + 1);
+
+                noteCount++;
+                updateStats();
+            }
+        }
+
+        // ========== MAIN ==========
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Create multiple layers with different characteristics
+            layers = [
+                new MusicalLayer(audioCtx, {
+                    id: 'bells',
+                    waveType: 'sine',
+                    baseTempo: 2.5,
+                    volume: 0.12,
+                    noteDuration: 1.5,
+                    filterFreq: 3000,
+                    delayTime: 0.4,
+                    seed: 100
+                }),
+                new MusicalLayer(audioCtx, {
+                    id: 'chorus',
+                    waveType: 'triangle',
+                    baseTempo: 1.8,
+                    volume: 0.08,
+                    noteDuration: 0.8,
+                    filterFreq: 1500,
+                    delayTime: 0.25,
+                    phase: 0.5,
+                    seed: 200
+                }),
+                new MusicalLayer(audioCtx, {
+                    id: 'bass',
+                    waveType: 'sine',
+                    baseTempo: 4.0,
+                    volume: 0.15,
+                    noteDuration: 2.0,
+                    filterFreq: 500,
+                    delayTime: 0,
+                    phase: 1.0,
+                    seed: 300
+                }),
+                new MusicalLayer(audioCtx, {
+                    id: 'sparkle',
+                    waveType: 'sine',
+                    baseTempo: 1.2,
+                    volume: 0.05,
+                    noteDuration: 0.3,
+                    filterFreq: 5000,
+                    delayTime: 0.5,
+                    phase: 1.5,
+                    seed: 400
+                })
+            ];
+        }
+
+        function startMusic() {
+            if (!audioCtx) initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            layers.forEach(layer => layer.start());
+            isPlaying = true;
+            playBtn.textContent = '⏸ Pause';
+            playBtn.classList.add('playing');
+            updateStats();
+        }
+
+        function stopMusic() {
+            layers.forEach(layer => layer.stop());
+            isPlaying = false;
+            playBtn.textContent = '▶ Start Music';
+            playBtn.classList.remove('playing');
+            updateStats();
+        }
+
+        function updateStats() {
+            document.getElementById('noteCount').textContent = noteCount;
+            document.getElementById('layerCount').textContent = isPlaying ? layers.length : 0;
+        }
+
+        // ========== VISUALIZER ==========
+        const canvas = document.getElementById('viz');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+            canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        let vizPhase = 0;
+        function draw() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Draw waveform-like visualization
+            ctx.beginPath();
+            for (let x = 0; x < canvas.width; x++) {
+                const normalizedX = x / canvas.width;
+                const noise1 = Math.sin(normalizedX * 10 + vizPhase) * 30;
+                const noise2 = Math.cos(normalizedX * 7 - vizPhase * 1.3) * 20;
+                const noise3 = Math.sin(normalizedX * 15 + vizPhase * 0.7) * 15;
+
+                const amplitude = isPlaying ? 1 : 0.1;
+                const y = centerY + (noise1 + noise2 + noise3) * amplitude;
+
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+            gradient.addColorStop(0, '#e94560');
+            gradient.addColorStop(0.5, '#4ecdc4');
+            gradient.addColorStop(1, '#f5a623');
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw particles if playing
+            if (isPlaying) {
+                for (let i = 0; i < 5; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const radius = 50 + Math.random() * 80;
+                    const x = centerX + Math.cos(angle + vizPhase * 0.5) * radius;
+                    const y = centerY + Math.sin(angle + vizPhase * 0.3) * radius;
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, Math.random() * 3, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${Math.random() * 60 + 180}, 70%, 60%, ${Math.random() * 0.5})`;
+                    ctx.fill();
+                }
+            }
+
+            vizPhase += isPlaying ? 0.03 : 0.005;
+            requestAnimationFrame(draw);
+        }
+        draw();
+
+        // ========== EVENT LISTENERS ==========
+        const playBtn = document.getElementById('playBtn');
+        playBtn.addEventListener('click', () => {
+            if (isPlaying) stopMusic();
+            else startMusic();
+        });
+    </script>
+</body>
+</html>
