@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Flowing Circles - Generative Art</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #0a0a0f;
+            font-family: 'Courier New', monospace;
+        }
+
+        #canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            pointer-events: none;
+        }
+
+        .title {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 14px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="title">Canvas Flowing Circles</div>
+    <div class="info">Click to create ripples | Move to disturb particles</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let ripples = [];
+        let mouse = { x: 0, y: 0 };
+        let hue = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor(x, y, hue) {
+                this.originX = x;
+                this.originY = y;
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 3 + 1;
+                this.hue = hue + Math.random() * 60 - 30;
+                this.speed = Math.random() * 0.02 + 0.01;
+                this.angle = Math.random() * Math.PI * 2;
+                this.amplitude = Math.random() * 30 + 10;
+                this.phase = Math.random() * Math.PI * 2;
+            }
+
+            update(ripples) {
+                this.phase += this.speed;
+
+                // 基本的な動き：円を描くように
+                let offsetX = Math.cos(this.phase) * this.amplitude;
+                let offsetY = Math.sin(this.phase) * this.amplitude;
+
+                // マウスの影響
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 150) {
+                    const force = (150 - dist) / 150;
+                    offsetX -= dx * force * 0.3;
+                    offsetY -= dy * force * 0.3;
+                }
+
+                // 波紋の影響
+                ripples.forEach(ripple => {
+                    const rdx = ripple.x - this.x;
+                    const rdy = ripple.y - this.y;
+                    const rdist = Math.sqrt(rdx * rdx + rdy * rdy);
+                    const rippleRadius = ripple.radius;
+
+                    if (Math.abs(rdist - rippleRadius) < 50) {
+                        const force = (1 - Math.abs(rdist - rippleRadius) / 50) * ripple.strength;
+                        const angle = Math.atan2(rdy, rdx);
+                        offsetX += Math.cos(angle) * force * 50;
+                        offsetY += Math.sin(angle) * force * 50;
+                    }
+                });
+
+                // ゆっくり元に戻る
+                this.x += (this.originX + offsetX - this.x) * 0.1;
+                this.y += (this.originY + offsetY - this.y) * 0.1;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, 0.8)`;
+                ctx.fill();
+            }
+        }
+
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.strength = 1;
+                this.hue = hue;
+            }
+
+            update() {
+                this.radius += 3;
+                this.strength *= 0.98;
+            }
+
+            draw() {
+                if (this.strength < 0.01) return;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${this.strength * 0.5})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            isDead() {
+                return this.strength < 0.01;
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            const cols = Math.floor(width / 20);
+            const rows = Math.floor(height / 20);
+
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    const x = (i + 0.5) * 20;
+                    const y = (j + 0.5) * 20;
+                    const particleHue = (i / cols * 60 + j / rows * 60 + hue) % 360;
+                    particles.push(new Particle(x, y, particleHue));
+                }
+            }
+        }
+
+        function animate() {
+            // トレイル効果
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 色をゆっくり変化
+            hue = (hue + 0.1) % 360;
+
+            // 粒子を更新・描画
+            particles.forEach(p => {
+                p.update(ripples);
+                p.draw();
+            });
+
+            // 波紋を更新・描画
+            ripples = ripples.filter(r => {
+                r.update();
+                r.draw();
+                return !r.isDead();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            ripples.push(new Ripple(e.clientX, e.clientY));
+            hue = (hue + 30) % 360;
+        });
+
+        window.addEventListener('resize', () => {
+            resize();
+            initParticles();
+        });
+
+        resize();
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>
