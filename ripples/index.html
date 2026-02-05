@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ripple Art - Interactive Water Ripples</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            color: #fff;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf, #e040fb);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 1rem;
+            color: #a0a0a0;
+            margin-bottom: 1.5rem;
+        }
+
+        canvas {
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            cursor: crosshair;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .controls {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .btn-clear {
+            background: linear-gradient(135deg, #e94560, #ff6b6b);
+            color: white;
+        }
+
+        .btn-clear:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(233, 69, 96, 0.4);
+        }
+
+        .btn-auto {
+            background: linear-gradient(135deg, #00d4ff, #0099ff);
+            color: white;
+        }
+
+        .btn-auto:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
+        }
+
+        .btn-auto.active {
+            background: linear-gradient(135deg, #7b2cbf, #e040fb);
+        }
+
+        .info {
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            color: #808080;
+        }
+
+        @keyframes ripple {
+            0% {
+                transform: scale(0);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💧 Ripple Art</h1>
+        <p class="subtitle">Click anywhere to create ripples</p>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="controls">
+            <button class="btn-clear" onclick="clearRipples()">Clear All</button>
+            <button class="btn-auto" id="autoBtn" onclick="toggleAuto()">Auto Mode</button>
+            <button class="btn-auto" onclick="changeColorScheme()">Change Colors</button>
+        </div>
+
+        <p class="info">Click on canvas or enable Auto Mode for automatic ripples</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvas size
+        const width = Math.min(800, window.innerWidth - 40);
+        const height = Math.min(600, window.innerHeight - 250);
+        canvas.width = width;
+        canvas.height = height;
+
+        // Color schemes
+        const colorSchemes = [
+            // Ocean theme
+            [
+                { start: 'rgba(0, 212, 255, ', end: 'rgba(0, 150, 255, ' },
+                { start: 'rgba(0, 255, 200, ', end: 'rgba(0, 200, 150, ' },
+                { start: 'rgba(100, 200, 255, ', end: 'rgba(50, 150, 255, ' }
+            ],
+            // Sunset theme
+            [
+                { start: 'rgba(255, 100, 150, ', end: 'rgba(255, 50, 100, ' },
+                { start: 'rgba(255, 180, 50, ', end: 'rgba(255, 150, 0, ' },
+                { start: 'rgba(200, 100, 255, ', end: 'rgba(150, 50, 255, ' }
+            ],
+            // Forest theme
+            [
+                { start: 'rgba(100, 255, 100, ', end: 'rgba(50, 200, 50, ' },
+                { start: 'rgba(150, 255, 150, ', end: 'rgba(100, 200, 100, ' },
+                { start: 'rgba(50, 200, 100, ', end: 'rgba(0, 150, 50, ' }
+            ],
+            // Neon theme
+            [
+                { start: 'rgba(255, 0, 255, ', end: 'rgba(200, 0, 200, ' },
+                { start: 'rgba(0, 255, 255, ', end: 'rgba(0, 200, 200, ' },
+                { start: 'rgba(255, 255, 0, ', end: 'rgba(200, 200, 0, ' }
+            ]
+        ];
+
+        let currentScheme = 0;
+
+        // Ripples array
+        let ripples = [];
+
+        // Auto mode
+        let autoMode = false;
+        let autoInterval = null;
+
+        // Ripple class
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = Math.random() * 100 + 150;
+                this.opacity = 1;
+                this.speed = Math.random() * 2 + 2;
+                this.lineWidth = Math.random() * 2 + 1;
+                this.colorIndex = Math.floor(Math.random() * 3);
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.opacity = 1 - (this.radius / this.maxRadius);
+                return this.opacity > 0;
+            }
+
+            draw() {
+                const scheme = colorSchemes[currentScheme];
+                const color = scheme[this.colorIndex];
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = color.start + this.opacity + ')';
+                ctx.lineWidth = this.lineWidth;
+                ctx.stroke();
+
+                // Secondary ring
+                if (this.radius > 20) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius - 15, 0, Math.PI * 2);
+                    ctx.strokeStyle = color.end + (this.opacity * 0.5) + ')';
+                    ctx.lineWidth = this.lineWidth * 0.5;
+                    ctx.stroke();
+                }
+
+                // Tertiary ring (for larger ripples)
+                if (this.radius > 40) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius - 30, 0, Math.PI * 2);
+                    ctx.strokeStyle = color.start + (this.opacity * 0.25) + ')';
+                    ctx.lineWidth = this.lineWidth * 0.3;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // Create ripple
+        function createRipple(x, y) {
+            ripples.push(new Ripple(x, y));
+
+            // Create smaller echo ripples
+            setTimeout(() => {
+                if (Math.random() > 0.5) {
+                    ripples.push(new Ripple(x + (Math.random() - 0.5) * 30, y + (Math.random() - 0.5) * 30));
+                }
+            }, 200);
+        }
+
+        // Clear ripples
+        function clearRipples() {
+            ripples = [];
+        }
+
+        // Toggle auto mode
+        function toggleAuto() {
+            autoMode = !autoMode;
+            const btn = document.getElementById('autoBtn');
+
+            if (autoMode) {
+                btn.classList.add('active');
+                btn.textContent = 'Auto: ON';
+                autoInterval = setInterval(() => {
+                    const x = Math.random() * width;
+                    const y = Math.random() * height;
+                    createRipple(x, y);
+                }, 800);
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = 'Auto Mode';
+                clearInterval(autoInterval);
+            }
+        }
+
+        // Change color scheme
+        function changeColorScheme() {
+            currentScheme = (currentScheme + 1) % colorSchemes.length;
+        }
+
+        // Animation loop
+        function animate() {
+            // Semi-transparent background for trail effect
+            ctx.fillStyle = 'rgba(20, 20, 40, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Update and draw ripples
+            ripples = ripples.filter(ripple => {
+                const alive = ripple.update();
+                if (alive) {
+                    ripple.draw();
+                }
+                return alive;
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            createRipple(x, y);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (e.buttons === 1) { // Mouse button held down
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                if (Math.random() > 0.85) { // Throttle ripple creation
+                    createRipple(x, y);
+                }
+            }
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            createRipple(x, y);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            if (Math.random() > 0.85) {
+                createRipple(x, y);
+            }
+        });
+
+        // Start animation
+        animate();
+
+        // Initial ripple for demo
+        setTimeout(() => {
+            createRipple(width / 2, height / 2);
+        }, 500);
+    </script>
+</body>
+</html>
