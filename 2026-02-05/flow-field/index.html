@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow Field - Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        #info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 100;
+        }
+        
+        #info h1 {
+            font-size: 18px;
+            margin-bottom: 8px;
+            color: #00ff88;
+        }
+        
+        #info p {
+            margin: 4px 0;
+            opacity: 0.8;
+        }
+        
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+        
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h1>🌊 Flow Field</h1>
+        <p>クリックでリセット</p>
+        <p id="stats">パーティクル: 0</p>
+    </div>
+    
+    <div id="controls">
+        <button onclick="changeSpeed(0.5)">遅く</button>
+        <button onclick="changeSpeed(1.5)">速く</button>
+        <button onclick="toggleTrails()">トレイル切替</button>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let particles = [];
+        let flowField = [];
+        let scale = 20;
+        let rows, cols;
+        let zOff = 0;
+        let speedMultiplier = 1;
+        let showTrails = true;
+        
+        // シンプレックスノイズ実装（簡略版）
+        const SimplexNoise = (function() {
+            const F2 = 0.5 * (Math.sqrt(3.0) - 1.0);
+            const G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
+            
+            const p = new Uint8Array(256);
+            const perm = new Uint8Array(512);
+            const permMod12 = new Uint8Array(512);
+            
+            for(let i = 0; i < 256; i++) {
+                p[i] = i;
+            }
+            
+            // シャッフル
+            for(let i = 255; i > 0; i--) {
+                const r = Math.floor(Math.random() * (i + 1));
+                [p[i], p[r]] = [p[r], p[i]];
+            }
+            
+            for(let i = 0; i < 512; i++) {
+                perm[i] = p[i & 255];
+                permMod12[i] = perm[i] % 12;
+            }
+            
+            const grad3 = [
+                [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
+                [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+                [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
+            ];
+            
+            function dot2(g, x, y) {
+                return g[0]*x + g[1]*y;
+            }
+            
+            return {
+                noise2D: function(xin, yin) {
+                    let n0, n1, n2;
+                    const s = (xin + yin) * F2;
+                    const i = Math.floor(xin + s);
+                    const j = Math.floor(yin + s);
+                    const t = (i + j) * G2;
+                    const X0 = i - t;
+                    const Y0 = j - t;
+                    const x0 = xin - X0;
+                    const y0 = yin - Y0;
+                    
+                    let i1, j1;
+                    if(x0 > y0) { i1 = 1; j1 = 0; }
+                    else { i1 = 0; j1 = 1; }
+                    
+                    const x1 = x0 - i1 + G2;
+                    const y1 = y0 - j1 + G2;
+                    const x2 = x0 - 1.0 + 2.0 * G2;
+                    const y2 = y0 - 1.0 + 2.0 * G2;
+                    
+                    const ii = i & 255;
+                    const jj = j & 255;
+                    const gi0 = permMod12[ii + perm[jj]];
+                    const gi1 = permMod12[ii + i1 + perm[jj + j1]];
+                    const gi2 = permMod12[ii + 1 + perm[jj + 1]];
+                    
+                    let t0 = 0.5 - x0*x0 - y0*y0;
+                    if(t0 < 0) n0 = 0.0;
+                    else {
+                        t0 *= t0;
+                        n0 = t0 * t0 * dot2(grad3[gi0], x0, y0);
+                    }
+                    
+                    let t1 = 0.5 - x1*x1 - y1*y1;
+                    if(t1 < 0) n1 = 0.0;
+                    else {
+                        t1 *= t1;
+                        n1 = t1 * t1 * dot2(grad3[gi1], x1, y1);
+                    }
+                    
+                    let t2 = 0.5 - x2*x2 - y2*y2;
+                    if(t2 < 0) n2 = 0.0;
+                    else {
+                        t2 *= t2;
+                        n2 = t2 * t2 * dot2(grad3[gi2], x2, y2);
+                    }
+                    
+                    return 70.0 * (n0 + n1 + n2);
+                }
+            };
+        })();
+        
+        const noise = SimplexNoise;
+        
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.history = [];
+                this.maxHistory = 50;
+                
+                // ランダムな色相
+                this.hue = Math.random() * 60 + 180; // 青〜紫の範囲
+                this.saturation = 80 + Math.random() * 20;
+                this.lightness = 50 + Math.random() * 30;
+            }
+            
+            update() {
+                // フローフィールドから角度を取得
+                const x = Math.floor(this.x / scale);
+                const y = Math.floor(this.y / scale);
+                const index = x + y * cols;
+                
+                if (flowField[index]) {
+                    const angle = flowField[index];
+                    
+                    // ベクトル場に沿って動く
+                    this.vx += Math.cos(angle) * 0.1;
+                    this.vy += Math.sin(angle) * 0.1;
+                    
+                    // 速度を制限
+                    const maxSpeed = 2 * speedMultiplier;
+                    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                    if (speed > maxSpeed) {
+                        this.vx = (this.vx / speed) * maxSpeed;
+                        this.vy = (this.vy / speed) * maxSpeed;
+                    }
+                }
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 減速
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+                
+                // 軌跡を記録
+                this.history.push({ x: this.x, y: this.y });
+                if (this.history.length > this.maxHistory) {
+                    this.history.shift();
+                }
+                
+                // 画面外に出たらリセット
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.reset();
+                }
+            }
+            
+            draw() {
+                if (this.history.length < 2) return;
+                
+                ctx.beginPath();
+                ctx.moveTo(this.history[0].x, this.history[0].y);
+                
+                for (let i = 1; i < this.history.length; i++) {
+                    ctx.lineTo(this.history[i].x, this.history[i].y);
+                }
+                
+                // グラデーション効果
+                const alpha = (this.history.length / this.maxHistory) * 0.6;
+                ctx.strokeStyle = `hsla(${this.hue}, ${this.saturation}%, ${this.lightness}%, ${alpha})`;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            
+            cols = Math.ceil(width / scale);
+            rows = Math.ceil(height / scale);
+            
+            initFlowField();
+        }
+        
+        function initFlowField() {
+            flowField = new Array(cols * rows);
+            
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const index = x + y * cols;
+                    
+                    // ノイズで角度を生成
+                    const angle = noise.noise2D(x * 0.1, y * 0.1 + zOff) * Math.PI * 4;
+                    flowField[index] = angle;
+                }
+            }
+        }
+        
+        function init() {
+            particles = [];
+            const numParticles = Math.floor((width * height) / 3000);
+            
+            for (let i = 0; i < numParticles; i++) {
+                particles.push(new Particle());
+            }
+            
+            document.getElementById('stats').textContent = `パーティクル: ${numParticles}`;
+        }
+        
+        function animate() {
+            // 背景を描画（トレイル効果）
+            if (showTrails) {
+                ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
+                ctx.fillRect(0, 0, width, height);
+            } else {
+                ctx.fillStyle = '#0a0a0a';
+                ctx.fillRect(0, 0, width, height);
+            }
+            
+            // フローフィールドをゆっくり更新
+            zOff += 0.002;
+            if (Math.random() < 0.01) {
+                initFlowField();
+            }
+            
+            // パーティクルを更新して描画
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            
+            requestAnimationFrame(animate);
+        }
+        
+        function changeSpeed(multiplier) {
+            speedMultiplier *= multiplier;
+            speedMultiplier = Math.max(0.2, Math.min(5, speedMultiplier));
+        }
+        
+        function toggleTrails() {
+            showTrails = !showTrails;
+        }
+        
+        // イベントリスナー
+        window.addEventListener('resize', () => {
+            resize();
+            init();
+        });
+        
+        canvas.addEventListener('click', () => {
+            particles.forEach(p => p.reset());
+            initFlowField();
+        });
+        
+        // 初期化と開始
+        resize();
+        init();
+        animate();
+    </script>
+</body>
+</html>
