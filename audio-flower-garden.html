@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音声波形の花園 - Audio Flower Garden</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(to bottom, #0a0a1a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+
+        canvas {
+            border-radius: 10px;
+            box-shadow: 0 0 50px rgba(255, 255, 255, 0.1);
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            display: flex;
+            gap: 15px;
+            z-index: 100;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 16px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+
+        #startBtn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        #startBtn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        #startBtn:disabled {
+            background: #666;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .title {
+            position: fixed;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="info">マイクを許可してください - 音で花が咲きます</div>
+    <div class="title">🌸 音声波形の花園 🌸</div>
+    <canvas id="canvas"></canvas>
+    <div class="controls">
+        <button id="startBtn">🎤 音で花を咲かせる</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+
+        // Canvasサイズ
+        function resizeCanvas() {
+            canvas.width = Math.min(window.innerWidth - 40, 1200);
+            canvas.height = Math.min(window.innerHeight - 150, 800);
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Audio Context
+        let audioContext;
+        let analyser;
+        let microphone;
+        let dataArray;
+        let bufferLength;
+        let isRunning = false;
+
+        // 花のクラス
+        class Flower {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.maxSize = 0;
+                this.currentSize = 0;
+                this.hue = 0;
+                this.life = 1; // 1 = 生きている, 0 = 枯れている
+                this.withering = false;
+                this.petals = 5 + Math.floor(Math.random() * 3); // 5-7枚
+            }
+
+            update(volume, frequency) {
+                // 音の強さで最大サイズを決定
+                const targetSize = 20 + volume * 150;
+                this.maxSize = Math.max(this.maxSize, targetSize);
+
+                // 成長アニメーション
+                if (this.currentSize < this.maxSize) {
+                    this.currentSize += (this.maxSize - this.currentSize) * 0.1;
+                }
+
+                // 周波数で色を変化（低音→赤、高音→青）
+                this.hue = 350 - (frequency / 800) * 300;
+
+                // 音がないと枯れる
+                if (volume < 0.02) {
+                    this.withering = true;
+                }
+            }
+
+            draw() {
+                if (this.currentSize < 1) return;
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // 花びらを描く
+                for (let i = 0; i < this.petals; i++) {
+                    ctx.save();
+                    ctx.rotate((Math.PI * 2 / this.petals) * i);
+
+                    // 花びらの色
+                    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.currentSize);
+                    const saturation = 70 + this.currentSize * 0.1;
+                    const lightness = 50 + this.currentSize * 0.1;
+                    gradient.addColorStop(0, `hsla(${this.hue}, ${saturation}%, ${lightness}%, ${this.life})`);
+                    gradient.addColorStop(0.5, `hsla(${this.hue + 20}, ${saturation}%, ${lightness - 10}%, ${this.life * 0.7})`);
+                    gradient.addColorStop(1, `hsla(${this.hue + 40}, ${saturation}%, ${lightness - 20}%, 0)`);
+
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.ellipse(0, this.currentSize * 0.6, this.currentSize * 0.3, this.currentSize * 0.6, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.restore();
+                }
+
+                // 花の中心
+                const centerGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.currentSize * 0.2);
+                centerGradient.addColorStop(0, `rgba(255, 255, 200, ${this.life})`);
+                centerGradient.addColorStop(1, `rgba(255, 200, 100, ${this.life * 0.5})`);
+                ctx.fillStyle = centerGradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.currentSize * 0.15, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // 花園の管理
+        const flowers = [];
+        const maxFlowers = 15;
+
+        function addFlower() {
+            if (flowers.length >= maxFlowers) {
+                // 最も古い花を削除
+                flowers.shift();
+            }
+
+            const x = 50 + Math.random() * (canvas.width - 100);
+            const y = 50 + Math.random() * (canvas.height - 100);
+            flowers.push(new Flower(x, y));
+        }
+
+        // 波形の可視化（背景）
+        function drawWaveform(dataArray) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            const sliceWidth = canvas.width / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * canvas.height) / 2;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            ctx.stroke();
+        }
+
+        // メインループ
+        function animate() {
+            // 背景をフェード
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (isRunning) {
+                analyser.getByteTimeDomainData(dataArray);
+
+                // 音量を計算
+                let sum = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    const v = (dataArray[i] - 128) / 128;
+                    sum += v * v;
+                }
+                const rms = Math.sqrt(sum / bufferLength);
+
+                // 周波数分析（簡易版）
+                let lowFreq = 0;
+                let highFreq = 0;
+                for (let i = 0; i < bufferLength / 4; i++) {
+                    lowFreq += Math.abs(dataArray[i] - 128);
+                }
+                for (let i = bufferLength / 4; i < bufferLength / 2; i++) {
+                    highFreq += Math.abs(dataArray[i] - 128);
+                }
+                const frequency = lowFreq > highFreq ? 200 : 600;
+                const volume = rms;
+
+                // 波形を描画
+                drawWaveform(dataArray);
+
+                // 音があるときは花を追加/更新
+                if (volume > 0.05 && flowers.length < maxFlowers && Math.random() < 0.02) {
+                    addFlower();
+                }
+
+                // 全ての花を更新・描画
+                flowers.forEach((flower, index) => {
+                    flower.update(volume, frequency);
+                    flower.draw();
+
+                    // 枯れるアニメーション
+                    if (flower.withering) {
+                        flower.life -= 0.005;
+                        flower.currentSize *= 0.995;
+                    }
+
+                    // 完全に枯れた花を削除
+                    if (flower.life <= 0 || flower.currentSize < 0.5) {
+                        flowers.splice(index, 1);
+                    }
+                });
+
+                // 音量メーター
+                const meterWidth = 200;
+                const meterHeight = 10;
+                const meterX = (canvas.width - meterWidth) / 2;
+                const meterY = canvas.height - 30;
+
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.fillRect(meterX, meterY, meterWidth, meterHeight);
+
+                const gradient = ctx.createLinearGradient(meterX, 0, meterX + meterWidth, 0);
+                gradient.addColorStop(0, '#4ade80');
+                gradient.addColorStop(0.5, '#facc15');
+                gradient.addColorStop(1, '#f87171');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(meterX, meterY, meterWidth * Math.min(volume * 5, 1), meterHeight);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // スタート
+        async function startAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+
+                isRunning = true;
+                startBtn.textContent = '🌸 花が咲いています...';
+                startBtn.disabled = true;
+
+                // 最初の花を追加
+                addFlower();
+            } catch (err) {
+                alert('マイクへのアクセスができませんでした: ' + err.message);
+            }
+        }
+
+        // イベントリスナー
+        startBtn.addEventListener('click', startAudio);
+
+        // アニメーション開始
+        animate();
+    </script>
+</body>
+</html>
