@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fibonacci Music - Generative Art Collection</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a2e 100%);
+            color: #fff;
+            overflow-x: hidden;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 30px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 15px 30px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: #fff;
+            border: none;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.playing {
+            background: linear-gradient(45deg, #f093fb, #f5576c);
+        }
+
+        .info {
+            text-align: center;
+            max-width: 800px;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .visualizer {
+            width: 100%;
+            max-width: 800px;
+            height: 300px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #visualizer-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .sequence-display {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 800px;
+            margin-bottom: 30px;
+        }
+
+        .sequence-item {
+            background: rgba(102, 126, 234, 0.2);
+            padding: 15px 20px;
+            border-radius: 15px;
+            text-align: center;
+            min-width: 60px;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+        }
+
+        .sequence-item.active {
+            background: rgba(102, 126, 234, 0.5);
+            transform: scale(1.1);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .sequence-number {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-bottom: 5px;
+        }
+
+        .sequence-note {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .back-link {
+            margin-top: 40px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        .back-link:hover {
+            color: #764ba2;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎼 Fibonacci Music</h1>
+    <p class="subtitle">フィボナッチ数列から生まれる音楽</p>
+
+    <div class="info">
+        <p>フィボナッチ数列（0, 1, 1, 2, 3, 5, 8, 13, 21, 34...）の数学的性質を使って、</p>
+        <p>自然の黄金比を音で表現します。</p>
+    </div>
+
+    <div class="controls">
+        <button id="playBtn">▶ 再生</button>
+        <button id="regenerateBtn">🔄 新規生成</button>
+    </div>
+
+    <div class="visualizer">
+        <canvas id="visualizer-canvas"></canvas>
+    </div>
+
+    <div class="sequence-display" id="sequence-display"></div>
+
+    <a href="../index.html" class="back-link">← 戻る</a>
+
+    <script>
+        // Audio Context
+        let audioContext = null;
+        let isPlaying = false;
+        let currentSequence = [];
+        let currentNoteIndex = 0;
+        let schedulerTimeout = null;
+
+        // Canvas
+        const canvas = document.getElementById('visualizer-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvasサイズ調整
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // フィボナッチ数列を生成
+        function fibonacciSequence(n) {
+            const fib = [0, 1];
+            for (let i = 2; i < n; i++) {
+                fib.push(fib[i-1] + fib[i-2]);
+            }
+            return fib.slice(1, n + 1);
+        }
+
+        // 数字を音符に変換
+        function numberToNote(num, scale = 'C') {
+            const scales = {
+                'C': [0, 2, 4, 5, 7, 9, 11],
+                'A': [9, 11, 0, 2, 4, 5, 7]
+            };
+
+            const scaleDegrees = scales[scale];
+            const octave = Math.floor(num / 7) * 12;
+            const degree = num % 7;
+
+            const note = 60 + octave + scaleDegrees[degree];
+            return Math.min(note, 127);
+        }
+
+        // MIDIノート番号を周波数に変換
+        function midiToFrequency(midiNote) {
+            return 440 * Math.pow(2, (midiNote - 69) / 12);
+        }
+
+        // メロディを生成
+        function createFibonacciMelody(length = 16) {
+            const fib = fibonacciSequence(length * 2);
+            const melody = [];
+
+            for (let i = 0; i < length; i++) {
+                const num = fib[i];
+                const note = numberToNote(num % 28, 'C');
+                const duration = 0.5 + (num % 3) * 0.25;
+                const velocity = 80 + (num % 40);
+
+                melody.push({
+                    note: note,
+                    frequency: midiToFrequency(note),
+                    duration: duration,
+                    velocity: velocity,
+                    fibNumber: num
+                });
+            }
+
+            return melody;
+        }
+
+        // 音を生成して再生
+        function playTone(frequency, duration, velocity) {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+
+            // ヴェロシティを音量に反映
+            const volume = (velocity / 127) * 0.3;
+            gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+
+            // ビジュアライゼーション
+            visualizeNote(frequency, duration);
+        }
+
+        // ビジュアライゼーション
+        function visualizeNote(frequency, duration) {
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            const radius = (frequency / 1000) * 50 + 20;
+
+            // グラデーション
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+            gradient.addColorStop(0, `hsla(${(frequency / 10) % 360}, 70%, 60%, 0.8)`);
+            gradient.addColorStop(1, 'transparent');
+
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // フェードアウト
+            setTimeout(() => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }, duration * 1000);
+        }
+
+        // シーケンス表示を更新
+        function updateSequenceDisplay(activeIndex = -1) {
+            const display = document.getElementById('sequence-display');
+            display.innerHTML = '';
+
+            currentSequence.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'sequence-item';
+                if (index === activeIndex) {
+                    div.classList.add('active');
+                }
+
+                div.innerHTML = `
+                    <div class="sequence-number">F${item.fibNumber}</div>
+                    <div class="sequence-note">Note ${item.note}</div>
+                `;
+
+                display.appendChild(div);
+            });
+        }
+
+        // メロディを再生
+        function playMelody() {
+            if (currentNoteIndex >= currentSequence.length) {
+                stopMelody();
+                return;
+            }
+
+            const noteData = currentSequence[currentNoteIndex];
+            playTone(noteData.frequency, noteData.duration, noteData.velocity);
+            updateSequenceDisplay(currentNoteIndex);
+
+            currentNoteIndex++;
+
+            if (isPlaying) {
+                const nextDelay = noteData.duration * 1000;
+                schedulerTimeout = setTimeout(playMelody, nextDelay);
+            }
+        }
+
+        // 再生開始
+        function startMelody() {
+            if (currentSequence.length === 0) {
+                currentSequence = createFibonacciMelody(16);
+                updateSequenceDisplay();
+            }
+
+            isPlaying = true;
+            const playBtn = document.getElementById('playBtn');
+            playBtn.textContent = '⏸ 停止';
+            playBtn.classList.add('playing');
+
+            playMelody();
+        }
+
+        // 再生停止
+        function stopMelody() {
+            isPlaying = false;
+            currentNoteIndex = 0;
+            updateSequenceDisplay(-1);
+
+            const playBtn = document.getElementById('playBtn');
+            playBtn.textContent = '▶ 再生';
+            playBtn.classList.remove('playing');
+
+            if (schedulerTimeout) {
+                clearTimeout(schedulerTimeout);
+                schedulerTimeout = null;
+            }
+        }
+
+        // 新規生成
+        function regenerateMelody() {
+            stopMelody();
+            currentSequence = createFibonacciMelody(16);
+            updateSequenceDisplay();
+
+            // Canvasをクリア
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // イベントリスナー
+        document.getElementById('playBtn').addEventListener('click', () => {
+            if (isPlaying) {
+                stopMelody();
+            } else {
+                startMelody();
+            }
+        });
+
+        document.getElementById('regenerateBtn').addEventListener('click', regenerateMelody);
+
+        // 初期化
+        regenerateMelody();
+    </script>
+</body>
+</html>

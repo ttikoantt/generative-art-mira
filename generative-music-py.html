@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generative Music - Generative Art Collection</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a2e 100%);
+            color: #fff;
+            overflow-x: hidden;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 30px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 15px 30px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: #fff;
+            border: none;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.playing {
+            background: linear-gradient(45deg, #f093fb, #f5576c);
+        }
+
+        .info {
+            text-align: center;
+            max-width: 800px;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .visualizer {
+            width: 100%;
+            max-width: 800px;
+            height: 300px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #visualizer-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .melody-display {
+            width: 100%;
+            max-width: 800px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .melody-display h3 {
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .melody-notes {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .melody-note {
+            background: rgba(102, 126, 234, 0.2);
+            padding: 15px 20px;
+            border-radius: 15px;
+            text-align: center;
+            min-width: 80px;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+        }
+
+        .melody-note.active {
+            background: rgba(102, 126, 234, 0.5);
+            transform: scale(1.1);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .note-name {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .note-japanese {
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+
+        .back-link {
+            margin-top: 40px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        .back-link:hover {
+            color: #764ba2;
+        }
+
+        .stats {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎹 Generative Music</h1>
+    <p class="subtitle">ペンタトニックスケールのアルゴリズム音楽</p>
+
+    <div class="info">
+        <p>ペンタトニックスケール（五音音階）を使って、</p>
+        <p>ランダム性が生む美しいメロディを生成します。</p>
+        <p>何度押しても、予想外の調和が生まれます。</p>
+    </div>
+
+    <div class="controls">
+        <button id="playBtn">▶ 再生</button>
+        <button id="regenerateBtn">🔄 新規生成</button>
+    </div>
+
+    <div class="visualizer">
+        <canvas id="visualizer-canvas"></canvas>
+    </div>
+
+    <div class="melody-display">
+        <h3>🎼 生成メロディ</h3>
+        <div class="melody-notes" id="melody-notes"></div>
+        <div class="stats" id="stats"></div>
+    </div>
+
+    <a href="../index.html" class="back-link">← 戻る</a>
+
+    <script>
+        // Audio Context
+        let audioContext = null;
+        let isPlaying = false;
+        let currentMelody = [];
+        let currentNoteIndex = 0;
+        let schedulerTimeout = null;
+
+        // Canvas
+        const canvas = document.getElementById('visualizer-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvasサイズ調整
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ペンタトニックスケール（Cメジャー・ペンタトニック）
+        // C, D, E, G, A
+        const PENTATONIC_SCALE = [
+            { note: 'C', japanese: 'ド', midi: 60 },
+            { note: 'D', japanese: 'レ', midi: 62 },
+            { note: 'E', japanese: 'ミ', midi: 64 },
+            { note: 'G', japanese: 'ソ', midi: 67 },
+            { note: 'A', japanese: 'ラ', midi: 69 },
+        ];
+
+        // 音価（リズム）
+        const DURATIONS = [0.5, 0.75, 1.0, 1.25, 1.5];
+
+        // メロディを生成
+        function generateMelody(length = 12) {
+            const melody = [];
+
+            for (let i = 0; i < length; i++) {
+                const noteInfo = PENTATONIC_SCALE[Math.floor(Math.random() * PENTATONIC_SCALE.length)];
+                const duration = DURATIONS[Math.floor(Math.random() * DURATIONS.length)];
+
+                melody.push({
+                    ...noteInfo,
+                    duration: duration,
+                    frequency: 440 * Math.pow(2, (noteInfo.midi - 69) / 12)
+                });
+            }
+
+            return melody;
+        }
+
+        // 音を生成して再生
+        function playTone(frequency, duration, noteInfo) {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            // オシレーターのタイプをランダムに
+            const types = ['sine', 'triangle', 'square', 'sawtooth'];
+            oscillator.type = types[Math.floor(Math.random() * types.length)];
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+
+            // 音量エンベロープ
+            const volume = 0.2;
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(volume, audioContext.currentTime + 0.05);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+
+            // ビジュアライゼーション
+            visualizeNote(frequency, duration, noteInfo);
+        }
+
+        // ビジュアライゼーション
+        function visualizeNote(frequency, duration, noteInfo) {
+            const hue = (noteInfo.midi - 60) * 30;
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            const radius = (duration / 2) * 50 + 30;
+
+            // グラデーション
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+            gradient.addColorStop(0, `hsla(${hue}, 70%, 60%, 0.8)`);
+            gradient.addColorStop(1, 'transparent');
+
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // 音符を表示
+            ctx.font = '24px sans-serif';
+            ctx.fillStyle = `hsla(${hue}, 70%, 80%, 0.9)`;
+            ctx.textAlign = 'center';
+            ctx.fillText(noteInfo.note, x, y);
+
+            // フェードアウト
+            setTimeout(() => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }, duration * 1000);
+        }
+
+        // メロディ表示を更新
+        function updateMelodyDisplay(activeIndex = -1) {
+            const display = document.getElementById('melody-notes');
+            const stats = document.getElementById('stats');
+            display.innerHTML = '';
+
+            currentMelody.forEach((note, index) => {
+                const div = document.createElement('div');
+                div.className = 'melody-note';
+                if (index === activeIndex) {
+                    div.classList.add('active');
+                }
+
+                div.innerHTML = `
+                    <div class="note-name">${note.note}</div>
+                    <div class="note-japanese">${note.japanese}</div>
+                `;
+
+                display.appendChild(div);
+            });
+
+            // 統計情報
+            const totalDuration = currentMelody.reduce((sum, note) => sum + note.duration, 0);
+            const avgDuration = totalDuration / currentMelody.length;
+            stats.innerHTML = `
+                音符数: ${currentMelody.length} | 総演奏時間: ${totalDuration.toFixed(1)}秒 | 平均リズム: ${avgDuration.toFixed(2)}秒
+            `;
+        }
+
+        // メロディを再生
+        function playMelody() {
+            if (currentNoteIndex >= currentMelody.length) {
+                stopMelody();
+                return;
+            }
+
+            const noteData = currentMelody[currentNoteIndex];
+            playTone(noteData.frequency, noteData.duration, noteData);
+            updateMelodyDisplay(currentNoteIndex);
+
+            currentNoteIndex++;
+
+            if (isPlaying) {
+                const nextDelay = noteData.duration * 1000;
+                schedulerTimeout = setTimeout(playMelody, nextDelay);
+            }
+        }
+
+        // 再生開始
+        function startMelody() {
+            if (currentMelody.length === 0) {
+                currentMelody = generateMelody();
+                updateMelodyDisplay();
+            }
+
+            isPlaying = true;
+            const playBtn = document.getElementById('playBtn');
+            playBtn.textContent = '⏸ 停止';
+            playBtn.classList.add('playing');
+
+            playMelody();
+        }
+
+        // 再生停止
+        function stopMelody() {
+            isPlaying = false;
+            currentNoteIndex = 0;
+            updateMelodyDisplay(-1);
+
+            const playBtn = document.getElementById('playBtn');
+            playBtn.textContent = '▶ 再生';
+            playBtn.classList.remove('playing');
+
+            if (schedulerTimeout) {
+                clearTimeout(schedulerTimeout);
+                schedulerTimeout = null;
+            }
+        }
+
+        // 新規生成
+        function regenerateMelody() {
+            stopMelody();
+            currentMelody = generateMelody(Math.floor(Math.random() * 8) + 8);
+            updateMelodyDisplay();
+
+            // Canvasをクリア
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // イベントリスナー
+        document.getElementById('playBtn').addEventListener('click', () => {
+            if (isPlaying) {
+                stopMelody();
+            } else {
+                startMelody();
+            }
+        });
+
+        document.getElementById('regenerateBtn').addEventListener('click', regenerateMelody);
+
+        // 初期化
+        regenerateMelody();
+    </script>
+</body>
+</html>
