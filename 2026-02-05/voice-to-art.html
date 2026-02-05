@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice to Art - 音声で光るアート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        canvas {
+            display: block;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            font-size: 14px;
+            text-shadow: 0 0 10px #0ff;
+            z-index: 10;
+            pointer-events: none;
+        }
+        #startBtn {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px 40px;
+            font-size: 18px;
+            background: transparent;
+            border: 2px solid #0ff;
+            color: #0ff;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
+        }
+        #startBtn:hover {
+            background: #0ff;
+            color: #000;
+            box-shadow: 0 0 30px #0ff;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <div>🎤 音声で光るアート</div>
+        <div id="volume">Volume: 0</div>
+        <div id="freq">Dominant: 0 Hz</div>
+    </div>
+    <button id="startBtn">🎤 クリックして開始</button>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const volumeEl = document.getElementById('volume');
+        const freqEl = document.getElementById('freq');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let isRunning = false;
+
+        // パーティクルシステム
+        class Particle {
+            constructor(x, y, hue, size, velocity) {
+                this.x = x;
+                this.y = y;
+                this.hue = hue;
+                this.size = size;
+                this.velocity = velocity;
+                this.alpha = 1;
+                this.decay = 0.005 + Math.random() * 0.01;
+                this.angle = Math.random() * Math.PI * 2;
+                this.spin = (Math.random() - 0.5) * 0.1;
+            }
+
+            update() {
+                this.x += Math.cos(this.angle) * this.velocity;
+                this.y += Math.sin(this.angle) * this.velocity;
+                this.angle += this.spin;
+                this.alpha -= this.decay;
+                this.size *= 0.99;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.shadowColor = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.shadowBlur = 20;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        let particles = [];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        async function startAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+
+                isRunning = true;
+                startBtn.style.display = 'none';
+                animate();
+            } catch (err) {
+                alert('マイクアクセスが必要です: ' + err.message);
+            }
+        }
+
+        function getDominantFrequency(dataArray) {
+            let maxVal = 0;
+            let maxIndex = 0;
+            for (let i = 1; i < dataArray.length; i++) {
+                if (dataArray[i] > maxVal) {
+                    maxVal = dataArray[i];
+                    maxIndex = i;
+                }
+            }
+            const nyquist = audioContext.sampleRate / 2;
+            return (maxIndex * nyquist) / (dataArray.length / 2);
+        }
+
+        function getAverageVolume(dataArray) {
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            return sum / dataArray.length;
+        }
+
+        function createArtFromAudio(frequencyData, timeData, volume, dominantFreq) {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // 音量に応じたパーティクル生成
+            if (volume > 50) {
+                const particleCount = Math.floor(volume / 20);
+                const hue = (dominantFreq / 5000) * 360 + time * 50;
+
+                for (let i = 0; i < particleCount; i++) {
+                    const angle = (i / particleCount) * Math.PI * 2 + time * 0.5;
+                    const radius = 50 + volume * 2;
+                    const x = centerX + Math.cos(angle) * radius;
+                    const y = centerY + Math.sin(angle) * radius;
+                    const size = 3 + (volume / 100) * 5;
+                    const velocity = 2 + (volume / 100) * 3;
+
+                    particles.push(new Particle(x, y, hue, size, velocity));
+                }
+            }
+
+            // 幾何学パターンの描画
+            if (volume > 30) {
+                const sides = 6;
+                const baseRadius = 100 + volume * 3;
+                const hue = (dominantFreq / 5000) * 360 + time * 30;
+
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(time * 0.2);
+
+                for (let layer = 0; layer < 3; layer++) {
+                    ctx.beginPath();
+                    for (let i = 0; i <= sides; i++) {
+                        const angle = (i / sides) * Math.PI * 2;
+                        const r = baseRadius + layer * 30 + Math.sin(time * 2 + i) * 20;
+                        const x = Math.cos(angle) * r;
+                        const y = Math.sin(angle) * r;
+                        if (i === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    }
+                    ctx.closePath();
+                    ctx.strokeStyle = `hsla(${hue + layer * 30}, 100%, 60%, 0.6)`;
+                    ctx.lineWidth = 3 - layer;
+                    ctx.shadowColor = `hsl(${hue + layer * 30}, 100%, 60%)`;
+                    ctx.shadowBlur = 15;
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+
+            // 周波数スペクトルの円形表示
+            const radius = 150;
+            for (let i = 0; i < frequencyData.length; i += 4) {
+                const amplitude = frequencyData[i];
+                const angle = (i / frequencyData.length) * Math.PI * 2 - Math.PI / 2;
+                const barHeight = (amplitude / 255) * 100;
+
+                const x1 = centerX + Math.cos(angle) * radius;
+                const y1 = centerY + Math.sin(angle) * radius;
+                const x2 = centerX + Math.cos(angle) * (radius + barHeight);
+                const y2 = centerY + Math.sin(angle) * (radius + barHeight);
+
+                const hue = (i / frequencyData.length) * 360 + time * 50;
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = `hsla(${hue}, 100%, 60%, 0.8)`;
+                ctx.lineWidth = 2;
+                ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+                ctx.shadowBlur = 10;
+                ctx.stroke();
+            }
+        }
+
+        let time = 0;
+
+        function animate() {
+            if (!isRunning) return;
+
+            // 残像効果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+            const timeData = new Uint8Array(analyser.frequencyBinCount);
+
+            analyser.getByteFrequencyData(frequencyData);
+            analyser.getByteTimeDomainData(timeData);
+
+            const volume = getAverageVolume(frequencyData);
+            const dominantFreq = getDominantFrequency(frequencyData);
+
+            volumeEl.textContent = `Volume: ${volume.toFixed(1)}`;
+            freqEl.textContent = `Dominant: ${dominantFreq.toFixed(0)} Hz`;
+
+            createArtFromAudio(frequencyData, timeData, volume, dominantFreq);
+
+            // パーティクル更新
+            particles = particles.filter(p => p.alpha > 0);
+            particles.forEach(p => {
+                p.update();
+                p.draw(ctx);
+            });
+
+            time += 0.016;
+            requestAnimationFrame(animate);
+        }
+
+        startBtn.addEventListener('click', startAudio);
+    </script>
+</body>
+</html>
