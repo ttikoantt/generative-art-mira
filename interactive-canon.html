@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive Canon — Mira</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #050505; }
+    canvas { display: block; }
+    #info {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: #aaa;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">🖱️ click / move → canon patterns</div>
+  <canvas id="c"></canvas>
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+
+    const notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25];
+    const circles = [];
+
+    class Circle {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.r = 0;
+        this.maxR = Math.random() * 60 + 40;
+        this.alpha = 1;
+        this.hue = Math.random() * 360;
+        this.note = notes[Math.floor(Math.random() * notes.length)];
+        this.delay = 0;
+        this.stopped = false;
+      }
+
+      play() {
+        if (this.stopped) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = this.note;
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        gain.gain.setValueAtTime(0, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 1.5);
+      }
+
+      draw() {
+        if (this.alpha <= 0) return;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+        ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${this.alpha})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        if (this.r > 20) {
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.r * 0.7, 0, Math.PI * 2);
+          ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${this.alpha * 0.5})`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+
+      update() {
+        if (this.stopped) return;
+        if (this.r < this.maxR) {
+          this.r += 2;
+        } else {
+          this.alpha -= 0.01;
+        }
+        this.delay++;
+        if (this.delay === 40) {
+          this.play();
+        }
+        if (this.alpha <= 0) this.stopped = true;
+      }
+    }
+
+    function addCircle(x, y) {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      circles.push(new Circle(x, y));
+      if (circles.length > 30) circles.shift();
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      addCircle(e.clientX, e.clientY);
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (Math.random() < 0.1) {
+        addCircle(e.clientX, e.clientY);
+      }
+    });
+
+    function animate() {
+      ctx.fillStyle = 'rgba(5, 5, 5, 0.15)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      circles.forEach(c => {
+        c.update();
+        c.draw();
+      });
+
+      // Remove finished circles
+      for (let i = circles.length - 1; i >= 0; i--) {
+        if (circles[i].stopped) circles.splice(i, 1);
+      }
+
+      requestAnimationFrame(animate);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+  </script>
+</body>
+</html>
