@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Particles - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            z-index: 10;
+        }
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+            }
+            .fullscreen-btn {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="info">Interactive Particles — マウスを動かしてパーティクルを操作</div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let mouseX = width / 2;
+        let mouseY = height / 2;
+        let particles = [];
+        const particleCount = 150;
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.baseX = this.x;
+                this.baseY = this.y;
+                this.size = Math.random() * 3 + 1;
+                this.speedX = 0;
+                this.speedY = 0;
+                this.friction = 0.95;
+                this.springFactor = 0.03;
+
+                // カラフルな色
+                const hue = Math.random() * 60 + 180; // 青〜紫系
+                this.color = `hsla(${hue}, 80%, 60%,`;
+            }
+
+            update() {
+                // マウスへの引力
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < 200) {
+                    const force = (200 - distance) / 200;
+                    this.speedX += dx * force * 0.02;
+                    this.speedY += dy * force * 0.02;
+                }
+
+                // 元の位置に戻る力
+                this.speedX += (this.baseX - this.x) * this.springFactor;
+                this.speedY += (this.baseY - this.y) * this.springFactor;
+
+                // 摩擦
+                this.speedX *= this.friction;
+                this.speedY *= this.friction;
+
+                this.x += this.speedX;
+                this.y += this.speedY;
+            }
+
+            draw() {
+                const speed = Math.sqrt(this.speedX ** 2 + this.speedY ** 2);
+                const alpha = Math.min(speed * 0.3 + 0.3, 1);
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size + speed * 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = this.color + alpha + ')';
+                ctx.fill();
+
+                // 光る効果
+                if (speed > 1) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size + speed * 0.5 + 2, 0, Math.PI * 2);
+                    ctx.fillStyle = this.color + (alpha * 0.3) + ')';
+                    ctx.fill();
+                }
+            }
+        }
+
+        // パーティクル初期化
+        for (let i = 0; i < particleCount; i++) {
+            particles.push(new Particle());
+        }
+
+        // マウスイベント
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        // ウィンドウリサイズ
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            particles.forEach(p => p.reset());
+        });
+
+        // アニメーション
+        function animate() {
+            // トレイル効果
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            // パーティクル間の線
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < 100) {
+                        const alpha = (1 - distance / 100) * 0.2;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `rgba(100, 200, 255, ${alpha})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
