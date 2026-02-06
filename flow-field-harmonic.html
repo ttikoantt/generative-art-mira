@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Harmonic Flow Field - 調和の流れ場</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0e1a;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            z-index: 10;
+            background: rgba(10, 14, 26, 0.8);
+            padding: 15px 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+
+        .info h2 {
+            font-size: 18px;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+
+        .info p {
+            margin: 4px 0;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .controls button {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <h2>🌊 Harmonic Flow Field</h2>
+        <p>調和の流れ場 - クリックで再生成</p>
+        <p id="stats">流線: 0 | 生成時間: 0ms</p>
+    </div>
+
+    <div class="controls">
+        <button onclick="regenerate()">🔄 新しい調和</button>
+        <button onclick="toggleAuto()">⏯️ 自動再生: <span id="autoStatus">オフ</span></button>
+        <button onclick="saveImage()">💾 保存</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const statsEl = document.getElementById('stats');
+        const autoStatusEl = document.getElementById('autoStatus');
+
+        let width, height;
+        let particles = [];
+        let flowField = [];
+        let rows, cols;
+        let scale = 15;
+        let off = 0;
+        let autoPlay = false;
+        let autoPlayInterval;
+
+        // 調和的な色パレット
+        const colorPalettes = [
+            ['#667eea', '#764ba2', '#f093fb'],  // 紫系
+            ['#4facfe', '#00f2fe', '#43e97b'],  // 青緑系
+            ['#fa709a', '#fee140', '#f093fb'],  // ピンク系
+            ['#a8edea', '#fed6e3', '#d299c2'],  // パステル
+            ['#ff0844', '#ffb199', '#ffd200'],  // サンセット
+            ['#00c6fb', '#005bea', '#f83600'],  // オーシャン
+        ];
+
+        let currentPalette = colorPalettes[Math.floor(Math.random() * colorPalettes.length)];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.floor(width / scale) + 1;
+            rows = Math.floor(height / scale) + 1;
+        }
+
+        // パーリンノイズのような関数（簡易版）
+        function noise(x, y, z) {
+            const p = [];
+            for (let i = 0; i < 512; i++) {
+                p[i] = Math.floor(Math.random() * 256);
+            }
+
+            const X = Math.floor(x) & 255;
+            const Y = Math.floor(y) & 255;
+            const Z = Math.floor(z) & 255;
+
+            x -= Math.floor(x);
+            y -= Math.floor(y);
+            z -= Math.floor(z);
+
+            const u = fade(x);
+            const v = fade(y);
+            const w = fade(z);
+
+            const A = p[X] + Y;
+            const AA = p[A] + Z;
+            const AB = p[A + 1] + Z;
+            const B = p[X + 1] + Y;
+            const BA = p[B] + Z;
+            const BB = p[B + 1] + Z;
+
+            return lerp(w,
+                lerp(v,
+                    lerp(u, grad(p[AA], x, y, z), grad(p[BA], x - 1, y, z)),
+                    lerp(u, grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z))
+                ),
+                lerp(v,
+                    lerp(u, grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1)),
+                    lerp(u, grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1))
+                )
+            );
+        }
+
+        function fade(t) {
+            return t * t * t * (t * (t * 6 - 15) + 10);
+        }
+
+        function lerp(t, a, b) {
+            return a + t * (b - a);
+        }
+
+        function grad(hash, x, y, z) {
+            const h = hash & 15;
+            const u = h < 8 ? x : y;
+            const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
+            return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+        }
+
+        function createFlowField() {
+            flowField = [];
+            const zOff = off;
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const index = x + y * cols;
+                    const angle = noise(x * 0.1, y * 0.1, zOff) * Math.PI * 4;
+                    const v = {
+                        x: Math.cos(angle),
+                        y: Math.sin(angle),
+                        angle: angle
+                    };
+                    flowField[index] = v;
+                }
+            }
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.history = [{x: this.x, y: this.y}];
+                this.maxHistory = Math.floor(Math.random() * 50) + 20;
+                this.speed = Math.random() * 2 + 1;
+                this.color = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+                this.alpha = Math.random() * 0.5 + 0.3;
+                this.lineWidth = Math.random() * 2 + 0.5;
+                this.life = 0;
+                this.maxLife = Math.floor(Math.random() * 500) + 300;
+            }
+
+            update() {
+                const x = Math.floor(this.x / scale);
+                const y = Math.floor(this.y / scale);
+                const index = x + y * cols;
+
+                if (flowField[index]) {
+                    this.vx += flowField[index].x * 0.1;
+                    this.vy += flowField[index].y * 0.1;
+                }
+
+                // 速度を制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > this.speed) {
+                    this.vx = (this.vx / speed) * this.speed;
+                    this.vy = (this.vy / speed) * this.speed;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                this.history.push({x: this.x, y: this.y});
+
+                if (this.history.length > this.maxHistory) {
+                    this.history.shift();
+                }
+
+                this.life++;
+
+                // 境界チェックと寿命チェック
+                if (this.x < 0 || this.x > width || 
+                    this.y < 0 || this.y > height || 
+                    this.life > this.maxLife) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                if (this.history.length < 2) return;
+
+                ctx.beginPath();
+                ctx.moveTo(this.history[0].x, this.history[0].y);
+
+                for (let i = 1; i < this.history.length; i++) {
+                    ctx.lineTo(this.history[i].x, this.history[i].y);
+                }
+
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = this.lineWidth;
+                ctx.globalAlpha = this.alpha * (1 - this.life / this.maxLife);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            const numParticles = 2000;
+            for (let i = 0; i < numParticles; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function regenerate() {
+            const startTime = performance.now();
+            
+            // 新しいパレットを選択
+            currentPalette = colorPalettes[Math.floor(Math.random() * colorPalettes.length)];
+            
+            // オフセットを変更して新しいパターンを生成
+            off = Math.random() * 1000;
+            
+            // 画面をクリア
+            ctx.fillStyle = '#0a0e1a';
+            ctx.fillRect(0, 0, width, height);
+            
+            createFlowField();
+            initParticles();
+
+            // パーティクルをアニメーション
+            let frame = 0;
+            const maxFrames = 200;
+
+            function animate() {
+                if (frame < maxFrames) {
+                    particles.forEach(p => {
+                        p.update();
+                        p.draw();
+                    });
+                    frame++;
+                    requestAnimationFrame(animate);
+                } else {
+                    const endTime = performance.now();
+                    const duration = Math.round(endTime - startTime);
+                    statsEl.textContent = `流線: ${particles.length} | 生成時間: ${duration}ms`;
+                }
+            }
+
+            animate();
+        }
+
+        function toggleAuto() {
+            autoPlay = !autoPlay;
+            autoStatusEl.textContent = autoPlay ? 'オン' : 'オフ';
+
+            if (autoPlay) {
+                autoPlayInterval = setInterval(() => {
+                    regenerate();
+                }, 3000);
+            } else {
+                clearInterval(autoPlayInterval);
+            }
+        }
+
+        function saveImage() {
+            const link = document.createElement('a');
+            link.download = `harmonic-flow-${Date.now()}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
+        // 初期化
+        resize();
+        window.addEventListener('resize', () => {
+            resize();
+            regenerate();
+        });
+
+        canvas.addEventListener('click', regenerate);
+
+        // 初回生成
+        regenerate();
+    </script>
+</body>
+</html>
