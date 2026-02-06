@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wind Flow - 風の流れ</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #0a0a1a, #1a1a2e);
+            font-family: 'Courier New', monospace;
+        }
+        canvas {
+            display: block;
+        }
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+        .title {
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <div class="title">🌬️ Wind Flow</div>
+        <div>Move mouse to direct the wind</div>
+        <div>Click to create gusts</div>
+    </div>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // パーティクルシステム
+        const particles = [];
+        const numParticles = 500;
+
+        // 風のベクトルフィールド
+        const cols = 20;
+        const rows = 15;
+        const cellWidth = canvas.width / cols;
+        const cellHeight = canvas.height / rows;
+
+        // マウスの位置
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let targetMouseX = mouseX;
+        let targetMouseY = mouseY;
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = 0;
+                this.vy = 0;
+                this.life = Math.random() * 100 + 50;
+                this.maxLife = this.life;
+                this.size = Math.random() * 2 + 1;
+                this.hue = Math.random() * 60 + 180; // Blue-cyan range
+            }
+
+            getForce(x, y) {
+                // ノイズのような自然な風のパターン
+                const col = Math.floor(x / cellWidth);
+                const row = Math.floor(y / cellHeight);
+
+                // マウスからの影響
+                const dx = targetMouseX - x;
+                const dy = targetMouseY - y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                let angle = Math.sin(col * 0.3 + row * 0.3) * Math.PI * 2;
+                let strength = 0.5;
+
+                // マウスに近いほど風が強くなる
+                if (dist < 300) {
+                    const mouseInfluence = (300 - dist) / 300;
+                    angle += Math.atan2(dy, dx) * mouseInfluence;
+                    strength += mouseInfluence * 2;
+                }
+
+                return {
+                    x: Math.cos(angle) * strength,
+                    y: Math.sin(angle) * strength
+                };
+            }
+
+            update() {
+                const force = this.getForce(this.x, this.y);
+
+                this.vx += force.x * 0.1;
+                this.vy += force.y * 0.1;
+
+                // 速度制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 5) {
+                    this.vx = (this.vx / speed) * 5;
+                    this.vy = (this.vy / speed) * 5;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life--;
+
+                // 色の変化（速度に応じて）
+                const speedRatio = speed / 5;
+                this.hue = 180 + speedRatio * 60 + Math.sin(Date.now() * 0.001 + this.x * 0.01) * 20;
+
+                // ライフが尽きたらリセット
+                if (this.life <= 0 || this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = (this.life / this.maxLife) * 0.8;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha})`;
+                ctx.fill();
+
+                // 軌跡を描画
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x - this.vx * 3, this.y - this.vy * 3);
+                ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${alpha * 0.5})`;
+                ctx.lineWidth = this.size * 0.5;
+                ctx.stroke();
+            }
+        }
+
+        // パーティクルを初期化
+        for (let i = 0; i < numParticles; i++) {
+            particles.push(new Particle());
+        }
+
+        // マウスイベント
+        canvas.addEventListener('mousemove', (e) => {
+            targetMouseX = e.clientX;
+            targetMouseY = e.clientY;
+        });
+
+        canvas.addEventListener('click', () => {
+            // 突風を起こす
+            particles.forEach(p => {
+                const dx = p.x - targetMouseX;
+                const dy = p.y - targetMouseY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 200) {
+                    const force = (200 - dist) / 200 * 10;
+                    const angle = Math.atan2(dy, dx);
+                    p.vx += Math.cos(angle) * force;
+                    p.vy += Math.sin(angle) * force;
+                }
+            });
+        });
+
+        // アニメーションループ
+        function animate() {
+            // フェードアウト効果
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // マウス位置をスムーズに更新
+            mouseX += (targetMouseX - mouseX) * 0.05;
+            mouseY += (targetMouseY - mouseY) * 0.05;
+
+            requestAnimationFrame(animate);
+        }
+
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        animate();
+    </script>
+</body>
+</html>
