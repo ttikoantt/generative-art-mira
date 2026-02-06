@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow Field Particles | Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            letter-spacing: 2px;
+            pointer-events: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="title">✨ FLOW FIELD ✨</div>
+    <div class="info">Move mouse to attract particles | Click to reset</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let flowField = [];
+        let rows, cols;
+        let mouse = { x: null, y: null };
+
+        const CONFIG = {
+            particleCount: 3000,
+            particleSize: 1.5,
+            speed: 1,
+            flowFieldScale: 0.008,
+            trailFade: 0.96,
+            mouseInfluence: 150,
+            mouseForce: 0.5
+        };
+
+        // カラーパレット（サイバーパンク風）
+        const colors = [
+            '#ff006e',  // ピンク
+            '#8338ec',  // 紫
+            '#3a86ff',  // 青
+            '#06ffa5',  // シアン
+            '#ffbe0b',  // イエロー
+        ];
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.life = Math.random() * 200 + 100;
+                this.maxLife = this.life;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.size = Math.random() * CONFIG.particleSize + 0.5;
+            }
+
+            update() {
+                const col = Math.floor(this.x / 10);
+                const row = Math.floor(this.y / 10);
+                const index = col + row * cols;
+
+                if (flowField[index]) {
+                    const angle = flowField[index];
+                    this.vx += Math.cos(angle) * 0.1;
+                    this.vy += Math.sin(angle) * 0.1;
+                }
+
+                // マウスの引力
+                if (mouse.x !== null && mouse.y !== null) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < CONFIG.mouseInfluence) {
+                        const force = (1 - dist / CONFIG.mouseInfluence) * CONFIG.mouseForce;
+                        this.vx += (dx / dist) * force;
+                        this.vy += (dy / dist) * force;
+                    }
+                }
+
+                // 速度制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > CONFIG.speed) {
+                    this.vx = (this.vx / speed) * CONFIG.speed;
+                    this.vy = (this.vy / speed) * CONFIG.speed;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 画面端処理
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.reset();
+                }
+
+                this.life--;
+                if (this.life <= 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = (this.life / this.maxLife) * 0.8;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = alpha;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // シンプレックスノイズ風（簡易版）
+        function noise(x, y) {
+            const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+            return n - Math.floor(n);
+        }
+
+        function smoothNoise(x, y) {
+            const ix = Math.floor(x);
+            const iy = Math.floor(y);
+            const fx = x - ix;
+            const fy = y - iy;
+
+            const n00 = noise(ix, iy);
+            const n10 = noise(ix + 1, iy);
+            const n01 = noise(ix, iy + 1);
+            const n11 = noise(ix + 1, iy + 1);
+
+            const sx = fx * fx * (3 - 2 * fx);
+            const sy = fy * fy * (3 - 2 * fy);
+
+            const nx0 = n00 * (1 - sx) + n10 * sx;
+            const nx1 = n01 * (1 - sx) + n11 * sx;
+
+            return nx0 * (1 - sy) + nx1 * sy;
+        }
+
+        function initFlowField() {
+            rows = Math.ceil(height / 10);
+            cols = Math.ceil(width / 10);
+            flowField = new Array(cols * rows);
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const angle = smoothNoise(x * CONFIG.flowFieldScale, y * CONFIG.flowFieldScale) * Math.PI * 4;
+                    flowField[x + y * cols] = angle;
+                }
+            }
+        }
+
+        function init() {
+            resize();
+            initFlowField();
+
+            particles = [];
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initFlowField();
+        }
+
+        function animate() {
+            // トレイル効果
+            ctx.fillStyle = `rgba(10, 10, 15, ${1 - CONFIG.trailFade})`;
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        canvas.addEventListener('click', () => {
+            particles.forEach(p => p.reset());
+        });
+
+        // タッチ対応
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
