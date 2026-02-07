@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbiting Circles - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 1200px;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+        }
+
+        .subtitle {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+
+        #canvas {
+            background: radial-gradient(circle at center, #1a1a2e 0%, #0a0a0a 100%);
+            border-radius: 20px;
+            box-shadow: 0 0 60px rgba(138, 43, 226, 0.3);
+            max-width: 100%;
+            cursor: pointer;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: rgba(138, 43, 226, 0.3);
+            border: 1px solid rgba(138, 43, 226, 0.5);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        button:hover {
+            background: rgba(138, 43, 226, 0.5);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(138, 43, 226, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.8rem;
+            margin-top: 15px;
+        }
+
+        /* Fullscreen button */
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(138, 43, 226, 0.3);
+            border: 1px solid rgba(138, 43, 226, 0.5);
+            color: #fff;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.5rem;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(138, 43, 226, 0.5);
+            transform: scale(1.1);
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.2rem;
+            }
+
+            .subtitle {
+                font-size: 0.8rem;
+            }
+
+            button {
+                padding: 8px 16px;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全画面表示">⛶</button>
+
+    <div class="container">
+        <h1>🌀 Orbiting Circles</h1>
+        <p class="subtitle">円の軌跡が織りなす美しい模様</p>
+
+        <canvas id="canvas" width="800" height="600"></canvas>
+
+        <div class="controls">
+            <button onclick="resetCircles()">🔄 リセット</button>
+            <button onclick="toggleTrail()">👣 軌跡切替</button>
+            <button onclick="changeSpeed()">⚡ 速度変更</button>
+            <button onclick="randomize()">🎲 ランダム</button>
+        </div>
+
+        <p class="info">クリックで中心点を移動</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Resize canvas for mobile
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 800);
+            const ratio = 600 / 800;
+            canvas.width = maxWidth;
+            canvas.height = maxWidth * ratio;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Configuration
+        let centerX = canvas.width / 2;
+        let centerY = canvas.height / 2;
+        let showTrail = true;
+        let speedMultiplier = 1;
+
+        // Circles
+        let circles = [];
+
+        function createCircles() {
+            circles = [];
+            const numCircles = 6 + Math.floor(Math.random() * 4);
+
+            for (let i = 0; i < numCircles; i++) {
+                const baseRadius = 40 + Math.random() * 60;
+                const orbitRadius = 80 + Math.random() * 120;
+                const speed = (Math.random() * 0.02 + 0.01) * (Math.random() < 0.5 ? 1 : -1);
+                const phase = Math.random() * Math.PI * 2;
+                const hue = (360 / numCircles) * i;
+
+                circles.push({
+                    baseRadius,
+                    orbitRadius,
+                    speed,
+                    phase,
+                    hue,
+                    x: centerX,
+                    y: centerY,
+                    trail: []
+                });
+            }
+        }
+
+        createCircles();
+
+        // Trail buffer
+        let trailCanvas = document.createElement('canvas');
+        let trailCtx = trailCanvas.getContext('2d');
+
+        function initTrailCanvas() {
+            trailCanvas.width = canvas.width;
+            trailCanvas.height = canvas.height;
+            trailCtx.fillStyle = 'rgba(10, 10, 26, 0.02)';
+            trailCtx.fillRect(0, 0, trailCanvas.width, trailCanvas.height);
+        }
+
+        initTrailCanvas();
+        window.addEventListener('resize', initTrailCanvas);
+
+        function resetCircles() {
+            createCircles();
+            initTrailCanvas();
+        }
+
+        function toggleTrail() {
+            showTrail = !showTrail;
+        }
+
+        function changeSpeed() {
+            speedMultiplier = speedMultiplier === 1 ? 2 : speedMultiplier === 2 ? 0.5 : 1;
+        }
+
+        function randomize() {
+            circles.forEach(circle => {
+                circle.baseRadius = 40 + Math.random() * 60;
+                circle.orbitRadius = 80 + Math.random() * 120;
+                circle.speed = (Math.random() * 0.02 + 0.01) * (Math.random() < 0.5 ? 1 : -1);
+                circle.hue = Math.random() * 360;
+            });
+            initTrailCanvas();
+        }
+
+        function draw() {
+            // Fade effect for trail
+            if (showTrail) {
+                trailCtx.fillStyle = 'rgba(10, 10, 26, 0.02)';
+                trailCtx.fillRect(0, 0, trailCanvas.width, trailCanvas.height);
+            } else {
+                trailCtx.fillStyle = 'rgba(10, 10, 26, 1)';
+                trailCtx.fillRect(0, 0, trailCanvas.width, trailCanvas.height);
+            }
+
+            // Draw trail canvas
+            ctx.drawImage(trailCanvas, 0, 0);
+
+            // Clear and draw circles
+            const time = Date.now() * 0.001;
+
+            circles.forEach((circle, index) => {
+                // Calculate position
+                const x = centerX + Math.cos(circle.phase + time * circle.speed * speedMultiplier) * circle.orbitRadius;
+                const y = centerY + Math.sin(circle.phase + time * circle.speed * speedMultiplier) * circle.orbitRadius;
+
+                // Draw orbit path (faint)
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, circle.orbitRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${circle.hue}, 70%, 50%, 0.1)`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // Draw circle on trail canvas for persistence
+                const gradient = trailCtx.createRadialGradient(x, y, 0, x, y, circle.baseRadius);
+                gradient.addColorStop(0, `hsla(${circle.hue}, 80%, 60%, 0.3)`);
+                gradient.addColorStop(1, `hsla(${circle.hue}, 80%, 60%, 0)`);
+                trailCtx.beginPath();
+                trailCtx.arc(x, y, circle.baseRadius, 0, Math.PI * 2);
+                trailCtx.fillStyle = gradient;
+                trailCtx.fill();
+
+                // Draw current circle
+                const mainGradient = ctx.createRadialGradient(x, y, 0, x, y, circle.baseRadius);
+                mainGradient.addColorStop(0, `hsla(${circle.hue}, 80%, 70%, 0.9)`);
+                mainGradient.addColorStop(0.5, `hsla(${circle.hue}, 80%, 50%, 0.5)`);
+                mainGradient.addColorStop(1, `hsla(${circle.hue}, 80%, 40%, 0)`);
+
+                ctx.beginPath();
+                ctx.arc(x, y, circle.baseRadius, 0, Math.PI * 2);
+                ctx.fillStyle = mainGradient;
+                ctx.fill();
+
+                // Glow effect
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = `hsla(${circle.hue}, 80%, 60%, 0.5)`;
+                ctx.beginPath();
+                ctx.arc(x, y, circle.baseRadius * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${circle.hue}, 90%, 80%, 0.9)`;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            requestAnimationFrame(draw);
+        }
+
+        draw();
+
+        // Click to change center
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            centerX = (e.clientX - rect.left) * (canvas.width / rect.width);
+            centerY = (e.clientY - rect.top) * (canvas.height / rect.height);
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            centerX = (touch.clientX - rect.left) * (canvas.width / rect.width);
+            centerY = (touch.clientY - rect.top) * (canvas.height / rect.height);
+        });
+
+        // Fullscreen
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
