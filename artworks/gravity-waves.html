@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Gravity Waves - Interactive Particle System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            pointer-events: none;
+            user-select: none;
+            z-index: 10;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        🌊 クリックで重力波を発生<br>
+        <small>Gravity Wave Simulation</small>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">
+        ⛶ 全画面
+    </button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let waves = [];
+        const PARTICLE_COUNT = 150;
+        const TRAIL_LENGTH = 0.15;
+
+        // Resize handler
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        // Particle class
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.radius = Math.random() * 2 + 1;
+                this.hue = Math.random() * 60 + 180; // Blue to cyan
+                this.life = 1;
+            }
+
+            update() {
+                // Apply wave forces
+                for (let wave of waves) {
+                    const dx = this.x - wave.x;
+                    const dy = this.y - wave.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < wave.radius) {
+                        const force = (1 - dist / wave.radius) * wave.strength;
+                        const angle = Math.atan2(dy, dx);
+                        this.vx += Math.cos(angle) * force;
+                        this.vy += Math.sin(angle) * force;
+                    }
+                }
+
+                // Apply velocity
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Damping
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+
+                // Boundary wrap
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+
+                // Color shift based on velocity
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                this.hue = 180 + speed * 30;
+            }
+
+            draw() {
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const alpha = 0.6 + speed * 0.4;
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius + speed * 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        // Wave class
+        class Wave {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = Math.max(width, height) * 0.8;
+                this.strength = 15;
+                this.alpha = 1;
+            }
+
+            update() {
+                this.radius += 8;
+                this.alpha = 1 - (this.radius / this.maxRadius);
+                return this.alpha > 0;
+            }
+
+            draw() {
+                if (this.alpha <= 0) return;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(100, 200, 255, ${this.alpha * 0.5})`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Second ring
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, Math.max(0, this.radius - 30), 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(150, 220, 255, ${this.alpha * 0.3})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        // Initialize particles
+        function init() {
+            resize();
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            // Trail effect
+            ctx.fillStyle = `rgba(0, 0, 0, ${TRAIL_LENGTH})`;
+            ctx.fillRect(0, 0, width, height);
+
+            // Update and draw waves
+            waves = waves.filter(wave => {
+                const alive = wave.update();
+                if (alive) wave.draw();
+                return alive;
+            });
+
+            // Update and draw particles
+            for (let particle of particles) {
+                particle.update();
+                particle.draw();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event handlers
+        canvas.addEventListener('click', (e) => {
+            waves.push(new Wave(e.clientX, e.clientY));
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            for (let touch of e.touches) {
+                waves.push(new Wave(touch.clientX, touch.clientY));
+            }
+        });
+
+        window.addEventListener('resize', resize);
+
+        // Fullscreen toggle
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Start
+        init();
+        animate();
+
+        // Auto-wave every 5 seconds
+        setInterval(() => {
+            const x = Math.random() * width;
+            const y = Math.random() * height;
+            waves.push(new Wave(x, y));
+        }, 5000);
+    </script>
+</body>
+</html>
