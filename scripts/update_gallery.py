@@ -15,8 +15,10 @@ from pathlib import Path
 from datetime import datetime
 
 # 設定
-MANIFEST_PATH = Path(__file__).parent / "artworks-manifest.json"
-INDEX_PATH = Path(__file__).parent / "index.html"
+SCRIPT_DIR = Path(__file__).parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+MANIFEST_PATH = PROJECT_ROOT / "artworks-manifest.json"
+INDEX_PATH = PROJECT_ROOT / "index.html"
 
 def load_manifest():
     """マニフェストファイルを読み込む"""
