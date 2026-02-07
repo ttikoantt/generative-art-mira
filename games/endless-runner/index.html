@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Endless Runner - 無限ランナー</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        #gameContainer {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #gameCanvas {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 100%;
+        }
+
+        .game-ui {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            color: #fff;
+        }
+
+        .score {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .high-score {
+            font-size: 16px;
+            opacity: 0.8;
+        }
+
+        .fullscreen-btn {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            z-index: 100;
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .overlay h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        .overlay p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            opacity: 0.8;
+        }
+
+        .overlay button {
+            padding: 15px 40px;
+            font-size: 20px;
+            background: #667eea;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .overlay button:hover {
+            background: #764ba2;
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .game-ui {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+
+            .score {
+                font-size: 20px;
+            }
+
+            .high-score {
+                font-size: 14px;
+            }
+
+            .fullscreen-btn {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+
+            .overlay h1 {
+                font-size: 32px;
+            }
+
+            .overlay p {
+                font-size: 16px;
+            }
+
+            .overlay button {
+                padding: 12px 30px;
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div class="game-ui">
+            <div>
+                <div class="score">スコア: <span id="score">0</span></div>
+                <div class="high-score">ハイスコア: <span id="highScore">0</span></div>
+            </div>
+            <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div id="startOverlay" class="overlay">
+        <h1>🏃 Endless Runner</h1>
+        <p>タップまたはクリックでジャンプ</p>
+        <button onclick="startGame()">スタート</button>
+    </div>
+
+    <div id="gameOverOverlay" class="overlay hidden">
+        <h1>ゲームオーバー</h1>
+        <p>スコア: <span id="finalScore">0</span></p>
+        <button onclick="startGame()">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // キャンバスサイズ設定
+        const WIDTH = 800;
+        const HEIGHT = 400;
+        canvas.width = WIDTH;
+        canvas.height = HEIGHT;
+
+        // ゲーム状態
+        let gameRunning = false;
+        let score = 0;
+        let highScore = localStorage.getItem('endlessRunnerHighScore') || 0;
+        let gameSpeed = 5;
+
+        // プレイヤー
+        const player = {
+            x: 100,
+            y: HEIGHT - 60,
+            width: 40,
+            height: 40,
+            velocity: 0,
+            gravity: 0.8,
+            jumpStrength: -12,
+            grounded: true
+        };
+
+        // 障害物
+        let obstacles = [];
+        const obstacleTypes = [
+            { width: 30, height: 40, color: '#e74c3c' },
+            { width: 50, height: 30, color: '#f39c12' },
+            { width: 40, height: 50, color: '#9b59b6' }
+        ];
+
+        // 地面
+        const groundY = HEIGHT - 20;
+
+        function jump() {
+            if (player.grounded && gameRunning) {
+                player.velocity = player.jumpStrength;
+                player.grounded = false;
+            }
+        }
+
+        function spawnObstacle() {
+            const type = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+            obstacles.push({
+                x: WIDTH,
+                y: groundY - type.height,
+                width: type.width,
+                height: type.height,
+                color: type.color
+            });
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            // プレイヤー更新
+            player.velocity += player.gravity;
+            player.y += player.velocity;
+
+            if (player.y >= groundY - player.height) {
+                player.y = groundY - player.height;
+                player.velocity = 0;
+                player.grounded = true;
+            }
+
+            // 障害物更新
+            obstacles.forEach((obs, index) => {
+                obs.x -= gameSpeed;
+
+                if (obs.x + obs.width < 0) {
+                    obstacles.splice(index, 1);
+                    score++;
+                    document.getElementById('score').textContent = score;
+
+                    // 徐々に難易度アップ
+                    if (score % 5 === 0) {
+                        gameSpeed = Math.min(gameSpeed + 0.5, 12);
+                    }
+                }
+            });
+
+            // 障害物生成
+            if (Math.random() < 0.02 && obstacles.length < 3) {
+                const lastObs = obstacles[obstacles.length - 1];
+                if (!lastObs || lastObs.x < WIDTH - 200) {
+                    spawnObstacle();
+                }
+            }
+
+            // 衝突判定
+            obstacles.forEach(obs => {
+                if (player.x < obs.x + obs.width &&
+                    player.x + player.width > obs.x &&
+                    player.y < obs.y + obs.height &&
+                    player.y + player.height > obs.y) {
+                    gameOver();
+                }
+            });
+        }
+
+        function draw() {
+            // 背景
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            // 雲
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            drawCloud(100, 50, 60);
+            drawCloud(300, 80, 50);
+            drawCloud(600, 60, 70);
+
+            // 地面
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(0, groundY, WIDTH, HEIGHT - groundY);
+
+            // 草
+            ctx.fillStyle = '#228B22';
+            ctx.fillRect(0, groundY, WIDTH, 5);
+
+            // プレイヤー
+            ctx.fillStyle = '#3498db';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+
+            // プレイヤーの目
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(player.x + 25, player.y + 10, 8, 8);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(player.x + 29, player.y + 12, 4, 4);
+
+            // 障害物
+            obstacles.forEach(obs => {
+                ctx.fillStyle = obs.color;
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+            });
+        }
+
+        function drawCloud(x, y, size) {
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.arc(x + size * 0.8, y - size * 0.2, size * 0.7, 0, Math.PI * 2);
+            ctx.arc(x + size * 1.5, y, size * 0.8, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            gameSpeed = 5;
+            obstacles = [];
+            player.y = groundY - player.height;
+            player.velocity = 0;
+            player.grounded = true;
+
+            document.getElementById('score').textContent = '0';
+            document.getElementById('startOverlay').classList.add('hidden');
+            document.getElementById('gameOverOverlay').classList.add('hidden');
+            document.getElementById('highScore').textContent = highScore;
+        }
+
+        function gameOver() {
+            gameRunning = false;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('endlessRunnerHighScore', highScore);
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOverOverlay').classList.remove('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', jump);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                jump();
+            }
+        });
+
+        // 初期化
+        document.getElementById('highScore').textContent = highScore;
+        gameLoop();
+    </script>
+</body>
+</html>
