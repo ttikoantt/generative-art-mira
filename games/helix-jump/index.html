@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Helix Jump Lite | Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            touch-action: none;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            display: block;
+            cursor: grab;
+        }
+
+        canvas:active {
+            cursor: grabbing;
+        }
+
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .score-box {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            border-radius: 15px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .score-box label {
+            display: block;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 5px;
+        }
+
+        .score-box .value {
+            color: #fff;
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        .score-box .value.best {
+            color: #fbbf24;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .overlay h1 {
+            color: #fff;
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px rgba(139, 92, 246, 0.5);
+        }
+
+        .overlay p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #8b5cf6, #ec4899);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 40px rgba(139, 92, 246, 0.5);
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            .hud {
+                gap: 15px;
+            }
+
+            .score-box {
+                padding: 10px 20px;
+            }
+
+            .score-box .value {
+                font-size: 24px;
+            }
+
+            .overlay h1 {
+                font-size: 32px;
+            }
+
+            .instructions {
+                font-size: 12px;
+                padding: 0 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="canvas"></canvas>
+
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+        <div class="hud">
+            <div class="score-box">
+                <label>Score</label>
+                <div class="value" id="score">0</div>
+            </div>
+            <div class="score-box">
+                <label>Best</label>
+                <div class="value best" id="bestScore">0</div>
+            </div>
+        </div>
+
+        <div class="instructions">
+            🖱️ Drag to rotate • Find gaps • Avoid red zones
+        </div>
+
+        <div class="overlay" id="overlay">
+            <h1 id="overlayTitle">Helix Jump</h1>
+            <p id="overlayMessage">Rotate the tower to find gaps!</p>
+            <button class="btn" onclick="startGame()">Play</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game state
+        let gameRunning = false;
+        let score = 0;
+        let bestScore = localStorage.getItem('helixJumpBest') || 0;
+        let gameOver = false;
+
+        // Tower configuration
+        let towerRotation = 0;
+        let targetRotation = 0;
+        let ballY = 0;
+        let ballVelocity = 0;
+        let platforms = [];
+        const platformCount = 20;
+        const platformSpacing = 80;
+        const segmentsPerPlatform = 12;
+        const segmentAngle = (Math.PI * 2) / segmentsPerPlatform;
+
+        // Input
+        let isDragging = false;
+        let lastMouseX = 0;
+
+        // Visuals
+        let particles = [];
+        let trail = [];
+        const colors = {
+            background: '#1a1a2e',
+            tower: '#2a2a4e',
+            platform: '#4a5568',
+            platformTop: '#718096',
+            gap: '#1a1a2e',
+            ball: '#8b5cf6',
+            ballGlow: 'rgba(139, 92, 246, 0.3)',
+            danger: '#ef4444',
+            safe: '#10b981'
+        };
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+
+        function generatePlatforms() {
+            platforms = [];
+            for (let i = 0; i < platformCount; i++) {
+                const segments = [];
+                const gapStart = Math.floor(Math.random() * segmentsPerPlatform);
+                const gapSize = 2 + Math.floor(Math.random() * 3);
+                const hasDanger = i > 0 && Math.random() > 0.6;
+
+                for (let j = 0; j < segmentsPerPlatform; j++) {
+                    const inGap = j >= gapStart && j < gapStart + gapSize;
+                    segments.push({
+                        exists: !inGap,
+                        isDanger: hasDanger && !inGap && Math.random() > 0.5
+                    });
+                }
+
+                platforms.push({
+                    y: i * platformSpacing,
+                    segments: segments
+                });
+            }
+        }
+
+        function startGame() {
+            score = 0;
+            gameOver = false;
+            gameRunning = true;
+            ballY = 100;
+            ballVelocity = 0;
+            towerRotation = 0;
+            targetRotation = 0;
+            trail = [];
+            particles = [];
+            platforms = [];
+
+            generatePlatforms();
+
+            document.getElementById('overlay').classList.remove('active');
+            document.getElementById('score').textContent = score;
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function endGame() {
+            gameOver = true;
+            gameRunning = false;
+
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('helixJumpBest', bestScore);
+                document.getElementById('bestScore').textContent = bestScore;
+            }
+
+            document.getElementById('overlayTitle').textContent = 'Game Over!';
+            document.getElementById('overlayMessage').textContent = `Score: ${score}`;
+            document.getElementById('overlay').classList.add('active');
+        }
+
+        // Input handlers
+        canvas.addEventListener('mousedown', (e) => {
+            if (!gameRunning) return;
+            isDragging = true;
+            lastMouseX = e.clientX;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDragging || !gameRunning) return;
+            const delta = e.clientX - lastMouseX;
+            targetRotation += delta * 0.01;
+            lastMouseX = e.clientX;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault();
+            isDragging = true;
+            lastMouseX = e.touches[0].clientX;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (!isDragging || !gameRunning) return;
+            e.preventDefault();
+            const delta = e.touches[0].clientX - lastMouseX;
+            targetRotation += delta * 0.015;
+            lastMouseX = e.touches[0].clientX;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+
+        function update() {
+            if (!gameRunning) return;
+
+            // Smooth rotation
+            towerRotation += (targetRotation - towerRotation) * 0.1;
+
+            // Ball physics
+            ballVelocity += 0.5;
+            ballY += ballVelocity;
+
+            // Platform collision
+            const ballRadius = 15;
+            const towerRadius = 100;
+
+            for (let i = 0; i < platforms.length; i++) {
+                const platform = platforms[i];
+                const platformY = platform.y - ballY + canvas.height / 2;
+
+                if (platformY > canvas.height / 2 && platformY < canvas.height / 2 + 50) {
+                    // Ball is at this platform level
+                    const ballAngle = ((-towerRotation) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+                    const segmentIndex = Math.floor(ballAngle / segmentAngle) % segmentsPerPlatform;
+
+                    if (platform.segments[segmentIndex].exists) {
+                        if (ballVelocity > 0) {
+                            // Bounce
+                            ballVelocity = -12;
+                            createBounceParticles(canvas.width / 2, platformY - ballRadius);
+
+                            // Check danger
+                            if (platform.segments[segmentIndex].isDanger) {
+                                endGame();
+                                return;
+                            }
+                        }
+                    } else {
+                        // Passed through gap - score!
+                        if (!platform.passed) {
+                            platform.passed = true;
+                            score++;
+                            document.getElementById('score').textContent = score;
+                        }
+                    }
+                }
+            }
+
+            // Trail
+            trail.push({ x: canvas.width / 2, y: canvas.height / 2 });
+            if (trail.length > 20) trail.shift();
+
+            // Update particles
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.3;
+                p.life -= 0.02;
+            });
+
+            // Game over if ball falls too far
+            if (ballY > platformCount * platformSpacing + 200) {
+                endGame();
+            }
+        }
+
+        function createBounceParticles(x, y) {
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: -Math.random() * 5 - 2,
+                    life: 1,
+                    color: colors.ball
+                });
+            }
+        }
+
+        function draw() {
+            // Clear
+            ctx.fillStyle = colors.background;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const towerRadius = 100;
+
+            // Draw tower center
+            ctx.fillStyle = colors.tower;
+            ctx.fillRect(centerX - 10, 0, 20, canvas.height);
+
+            // Draw platforms
+            platforms.forEach(platform => {
+                const platformY = platform.y - ballY + centerY;
+
+                if (platformY < -50 || platformY > canvas.height + 50) return;
+
+                platform.segments.forEach((segment, i) => {
+                    if (!segment.exists) return;
+
+                    const startAngle = towerRotation + i * segmentAngle;
+                    const endAngle = startAngle + segmentAngle - 0.02;
+
+                    // Platform side
+                    ctx.beginPath();
+                    ctx.arc(centerX, platformY, towerRadius, startAngle, endAngle);
+                    ctx.strokeStyle = segment.isDanger ? colors.danger : colors.platform;
+                    ctx.lineWidth = 40;
+                    ctx.stroke();
+
+                    // Platform top
+                    ctx.beginPath();
+                    ctx.arc(centerX, platformY, towerRadius, startAngle, endAngle);
+                    ctx.strokeStyle = segment.isDanger ? colors.danger : colors.platformTop;
+                    ctx.lineWidth = 35;
+                    ctx.stroke();
+                });
+            });
+
+            // Draw trail
+            trail.forEach((point, i) => {
+                const alpha = i / trail.length * 0.5;
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, ballRadius * (i / trail.length), 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(139, 92, 246, ${alpha})`;
+                ctx.fill();
+            });
+
+            // Draw ball
+            const ballScreenY = centerY;
+            ctx.beginPath();
+            ctx.arc(centerX, ballScreenY, ballRadius, 0, Math.PI * 2);
+            ctx.fillStyle = colors.ball;
+            ctx.fill();
+
+            // Ball glow
+            ctx.beginPath();
+            ctx.arc(centerX, ballScreenY, ballRadius + 5, 0, Math.PI * 2);
+            ctx.fillStyle = colors.ballGlow;
+            ctx.fill();
+
+            // Draw particles
+            particles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3 * p.life, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            });
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Initialize
+        document.getElementById('bestScore').textContent = bestScore;
+        document.getElementById('overlay').classList.add('active');
+
+        // Initial draw
+        draw();
+    </script>
+</body>
+</html>
