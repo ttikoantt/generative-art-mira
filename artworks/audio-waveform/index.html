@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Reactive Waveform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        #fullscreenBtn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(0, 255, 255, 0.2);
+            border: 2px solid cyan;
+            color: cyan;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 1000;
+            transition: all 0.3s;
+            border-radius: 8px;
+        }
+
+        #fullscreenBtn:hover {
+            background: rgba(0, 255, 255, 0.4);
+            transform: scale(1.05);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 100;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid cyan;
+            color: cyan;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+        }
+
+        button:hover {
+            background: cyan;
+            color: #0a0a0a;
+            transform: scale(1.05);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: cyan;
+            font-size: 14px;
+            z-index: 100;
+            text-shadow: 0 0 10px cyan;
+        }
+
+        .info h1 {
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .info p {
+            opacity: 0.7;
+            font-size: 12px;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                gap: 10px;
+                bottom: 20px;
+            }
+
+            button {
+                padding: 12px 24px;
+                font-size: 14px;
+            }
+
+            .info {
+                font-size: 12px;
+            }
+
+            .info h1 {
+                font-size: 16px;
+            }
+
+            #fullscreenBtn {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button id="fullscreenBtn">📺 全画面</button>
+
+    <div class="info">
+        <h1>🎵 Audio Reactive Waveform</h1>
+        <p>マイクまたは音楽ファイルから波形を可視化</p>
+    </div>
+
+    <canvas id="waveform"></canvas>
+
+    <div class="controls">
+        <button id="micBtn">🎤 マイク開始</button>
+        <button id="fileBtn">📁 ファイル選択</button>
+        <input type="file" id="audioFile" accept="audio/*" style="display: none;">
+    </div>
+
+    <script>
+        const canvas = document.getElementById('waveform');
+        const ctx = canvas.getContext('2d');
+        const micBtn = document.getElementById('micBtn');
+        const fileBtn = document.getElementById('fileBtn');
+        const audioFile = document.getElementById('audioFile');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let audioContext;
+        let analyser;
+        let source;
+        let dataArray;
+        let bufferLength;
+        let isRunning = false;
+        let hue = 0;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        async function startMicrophone() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                setupAudio(stream);
+                micBtn.textContent = '✅ マイク実行中';
+                fileBtn.disabled = true;
+            } catch (err) {
+                alert('マイクへのアクセスが拒否されました');
+            }
+        }
+
+        function setupAudio(source) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 2048;
+            bufferLength = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+
+            const audioSource = audioContext.createMediaStreamSource(source);
+            audioSource.connect(analyser);
+
+            isRunning = true;
+            draw();
+        }
+
+        function loadAudioFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const audio = new Audio();
+                audio.src = e.target.result;
+                audio.play();
+
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                const source = audioContext.createMediaElementSource(audio);
+                source.connect(analyser);
+                analyser.connect(audioContext.destination);
+
+                isRunning = true;
+                micBtn.textContent = '✅ 音楽再生中';
+                draw();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function draw() {
+            if (!isRunning) return;
+
+            requestAnimationFrame(draw);
+
+            analyser.getByteTimeDomainData(dataArray);
+
+            // 背景をフェードアウト
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 色相を徐々に変化
+            hue = (hue + 0.5) % 360;
+
+            // メインの波形
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+
+            ctx.beginPath();
+            const sliceWidth = canvas.width / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * canvas.height) / 2;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                x += sliceWidth;
+            }
+
+            ctx.stroke();
+
+            // 2番目の波形（オフセット）
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = `hsl(${(hue + 60) % 360}, 100%, 60%)`;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = `hsl(${(hue + 60) % 360}, 100%, 60%)`;
+
+            ctx.beginPath();
+            x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * canvas.height) / 2 + Math.sin(i * 0.1) * 50;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                x += sliceWidth;
+            }
+
+            ctx.stroke();
+
+            // 3番目の波形（反転）
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = `hsl(${(hue + 120) % 360}, 100%, 70%)`;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = `hsl(${(hue + 120) % 360}, 100%, 70%)`;
+
+            ctx.beginPath();
+            x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = canvas.height - (v * canvas.height) / 2;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                x += sliceWidth;
+            }
+
+            ctx.stroke();
+
+            // パーティクル効果
+            const time = Date.now() * 0.001;
+            for (let i = 0; i < 20; i++) {
+                const px = (Math.sin(time + i * 0.5) * 0.5 + 0.5) * canvas.width;
+                const py = (Math.cos(time * 1.5 + i * 0.3) * 0.5 + 0.5) * canvas.height;
+                const size = Math.sin(time * 2 + i) * 3 + 4;
+
+                ctx.beginPath();
+                ctx.arc(px, py, size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${(hue + i * 18) % 360}, 100%, 60%, 0.6)`;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsl(${(hue + i * 18) % 360}, 100%, 60%)`;
+                ctx.fill();
+            }
+        }
+
+        micBtn.addEventListener('click', startMicrophone);
+        fileBtn.addEventListener('click', () => audioFile.click());
+        audioFile.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                loadAudioFile(e.target.files[0]);
+                micBtn.disabled = true;
+                fileBtn.disabled = true;
+            }
+        });
+
+        // タッチ操作対応
+        micBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            startMicrophone();
+        });
+    </script>
+</body>
+</html>
