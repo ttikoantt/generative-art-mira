@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎮 Simon Says</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #fff;
+            margin-bottom: 20px;
+            font-size: 28px;
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+        }
+
+        .stat {
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin-left: 5px;
+        }
+
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            max-width: 300px;
+            margin-bottom: 20px;
+        }
+
+        .button {
+            width: 130px;
+            height: 130px;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.1s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .button:active {
+            transform: scale(0.95);
+        }
+
+        .button.red {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+        }
+
+        .button.blue {
+            background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%);
+        }
+
+        .button.green {
+            background: linear-gradient(135deg, #a8e6cf 0%, #56ab91 100%);
+        }
+
+        .button.yellow {
+            background: linear-gradient(135deg, #ffd93d 0%, #f9c846 100%);
+        }
+
+        .button.active {
+            transform: scale(1.1);
+            box-shadow: 0 0 30px currentColor;
+            filter: brightness(1.3);
+        }
+
+        .button:disabled {
+            cursor: not-allowed;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .message {
+            color: #fff;
+            margin-top: 20px;
+            font-size: 16px;
+            min-height: 24px;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            .button {
+                width: 100px;
+                height: 100px;
+            }
+
+            h1 {
+                font-size: 22px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🎮 Simon Says</h1>
+
+    <div class="stats">
+        <div class="stat">レベル<span class="stat-value" id="level">1</span></div>
+        <div class="stat">スコア<span class="stat-value" id="score">0</span></div>
+        <div class="stat">最高<span class="stat-value" id="high-score">0</span></div>
+    </div>
+
+    <div class="game-board">
+        <button class="button red" data-color="red"></button>
+        <button class="button blue" data-color="blue"></button>
+        <button class="button green" data-color="green"></button>
+        <button class="button yellow" data-color="yellow"></button>
+    </div>
+
+    <div class="controls">
+        <button class="btn btn-primary" id="start-btn">スタート</button>
+        <button class="btn btn-secondary" id="fullscreen-btn">全画面表示</button>
+    </div>
+
+    <div class="message" id="message">スタートボタンで始めよう！</div>
+
+    <script>
+        const buttons = document.querySelectorAll('.button');
+        const startBtn = document.getElementById('start-btn');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const messageEl = document.getElementById('message');
+        const levelEl = document.getElementById('level');
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('high-score');
+
+        let sequence = [];
+        let playerSequence = [];
+        let level = 1;
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('simonHighScore')) || 0;
+        let isPlaying = false;
+        let isShowingSequence = false;
+
+        // 音周波数
+        const sounds = {
+            red: 261.63,      // C4
+            blue: 329.63,     // E4
+            green: 392.00,    // G4
+            yellow: 523.25    // C5
+        };
+
+        // 音を再生
+        function playSound(color) {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.frequency.value = sounds[color];
+            oscillator.type = 'sine';
+
+            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + 0.3);
+        }
+
+        // ボタンをハイライト
+        function highlightButton(color) {
+            const button = document.querySelector(`[data-color="${color}"]`);
+            button.classList.add('active');
+            playSound(color);
+            setTimeout(() => button.classList.remove('active'), 300);
+        }
+
+        // シーケンスを表示
+        async function showSequence() {
+            isShowingSequence = true;
+            messageEl.textContent = '見てね...';
+            buttons.forEach(btn => btn.disabled = true);
+
+            for (const color of sequence) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                highlightButton(color);
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+
+            messageEl.textContent = 'あなたの番！';
+            buttons.forEach(btn => btn.disabled = false);
+            isShowingSequence = false;
+        }
+
+        // 次のレベル
+        function nextLevel() {
+            const colors = ['red', 'blue', 'green', 'yellow'];
+            sequence.push(colors[Math.floor(Math.random() * colors.length)]);
+            playerSequence = [];
+            levelEl.textContent = level;
+            showSequence();
+        }
+
+        // ゲーム開始
+        function startGame() {
+            sequence = [];
+            playerSequence = [];
+            level = 1;
+            score = 0;
+            isPlaying = true;
+            scoreEl.textContent = score;
+            startBtn.textContent = 'リセット';
+            nextLevel();
+        }
+
+        // ゲームオーバー
+        function gameOver() {
+            isPlaying = false;
+            messageEl.textContent = `ゲームオーバー！ スコア: ${score}`;
+            startBtn.textContent = 'スタート';
+            buttons.forEach(btn => btn.disabled = true);
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('simonHighScore', highScore);
+                highScoreEl.textContent = highScore;
+                messageEl.textContent = `🎉 新記録！ スコア: ${score}`;
+            }
+        }
+
+        // クリック処理
+        function handleClick(e) {
+            if (!isPlaying || isShowingSequence) return;
+
+            const color = e.target.dataset.color;
+            highlightButton(color);
+            playerSequence.push(color);
+
+            // 正誤判定
+            const currentIndex = playerSequence.length - 1;
+            if (playerSequence[currentIndex] !== sequence[currentIndex]) {
+                gameOver();
+                return;
+            }
+
+            // レベルクリア
+            if (playerSequence.length === sequence.length) {
+                score += level * 10;
+                scoreEl.textContent = score;
+                level++;
+                messageEl.textContent = '🎉 正解！';
+                setTimeout(nextLevel, 1000);
+            }
+        }
+
+        // イベント
+        startBtn.addEventListener('click', () => {
+            if (isPlaying) {
+                startGame();
+            } else {
+                startGame();
+            }
+        });
+
+        buttons.forEach(btn => {
+            btn.addEventListener('click', handleClick);
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                handleClick(e);
+            });
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                fullscreenBtn.textContent = '全画面解除';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = '全画面表示';
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                fullscreenBtn.textContent = '全画面表示';
+            }
+        });
+
+        // 初期化
+        highScoreEl.textContent = highScore;
+    </script>
+</body>
+</html>

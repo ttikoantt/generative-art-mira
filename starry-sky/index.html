@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✨ ジェネレーティブ・星空</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        #fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <button id="fullscreen-btn">🌟 全画面表示</button>
+    <div class="info">
+        マウスで星空を動かせる / 流れ星が現れるよ
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+        let width, height;
+        let stars = [];
+        let shootingStars = [];
+        let mouseX = 0, mouseY = 0;
+        let targetMouseX = 0, targetMouseY = 0;
+
+        // 星のクラス
+        class Star {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height * 0.7; // 地平線より上に
+                this.size = Math.random() * 2 + 0.5;
+                this.baseAlpha = Math.random() * 0.5 + 0.3;
+                this.twinkleSpeed = Math.random() * 0.02 + 0.01;
+                this.twinkleOffset = Math.random() * Math.PI * 2;
+                this.hue = Math.random() * 60 + 200; // 青〜紫
+            }
+
+            update(time) {
+                // 瞬き効果
+                this.alpha = this.baseAlpha + Math.sin(time * this.twinkleSpeed + this.twinkleOffset) * 0.2;
+            }
+
+            draw(parallaxX, parallaxY) {
+                const x = this.x + parallaxX * this.size * 0.1;
+                const y = this.y + parallaxY * this.size * 0.1;
+
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+
+                // 星の光
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, this.size * 2);
+                gradient.addColorStop(0, `hsla(${this.hue}, 80%, 90%, 1)`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 70%, 70%, 0.5)`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 60%, 50%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(x, y, this.size * 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // 流れ星のクラス
+        class ShootingStar {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height * 0.3;
+                this.length = Math.random() * 80 + 50;
+                this.speed = Math.random() * 15 + 10;
+                this.angle = Math.PI / 4 + Math.random() * 0.3;
+                this.opacity = 1;
+                this.life = 0;
+                this.maxLife = 100;
+            }
+
+            update() {
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+                this.life++;
+                this.opacity = 1 - (this.life / this.maxLife);
+
+                return this.life < this.maxLife && this.x < width + 100 && this.y < height + 100;
+            }
+
+            draw() {
+                const tailX = this.x - Math.cos(this.angle) * this.length;
+                const tailY = this.y - Math.sin(this.angle) * this.length;
+
+                const gradient = ctx.createLinearGradient(this.x, this.y, tailX, tailY);
+                gradient.addColorStop(0, `rgba(255, 255, 255, ${this.opacity})`);
+                gradient.addColorStop(0.5, `rgba(200, 220, 255, ${this.opacity * 0.5})`);
+                gradient.addColorStop(1, `rgba(200, 220, 255, 0)`);
+
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(tailX, tailY);
+                ctx.stroke();
+
+                // 先端の光
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // 初期化
+        function init() {
+            resize();
+            createStars();
+            animate();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function createStars() {
+            stars = [];
+            const starCount = Math.floor((width * height) / 3000);
+            for (let i = 0; i < starCount; i++) {
+                stars.push(new Star());
+            }
+        }
+
+        // 描画
+        let time = 0;
+        function animate() {
+            time++;
+
+            // 背景（グラデーション）
+            const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
+            bgGradient.addColorStop(0, '#000011');
+            bgGradient.addColorStop(0.5, '#000022');
+            bgGradient.addColorStop(1, '#001133');
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // マウスの滑らかな移動
+            targetMouseX += (mouseX - targetMouseX) * 0.05;
+            targetMouseY += (mouseY - targetMouseY) * 0.05;
+            const parallaxX = (targetMouseX - width / 2) * 0.02;
+            const parallaxY = (targetMouseY - height / 2) * 0.02;
+
+            // 星の描画
+            stars.forEach(star => {
+                star.update(time);
+                star.draw(parallaxX, parallaxY);
+            });
+
+            // 流れ星の生成
+            if (Math.random() < 0.003) {
+                shootingStars.push(new ShootingStar());
+            }
+
+            // 流れ星の描画
+            shootingStars = shootingStars.filter(star => {
+                const alive = star.update();
+                if (alive) star.draw();
+                return alive;
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベント
+        window.addEventListener('resize', () => {
+            resize();
+            createStars();
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                fullscreenBtn.textContent = '✨ 全画面解除';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = '🌟 全画面表示';
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                fullscreenBtn.textContent = '🌟 全画面表示';
+            }
+        });
+
+        // 初期化
+        init();
+    </script>
+</body>
+</html>
