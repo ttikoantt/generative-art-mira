@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Floating Orbs - 優雅に浮遊する光の球体</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            color: #ffffff;
+        }
+
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            text-align: center;
+            z-index: 10;
+            background: rgba(10, 10, 26, 0.8);
+            backdrop-filter: blur(10px);
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            margin-bottom: 5px;
+            color: #ffffff;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        .header p {
+            font-size: 0.9rem;
+            color: #a0a0ff;
+        }
+
+        #canvas {
+            display: block;
+            max-width: 100%;
+            max-height: 100vh;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            font-size: 0.85rem;
+            font-family: 'Courier New', monospace;
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.75rem;
+            color: #a0a0ff;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            .header h1 {
+                font-size: 1.3rem;
+            }
+
+            .header p {
+                font-size: 0.75rem;
+            }
+
+            .btn {
+                padding: 8px 16px;
+                font-size: 0.75rem;
+            }
+
+            .info {
+                font-size: 0.65rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>✨ Floating Orbs</h1>
+        <p>優雅に浮遊する光の球体</p>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="info" id="info">Orbs: 15 | FPS: 60</div>
+
+    <div class="controls">
+        <button class="btn" onclick="addOrb()">＋ 球体追加</button>
+        <button class="btn" onclick="removeOrb()">－ 球体削除</button>
+        <button class="btn" onclick="toggleGravity()">重力切替</button>
+        <button class="btn" onclick="resetOrbs()">リセット</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const info = document.getElementById('info');
+
+        let orbs = [];
+        let gravityEnabled = false;
+        let mouseX = 0;
+        let mouseY = 0;
+
+        // Canvas size
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Orb class
+        class Orb {
+            constructor() {
+                this.radius = Math.random() * 40 + 20;
+                this.x = Math.random() * (canvas.width - this.radius * 2) + this.radius;
+                this.y = Math.random() * (canvas.height - this.radius * 2) + this.radius;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.color = this.randomColor();
+                this.glowColor = this.color;
+                this.alpha = Math.random() * 0.5 + 0.5;
+                this.pulseSpeed = Math.random() * 0.02 + 0.01;
+                this.pulseOffset = Math.random() * Math.PI * 2;
+                this.mass = this.radius * 0.5;
+            }
+
+            randomColor() {
+                const colors = [
+                    '#ff6b9d', '#c44dff', '#4d9fff', '#4dffff',
+                    '#9dff4d', '#ffd84d', '#ff4d6b', '#4dffb8'
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update(time) {
+                // Gravity
+                if (gravityEnabled) {
+                    this.vy += 0.1;
+                }
+
+                // Mouse attraction (subtle)
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 50) {
+                    this.vx += (dx / dist) * 0.02;
+                    this.vy += (dy / dist) * 0.02;
+                }
+
+                // Apply velocity
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Damping
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+
+                // Boundary collision
+                if (this.x - this.radius < 0) {
+                    this.x = this.radius;
+                    this.vx *= -0.8;
+                }
+                if (this.x + this.radius > canvas.width) {
+                    this.x = canvas.width - this.radius;
+                    this.vx *= -0.8;
+                }
+                if (this.y - this.radius < 0) {
+                    this.y = this.radius;
+                    this.vy *= -0.8;
+                }
+                if (this.y + this.radius > canvas.height) {
+                    this.y = canvas.height - this.radius;
+                    this.vy *= -0.8;
+                    if (gravityEnabled) {
+                        this.vx *= 0.95; // Friction when on ground
+                    }
+                }
+
+                // Pulse effect
+                this.currentRadius = this.radius + Math.sin(time * this.pulseSpeed + this.pulseOffset) * 3;
+            }
+
+            draw() {
+                // Glow effect
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.currentRadius * 2
+                );
+                gradient.addColorStop(0, this.color + 'ff');
+                gradient.addColorStop(0.3, this.color + 'aa');
+                gradient.addColorStop(0.6, this.color + '44');
+                gradient.addColorStop(1, this.color + '00');
+
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.currentRadius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Core
+                ctx.globalAlpha = 1;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.currentRadius * 0.6, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff88';
+                ctx.fill();
+            }
+        }
+
+        // Orb collision
+        function checkCollisions() {
+            for (let i = 0; i < orbs.length; i++) {
+                for (let j = i + 1; j < orbs.length; j++) {
+                    const orb1 = orbs[i];
+                    const orb2 = orbs[j];
+
+                    const dx = orb2.x - orb1.x;
+                    const dy = orb2.y - orb1.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const minDist = orb1.radius + orb2.radius;
+
+                    if (dist < minDist) {
+                        // Collision response
+                        const angle = Math.atan2(dy, dx);
+                        const sin = Math.sin(angle);
+                        const cos = Math.cos(angle);
+
+                        // Rotate velocities
+                        const vx1 = orb1.vx * cos + orb1.vy * sin;
+                        const vy1 = orb1.vy * cos - orb1.vx * sin;
+                        const vx2 = orb2.vx * cos + orb2.vy * sin;
+                        const vy2 = orb2.vy * cos - orb2.vx * sin;
+
+                        // Elastic collision
+                        const totalMass = orb1.mass + orb2.mass;
+                        const newVx1 = ((orb1.mass - orb2.mass) * vx1 + 2 * orb2.mass * vx2) / totalMass;
+                        const newVx2 = ((orb2.mass - orb1.mass) * vx2 + 2 * orb1.mass * vx1) / totalMass;
+
+                        // Rotate back
+                        orb1.vx = newVx1 * cos - vy1 * sin;
+                        orb1.vy = vy1 * cos + newVx1 * sin;
+                        orb2.vx = newVx2 * cos - vy2 * sin;
+                        orb2.vy = vy2 * cos + newVx2 * sin;
+
+                        // Separate orbs
+                        const overlap = minDist - dist;
+                        const separateX = (overlap / 2) * cos;
+                        const separateY = (overlap / 2) * sin;
+                        orb1.x -= separateX;
+                        orb1.y -= separateY;
+                        orb2.x += separateX;
+                        orb2.y += separateY;
+                    }
+                }
+            }
+        }
+
+        // Initialize orbs
+        function initOrbs() {
+            orbs = [];
+            for (let i = 0; i < 15; i++) {
+                orbs.push(new Orb());
+            }
+        }
+
+        // Add orb
+        function addOrb() {
+            if (orbs.length < 30) {
+                orbs.push(new Orb());
+            }
+        }
+
+        // Remove orb
+        function removeOrb() {
+            if (orbs.length > 3) {
+                orbs.pop();
+            }
+        }
+
+        // Toggle gravity
+        function toggleGravity() {
+            gravityEnabled = !gravityEnabled;
+        }
+
+        // Reset
+        function resetOrbs() {
+            initOrbs();
+            gravityEnabled = false;
+        }
+
+        // Mouse tracking
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        // Touch tracking
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        // Animation loop
+        let lastTime = 0;
+        let frameCount = 0;
+        let fps = 60;
+
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+
+            // FPS calculation
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+                info.textContent = `Orbs: ${orbs.length} | Gravity: ${gravityEnabled ? 'ON' : 'OFF'} | FPS: ${fps}`;
+            }
+
+            // Clear canvas
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw orbs
+            orbs.forEach(orb => orb.update(currentTime * 0.001));
+            checkCollisions();
+            orbs.forEach(orb => orb.draw());
+        }
+
+        // Start
+        initOrbs();
+        animate(0);
+    </script>
+</body>
+</html>
