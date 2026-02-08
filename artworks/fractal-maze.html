@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fractal Maze - フラクタル迷路</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        #canvas-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        #controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(10, 10, 26, 0.9);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(100, 200, 255, 0.2);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            max-width: 280px;
+        }
+
+        #controls h3 {
+            color: #64c8ff;
+            margin-bottom: 15px;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            color: #a0a0c0;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+
+        .value-display {
+            color: #64c8ff;
+            font-size: 11px;
+            text-align: right;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            color: #64c8ff;
+            border: 1px solid rgba(100, 200, 255, 0.3);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            margin-bottom: 8px;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #2d5a87 0%, #3d7ab7 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(100, 200, 255, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        #fullscreen {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(10, 10, 26, 0.9);
+            color: #64c8ff;
+            border: 1px solid rgba(100, 200, 255, 0.3);
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        #fullscreen:hover {
+            background: rgba(30, 58, 95, 0.9);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(100, 200, 255, 0.3);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(100, 200, 255, 0.6);
+            font-size: 12px;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            #controls {
+                top: 10px;
+                left: 10px;
+                right: 10px;
+                max-width: none;
+                padding: 15px;
+            }
+
+            #fullscreen {
+                top: auto;
+                bottom: 50px;
+                right: 10px;
+                padding: 10px 16px;
+                font-size: 12px;
+            }
+
+            .info {
+                bottom: 10px;
+                font-size: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="mazeCanvas"></canvas>
+    </div>
+
+    <div id="controls">
+        <h3>🌀 フラクタル迷路</h3>
+        <div class="control-group">
+            <label>再帰レベル: <span id="levelValue">3</span></label>
+            <input type="range" id="level" min="1" max="5" value="3">
+        </div>
+        <div class="control-group">
+            <label>迷路密度: <span id="densityValue">60</span>%</label>
+            <input type="range" id="density" min="20" max="90" value="60">
+        </div>
+        <button id="generate">新しい迷路生成</button>
+        <button id="animate">アニメーション切替</button>
+    </div>
+
+    <button id="fullscreen">全画面</button>
+
+    <div class="info">クリックで新しい迷路 | スクロールでズーム</div>
+
+    <script>
+        const canvas = document.getElementById('mazeCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let level = 3;
+        let density = 0.6;
+        let animating = true;
+        let animationTime = 0;
+        let scale = 1;
+        
+        const palettes = [
+            { primary: '#64c8ff', secondary: '#3d7ab7', bg: '#0a0a1a' },
+            { primary: '#ff64c8', secondary: '#b73d7a', bg: '#1a0a14' },
+            { primary: '#64ffc8', secondary: '#3db77a', bg: '#0a1a14' },
+            { primary: '#ffc864', secondary: '#b77a3d', bg: '#1a140a' },
+            { primary: '#c864ff', secondary: '#7a3db7', bg: '#140a1a' }
+        ];
+        
+        let currentPalette = palettes[0];
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth * window.devicePixelRatio;
+            canvas.height = window.innerHeight * window.devicePixelRatio;
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+        
+        function generateMaze(x, y, width, height, depth) {
+            if (depth === 0 || width < 20 || height < 20) {
+                return {
+                    x, y, width, height,
+                    isLeaf: true,
+                    walls: []
+                };
+            }
+            
+            const horizontal = Math.random() > 0.5;
+            const splitRatio = 0.3 + Math.random() * 0.4;
+            
+            let cell1, cell2;
+            if (horizontal) {
+                const splitHeight = height * splitRatio;
+                cell1 = generateMaze(x, y, width, splitHeight, depth - 1);
+                cell2 = generateMaze(x, y + splitHeight, width, height - splitHeight, depth - 1);
+            } else {
+                const splitWidth = width * splitRatio;
+                cell1 = generateMaze(x, y, splitWidth, height, depth - 1);
+                cell2 = generateMaze(x + splitWidth, y, width - splitWidth, height, depth - 1);
+            }
+            
+            return {
+                x, y, width, height,
+                isLeaf: false,
+                horizontal,
+                splitRatio,
+                cell1,
+                cell2,
+                gap: null // Will be set during render
+            };
+        }
+        
+        function addGaps(maze, probability = 0.3) {
+            if (maze.isLeaf) return;
+            
+            if (maze.cell1 && !maze.cell1.isLeaf) addGaps(maze.cell1, probability);
+            if (maze.cell2 && !maze.cell2.isLeaf) addGaps(maze.cell2, probability);
+            
+            // Add gaps between cells
+            maze.gap = Math.random() < probability ? {
+                position: 0.3 + Math.random() * 0.4,
+                size: 10 + Math.random() * 20
+            } : null;
+        }
+        
+        function drawMaze(maze, offsetX = 0, offsetY = 0, time = 0) {
+            if (!maze) return;
+            
+            const x = maze.x + offsetX;
+            const y = maze.y + offsetY;
+            const w = maze.width;
+            const h = maze.height;
+            
+            if (maze.isLeaf) {
+                // Draw leaf cell with glow
+                const pulse = Math.sin(time * 0.001 + maze.x * 0.01 + maze.y * 0.01) * 0.3 + 0.7;
+                
+                ctx.strokeStyle = currentPalette.primary;
+                ctx.lineWidth = 1;
+                ctx.globalAlpha = 0.3 * pulse;
+                ctx.strokeRect(x, y, w, h);
+                
+                // Add decorative elements
+                if (Math.random() < 0.1 * density) {
+                    const dotX = x + Math.random() * w;
+                    const dotY = y + Math.random() * h;
+                    const size = 2 + Math.random() * 3;
+                    
+                    ctx.beginPath();
+                    ctx.arc(dotX, dotY, size, 0, Math.PI * 2);
+                    ctx.fillStyle = currentPalette.secondary;
+                    ctx.globalAlpha = 0.5 * pulse;
+                    ctx.fill();
+                }
+                
+                ctx.globalAlpha = 1;
+                return;
+            }
+            
+            // Draw divider with gap
+            ctx.strokeStyle = currentPalette.secondary;
+            ctx.lineWidth = 2;
+            ctx.shadowColor = currentPalette.primary;
+            ctx.shadowBlur = 10;
+            
+            if (maze.horizontal) {
+                const splitY = y + maze.cell1.height;
+                
+                if (maze.gap) {
+                    const gapStart = maze.gap.position * w - maze.gap.size / 2;
+                    const gapEnd = maze.gap.position * w + maze.gap.size / 2;
+                    
+                    // Left part
+                    ctx.beginPath();
+                    ctx.moveTo(x, splitY);
+                    ctx.lineTo(x + gapStart, splitY);
+                    ctx.stroke();
+                    
+                    // Right part
+                    ctx.beginPath();
+                    ctx.moveTo(x + gapEnd, splitY);
+                    ctx.lineTo(x + w, splitY);
+                    ctx.stroke();
+                } else {
+                    ctx.beginPath();
+                    ctx.moveTo(x, splitY);
+                    ctx.lineTo(x + w, splitY);
+                    ctx.stroke();
+                }
+            } else {
+                const splitX = x + maze.cell1.width;
+                
+                if (maze.gap) {
+                    const gapStart = maze.gap.position * h - maze.gap.size / 2;
+                    const gapEnd = maze.gap.position * h + maze.gap.size / 2;
+                    
+                    // Top part
+                    ctx.beginPath();
+                    ctx.moveTo(splitX, y);
+                    ctx.lineTo(splitX, y + gapStart);
+                    ctx.stroke();
+                    
+                    // Bottom part
+                    ctx.beginPath();
+                    ctx.moveTo(splitX, y + gapEnd);
+                    ctx.lineTo(splitX, y + h);
+                    ctx.stroke();
+                } else {
+                    ctx.beginPath();
+                    ctx.moveTo(splitX, y);
+                    ctx.lineTo(splitX, y + h);
+                    ctx.stroke();
+                }
+            }
+            
+            ctx.shadowBlur = 0;
+            
+            // Recursively draw children
+            if (maze.cell1) drawMaze(maze.cell1, offsetX, offsetY, time);
+            if (maze.cell2) drawMaze(maze.cell2, offsetX, offsetY, time);
+        }
+        
+        let maze = null;
+        
+        function generate() {
+            currentPalette = palettes[Math.floor(Math.random() * palettes.length)];
+            
+            const margin = 50;
+            const size = Math.min(window.innerWidth, window.innerHeight) - margin * 2;
+            
+            maze = generateMaze(
+                (window.innerWidth - size) / 2,
+                (window.innerHeight - size) / 2,
+                size,
+                size,
+                level
+            );
+            
+            addGaps(maze, density * 0.5);
+        }
+        
+        function render(time) {
+            // Clear canvas with gradient background
+            const gradient = ctx.createRadialGradient(
+                window.innerWidth / 2, window.innerHeight / 2, 0,
+                window.innerWidth / 2, window.innerHeight / 2, window.innerWidth / 2
+            );
+            gradient.addColorStop(0, currentPalette.bg);
+            gradient.addColorStop(1, '#000000');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+            
+            if (maze) {
+                drawMaze(maze, 0, 0, animating ? time : 0);
+            }
+            
+            if (animating) {
+                animationTime = time;
+                requestAnimationFrame(render);
+            }
+        }
+        
+        // Event listeners
+        document.getElementById('generate').addEventListener('click', () => {
+            generate();
+            if (!animating) {
+                requestAnimationFrame(render);
+            }
+        });
+        
+        document.getElementById('animate').addEventListener('click', (e) => {
+            animating = !animating;
+            e.target.textContent = animating ? 'アニメーション停止' : 'アニメーション開始';
+            if (animating) {
+                requestAnimationFrame(render);
+            }
+        });
+        
+        document.getElementById('fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+        
+        document.getElementById('level').addEventListener('input', (e) => {
+            level = parseInt(e.target.value);
+            document.getElementById('levelValue').textContent = level;
+        });
+        
+        document.getElementById('density').addEventListener('input', (e) => {
+            density = parseInt(e.target.value) / 100;
+            document.getElementById('densityValue').textContent = e.target.value;
+        });
+        
+        canvas.addEventListener('click', (e) => {
+            if (e.target === canvas) {
+                generate();
+                if (!animating) {
+                    requestAnimationFrame(render);
+                }
+            }
+        });
+        
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+        
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            generate();
+            if (!animating) {
+                requestAnimationFrame(render);
+            }
+        });
+        
+        // Initialize
+        resizeCanvas();
+        generate();
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>
