@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>タイミング・パズル</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        #canvas {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        #fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 16px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        #fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        #fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+
+        #message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            pointer-events: none;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .perfect {
+            color: #ffd700 !important;
+            font-size: 32px !important;
+            animation: pulse 0.5s ease;
+        }
+
+        .good {
+            color: #4ecdc4 !important;
+        }
+
+        .miss {
+            color: #ff6b6b !important;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.2); }
+        }
+
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 50;
+            backdrop-filter: blur(10px);
+        }
+
+        #start-screen h1 {
+            font-size: 32px;
+            margin-bottom: 20px;
+        }
+
+        #start-screen p {
+            font-size: 16px;
+            margin-bottom: 30px;
+            opacity: 0.8;
+            text-align: center;
+            padding: 0 20px;
+        }
+
+        #start-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        #start-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        #start-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="ui">
+            <div id="score">スコア: 0</div>
+            <div id="level">レベル: 1</div>
+        </div>
+        <canvas id="canvas" width="300" height="300"></canvas>
+        <div id="message"></div>
+        <div id="start-screen">
+            <h1>タイミング・パズル</h1>
+            <p>回転する円がターゲットエリアに重なった時<br>タップしてスコアを獲得！</p>
+            <button id="start-btn">スタート</button>
+        </div>
+    </div>
+    <button id="fullscreen-btn">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const levelEl = document.getElementById('level');
+        const messageEl = document.getElementById('message');
+        const startScreen = document.getElementById('start-screen');
+        const startBtn = document.getElementById('start-btn');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+        let score = 0;
+        let level = 1;
+        let angle = 0;
+        let speed = 0.03;
+        let targetAngle = 0;
+        let targetWidth = Math.PI / 3;
+        let gameRunning = false;
+
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth - 40, 300);
+            canvas.width = size;
+            canvas.height = size;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = canvas.width / 2 - 20;
+
+            // 背景円
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // ターゲットエリア
+            const targetGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+            targetGradient.addColorStop(0, 'rgba(78, 205, 196, 0.3)');
+            targetGradient.addColorStop(1, 'rgba(78, 205, 196, 0.1)');
+
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.arc(centerX, centerY, radius, targetAngle - targetWidth / 2, targetAngle + targetWidth / 2);
+            ctx.closePath();
+            ctx.fillStyle = targetGradient;
+            ctx.fill();
+
+            // 回転する円（インジケーター）
+            const indicatorAngle = angle % (Math.PI * 2);
+            const indicatorGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+            indicatorGradient.addColorStop(0, 'rgba(102, 126, 234, 0.8)');
+            indicatorGradient.addColorStop(1, 'rgba(102, 126, 234, 0.3)');
+
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.arc(centerX, centerY, radius, indicatorAngle - 0.1, indicatorAngle + 0.1);
+            ctx.closePath();
+            ctx.fillStyle = indicatorGradient;
+            ctx.fill();
+
+            // 中心点
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+            ctx.fillStyle = 'white';
+            ctx.fill();
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            angle += speed;
+            draw();
+
+            // レベルアップ
+            if (score > 0 && score % 10 === 0) {
+                const newLevel = Math.floor(score / 10) + 1;
+                if (newLevel > level) {
+                    level = newLevel;
+                    levelEl.textContent = `レベル: ${level}`;
+                    speed = 0.03 + (level - 1) * 0.005;
+                    targetWidth = Math.max(Math.PI / 6, Math.PI / 3 - (level - 1) * Math.PI / 30);
+                }
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        function checkHit() {
+            if (!gameRunning) return;
+
+            const currentAngle = angle % (Math.PI * 2);
+            let normalizedTarget = targetAngle % (Math.PI * 2);
+            if (normalizedTarget < 0) normalizedTarget += Math.PI * 2;
+
+            let diff = Math.abs(currentAngle - normalizedTarget);
+            if (diff > Math.PI) diff = Math.PI * 2 - diff;
+
+            if (diff < targetWidth / 4) {
+                // Perfect
+                score += 3;
+                showMessage('Perfect!', 'perfect');
+            } else if (diff < targetWidth / 2) {
+                // Good
+                score += 1;
+                showMessage('Good!', 'good');
+            } else {
+                // Miss
+                showMessage('Miss!', 'miss');
+            }
+
+            scoreEl.textContent = `スコア: ${score}`;
+
+            // ターゲットの位置を変える
+            targetAngle = Math.random() * Math.PI * 2;
+        }
+
+        function showMessage(text, className) {
+            messageEl.textContent = text;
+            messageEl.className = className;
+
+            setTimeout(() => {
+                messageEl.textContent = '';
+                messageEl.className = '';
+            }, 500);
+        }
+
+        function startGame() {
+            score = 0;
+            level = 1;
+            angle = 0;
+            speed = 0.03;
+            targetWidth = Math.PI / 3;
+            gameRunning = true;
+
+            scoreEl.textContent = 'スコア: 0';
+            levelEl.textContent = 'レベル: 1';
+            startScreen.style.display = 'none';
+
+            update();
+        }
+
+        // イベントリスナー
+        startBtn.addEventListener('click', startGame);
+
+        canvas.addEventListener('click', checkHit);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            checkHit();
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // 初期化
+        resizeCanvas();
+        draw();
+    </script>
+</body>
+</html>
