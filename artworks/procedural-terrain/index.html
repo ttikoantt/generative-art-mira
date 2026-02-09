@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procedural Terrain - プロシージャル地形</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #canvas {
+            flex: 1;
+            display: block;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 100;
+            max-width: 300px;
+        }
+
+        .controls h1 {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            background: linear-gradient(90deg, #00ff88, #00ccff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #00ff88, #00ccff);
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+
+        .buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            flex: 1;
+            min-width: 100px;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #00ff88, #00ccff);
+            color: #000;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.9rem;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+
+        button.secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        button.secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .info {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 10px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 1.5rem;
+            cursor: pointer;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 136, 0.3);
+            transform: scale(1.1);
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                top: auto;
+                bottom: 20px;
+                left: 10px;
+                right: 10px;
+                max-width: none;
+                padding: 15px;
+            }
+
+            .controls h1 {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <h1>🏔️ プロシージャル地形</h1>
+        
+        <div class="control-group">
+            <label>スケール: <span id="scaleValue">50</span></label>
+            <input type="range" id="scale" min="20" max="100" value="50">
+        </div>
+
+        <div class="control-group">
+            <label>高さ: <span id="heightValue">100</span></label>
+            <input type="range" id="height" min="50" max="200" value="100">
+        </div>
+
+        <div class="control-group">
+            <label>詳細: <span id="detailValue">5</span></label>
+            <input type="range" id="detail" min="1" max="8" value="5">
+        </div>
+
+        <div class="buttons">
+            <button onclick="regenerate()">🎲 新規生成</button>
+            <button class="secondary" onclick="toggleAnimation()">⏯️ アニメ</button>
+        </div>
+
+        <div class="info">クリック/ドラッグで地形を回転</div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let animationId;
+        let isAnimating = true;
+        let rotation = 0;
+        let rotationSpeed = 0.002;
+        let isDragging = false;
+        let lastMouseX = 0;
+
+        // 地形パラメータ
+        let scale = 50;
+        let heightScale = 100;
+        let detail = 5;
+
+        // ノイズオフセット（アニメーション用）
+        let noiseOffset = 0;
+
+        // 改良されたパーリンノイズ
+        class PerlinNoise {
+            constructor() {
+                this.permutation = [];
+                for (let i = 0; i < 256; i++) {
+                    this.permutation[i] = i;
+                }
+                // シャッフル
+                for (let i = 255; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [this.permutation[i], this.permutation[j]] = [this.permutation[j], this.permutation[i]];
+                }
+                this.p = [...this.permutation, ...this.permutation];
+            }
+
+            fade(t) {
+                return t * t * t * (t * (t * 6 - 15) + 10);
+            }
+
+            lerp(a, b, t) {
+                return a + t * (b - a);
+            }
+
+            grad(hash, x, y) {
+                const h = hash & 3;
+                const u = h < 2 ? x : y;
+                const v = h < 2 ? y : x;
+                return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+            }
+
+            noise(x, y) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+
+                const u = this.fade(x);
+                const v = this.fade(y);
+
+                const A = this.p[X] + Y;
+                const B = this.p[X + 1] + Y;
+
+                return this.lerp(
+                    this.lerp(this.grad(this.p[A], x, y), this.grad(this.p[B], x - 1, y), u),
+                    this.lerp(this.grad(this.p[A + 1], x, y - 1), this.grad(this.p[B + 1], x - 1, y - 1), u),
+                    v
+                );
+            }
+
+            octaveNoise(x, y, octaves, persistence) {
+                let total = 0;
+                let frequency = 1;
+                let amplitude = 1;
+                let maxValue = 0;
+
+                for (let i = 0; i < octaves; i++) {
+                    total += this.noise(x * frequency, y * frequency) * amplitude;
+                    maxValue += amplitude;
+                    amplitude *= persistence;
+                    frequency *= 2;
+                }
+
+                return total / maxValue;
+            }
+        }
+
+        const perlin = new PerlinNoise();
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function getHeight(x, z) {
+            // 複数オクターブのノイズ
+            let height = perlin.octaveNoise(
+                x / scale + noiseOffset,
+                z / scale + noiseOffset,
+                detail,
+                0.5
+            );
+
+            return height * heightScale;
+        }
+
+        function getColor(height, maxHeight) {
+            const normalizedHeight = (height + maxHeight) / (maxHeight * 2);
+
+            // 水面
+            if (normalizedHeight < 0.3) {
+                return `rgb(30, 100, 150)`;
+            }
+            // 砂浜
+            else if (normalizedHeight < 0.35) {
+                return `rgb(210, 180, 100)`;
+            }
+            // 草地
+            else if (normalizedHeight < 0.5) {
+                return `rgb(60, 140, 60)`;
+            }
+            // 森
+            else if (normalizedHeight < 0.65) {
+                return `rgb(30, 100, 30)`;
+            }
+            // 岩山
+            else if (normalizedHeight < 0.8) {
+                return `rgb(100, 90, 80)`;
+            }
+            // 雪山
+            else {
+                return `rgb(240, 240, 250)`;
+            }
+        }
+
+        function drawTerrain() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+
+            const gridSize = 3;
+            const terrainSize = 200;
+            const centerX = width / 2;
+            const centerY = height / 2;
+
+            // 3D投影パラメータ
+            const fov = 300;
+            const cameraY = -80;
+            const cameraZ = -200;
+
+            // 回転行列
+            const cosR = Math.cos(rotation);
+            const sinR = Math.sin(rotation);
+
+            // 高度計算用
+            let minHeight = Infinity;
+            let maxHeight = -Infinity;
+
+            // 地形データを生成
+            const terrainData = [];
+            for (let z = -terrainSize; z <= terrainSize; z += gridSize) {
+                for (let x = -terrainSize; x <= terrainSize; x += gridSize) {
+                    const h = getHeight(x, z);
+                    terrainData.push({ x, z, h });
+                    if (h < minHeight) minHeight = h;
+                    if (h > maxHeight) maxHeight = h;
+                }
+            }
+
+            // ソート（奥から描画）
+            terrainData.sort((a, b) => {
+                const distA = Math.sqrt(a.x * a.x + a.z * a.z);
+                const distB = Math.sqrt(b.x * b.x + b.z * b.z);
+                return distB - distA;
+            });
+
+            // 描画
+            terrainData.forEach(point => {
+                const { x, z, h } = point;
+
+                // 回転
+                const rotatedX = x * cosR - z * sinR;
+                const rotatedZ = x * sinR + z * cosR;
+
+                // 3D→2D投影
+                const scale3d = fov / (fov + rotatedZ + cameraZ);
+                const screenX = centerX + rotatedX * scale3d;
+                const screenY = centerY + (h + cameraY) * scale3d;
+                const size = Math.max(1, gridSize * scale3d);
+
+                // 色とサイズ
+                const color = getColor(h, maxHeight);
+                const alpha = scale3d * 0.8;
+
+                ctx.fillStyle = color;
+                ctx.globalAlpha = alpha;
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            ctx.globalAlpha = 1;
+
+            // グラデーションオーバーレイ
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, Math.max(width, height) / 2
+            );
+            gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0.3)');
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        function animate() {
+            if (isAnimating) {
+                rotation += rotationSpeed;
+                noiseOffset += 0.003;
+            }
+
+            drawTerrain();
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function regenerate() {
+            // 新しいノイズシード
+            perlin.permutation = [];
+            for (let i = 0; i < 256; i++) {
+                perlin.permutation[i] = i;
+            }
+            for (let i = 255; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [perlin.permutation[i], perlin.permutation[j]] = [perlin.permutation[j], perlin.permutation[i]];
+            }
+            perlin.p = [...perlin.permutation, ...perlin.permutation];
+
+            noiseOffset = 0;
+        }
+
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            lastMouseX = e.clientX;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - lastMouseX;
+                rotation += deltaX * 0.005;
+                lastMouseX = e.clientX;
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+
+        // タッチイベント
+        canvas.addEventListener('touchstart', (e) => {
+            isDragging = true;
+            lastMouseX = e.touches[0].clientX;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (isDragging) {
+                const deltaX = e.touches[0].clientX - lastMouseX;
+                rotation += deltaX * 0.005;
+                lastMouseX = e.touches[0].clientX;
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+
+        // スライダー
+        document.getElementById('scale').addEventListener('input', (e) => {
+            scale = parseInt(e.target.value);
+            document.getElementById('scaleValue').textContent = scale;
+        });
+
+        document.getElementById('height').addEventListener('input', (e) => {
+            heightScale = parseInt(e.target.value);
+            document.getElementById('heightValue').textContent = heightScale;
+        });
+
+        document.getElementById('detail').addEventListener('input', (e) => {
+            detail = parseInt(e.target.value);
+            document.getElementById('detailValue').textContent = detail;
+        });
+
+        // 初期化
+        resize();
+        animate();
+    </script>
+</body>
+</html>
