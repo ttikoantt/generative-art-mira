@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Molecular Motion - 分子運動</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            background: radial-gradient(ellipse at center, #0a0a1a 0%, #000 100%);
+        }
+
+        #fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        #fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            pointer-events: none;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 1000;
+        }
+
+        .control {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .control:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .control.active {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <button class="control" id="toggle-glow">✨ Glow: ON</button>
+        <button class="control" id="toggle-trails">🌈 Trails: ON</button>
+        <button class="control" id="change-palette">🎨 Palette</button>
+    </div>
+
+    <button id="fullscreen-btn">⛶ Fullscreen</button>
+
+    <div id="info">
+        <strong>Molecular Motion</strong> | Tap to add molecules | Drag to create field
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let molecules = [];
+        let mouseX = 0, mouseY = 0;
+        let isMouseDown = false;
+        let showGlow = true;
+        let showTrails = true;
+
+        // Color palettes
+        const palettes = [
+            ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'],
+            ['#A8E6CF', '#DCEDC1', '#FFD3B6', '#FFAAA5', '#FF8B94'],
+            ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe'],
+            ['#00f260', '#0575E6', '#e100ff', '#00dbde', '#fc00ff'],
+            ['#fff1eb', '#ace0f9', '#c471f5', '#fa71cd', '#fee140']
+        ];
+        let currentPalette = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Molecule {
+            constructor(x, y, vx = null, vy = null) {
+                this.x = x;
+                this.y = y;
+                this.radius = Math.random() * 15 + 10;
+                this.vx = vx !== null ? vx : (Math.random() - 0.5) * 4;
+                this.vy = vy !== null ? vy : (Math.random() - 0.5) * 4;
+                this.mass = this.radius * 0.5;
+                this.color = palettes[currentPalette][Math.floor(Math.random() * palettes[currentPalette].length)];
+            }
+
+            update() {
+                // Apply mouse attraction/repulsion when mouse is down
+                if (isMouseDown) {
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > 10 && dist < 300) {
+                        const force = (300 - dist) / 300;
+                        this.vx += (dx / dist) * force * 0.5;
+                        this.vy += (dy / dist) * force * 0.5;
+                    }
+                }
+
+                // Limit velocity
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 8) {
+                    this.vx = (this.vx / speed) * 8;
+                    this.vy = (this.vy / speed) * 8;
+                }
+
+                // Move
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Wall collision with energy loss
+                if (this.x - this.radius < 0) {
+                    this.x = this.radius;
+                    this.vx *= -0.9;
+                }
+                if (this.x + this.radius > width) {
+                    this.x = width - this.radius;
+                    this.vx *= -0.9;
+                }
+                if (this.y - this.radius < 0) {
+                    this.y = this.radius;
+                    this.vy *= -0.9;
+                }
+                if (this.y + this.radius > height) {
+                    this.y = height - this.radius;
+                    this.vy *= -0.9;
+                }
+            }
+
+            draw() {
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const intensity = Math.min(speed / 5, 1);
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+
+                // Color based on speed
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = 0.6 + intensity * 0.4;
+                ctx.fill();
+
+                if (showGlow) {
+                    ctx.shadowBlur = 20 + intensity * 20;
+                    ctx.shadowColor = this.color;
+                    ctx.fill();
+                }
+
+                // Inner highlight
+                ctx.beginPath();
+                ctx.arc(this.x - this.radius * 0.3, this.y - this.radius * 0.3, this.radius * 0.2, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.globalAlpha = 1;
+                ctx.fill();
+
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function checkCollisions() {
+            for (let i = 0; i < molecules.length; i++) {
+                for (let j = i + 1; j < molecules.length; j++) {
+                    const m1 = molecules[i];
+                    const m2 = molecules[j];
+
+                    const dx = m2.x - m1.x;
+                    const dy = m2.y - m1.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const minDist = m1.radius + m2.radius;
+
+                    if (dist < minDist) {
+                        // Collision response
+                        const angle = Math.atan2(dy, dx);
+                        const sin = Math.sin(angle);
+                        const cos = Math.cos(angle);
+
+                        // Rotate velocities
+                        const vx1 = m1.vx * cos + m1.vy * sin;
+                        const vy1 = m1.vy * cos - m1.vx * sin;
+                        const vx2 = m2.vx * cos + m2.vy * sin;
+                        const vy2 = m2.vy * cos - m2.vx * sin;
+
+                        // Elastic collision
+                        const totalMass = m1.mass + m2.mass;
+                        const newVx1 = ((m1.mass - m2.mass) * vx1 + 2 * m2.mass * vx2) / totalMass;
+                        const newVx2 = ((m2.mass - m1.mass) * vx2 + 2 * m1.mass * vx1) / totalMass;
+
+                        // Rotate back
+                        m1.vx = newVx1 * cos - vy1 * sin;
+                        m1.vy = vy1 * cos + newVx1 * sin;
+                        m2.vx = newVx2 * cos - vy2 * sin;
+                        m2.vy = vy2 * cos + newVx2 * sin;
+
+                        // Separate molecules
+                        const overlap = minDist - dist;
+                        const separateX = (overlap / 2) * Math.cos(angle);
+                        const separateY = (overlap / 2) * Math.sin(angle);
+                        m1.x -= separateX;
+                        m1.y -= separateY;
+                        m2.x += separateX;
+                        m2.y += separateY;
+                    }
+                }
+            }
+        }
+
+        function init() {
+            molecules = [];
+            const count = Math.min(30, Math.floor((width * height) / 40000));
+            for (let i = 0; i < count; i++) {
+                molecules.push(new Molecule(
+                    Math.random() * width,
+                    Math.random() * height
+                ));
+            }
+        }
+
+        function animate() {
+            if (showTrails) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                ctx.fillRect(0, 0, width, height);
+            } else {
+                ctx.clearRect(0, 0, width, height);
+            }
+
+            // Draw connection lines for nearby molecules
+            molecules.forEach((m1, i) => {
+                molecules.slice(i + 1).forEach(m2 => {
+                    const dx = m2.x - m1.x;
+                    const dy = m2.y - m1.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 100) {
+                        ctx.beginPath();
+                        ctx.moveTo(m1.x, m1.y);
+                        ctx.lineTo(m2.x, m2.y);
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${(100 - dist) / 500})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                });
+            });
+
+            molecules.forEach(m => {
+                m.update();
+                m.draw();
+            });
+
+            checkCollisions();
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (!isMouseDown) {
+                molecules.push(new Molecule(e.clientX, e.clientY));
+            }
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            isMouseDown = true;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            isMouseDown = false;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                const touch = e.touches[0];
+                molecules.push(new Molecule(touch.clientX, touch.clientY));
+            }
+        });
+
+        document.getElementById('fullscreen-btn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.getElementById('toggle-glow').addEventListener('click', (e) => {
+            showGlow = !showGlow;
+            e.target.textContent = `✨ Glow: ${showGlow ? 'ON' : 'OFF'}`;
+            e.target.classList.toggle('active', !showGlow);
+        });
+
+        document.getElementById('toggle-trails').addEventListener('click', (e) => {
+            showTrails = !showTrails;
+            e.target.textContent = `🌈 Trails: ${showTrails ? 'ON' : 'OFF'}`;
+            e.target.classList.toggle('active', !showTrails);
+        });
+
+        document.getElementById('change-palette').addEventListener('click', () => {
+            currentPalette = (currentPalette + 1) % palettes.length;
+            molecules.forEach(m => {
+                m.color = palettes[currentPalette][Math.floor(Math.random() * palettes[currentPalette].length)];
+            });
+        });
+
+        window.addEventListener('resize', () => {
+            resize();
+            init();
+        });
+
+        resize();
+        init();
+        animate();
+    </script>
+</body>
+</html>
