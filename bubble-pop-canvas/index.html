@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bubble Pop Canvas - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        .game-container {
+            text-align: center;
+            width: 100%;
+            max-width: 800px;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 20px;
+            color: #fff;
+            font-size: clamp(0.9rem, 2vw, 1.2rem);
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-value {
+            font-weight: bold;
+            color: #ffd700;
+        }
+
+        #gameCanvas {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            max-width: 100%;
+            height: auto;
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        button.start-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .game-over {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .game-over-content {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            animation: popIn 0.3s ease-out;
+        }
+
+        @keyframes popIn {
+            from {
+                transform: scale(0.5);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .game-over h2 {
+            font-size: 2rem;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .game-over p {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .stats {
+                gap: 15px;
+            }
+
+            .stat {
+                padding: 8px 15px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>🫧 Bubble Pop Canvas</h1>
+        <div class="stats">
+            <div class="stat">スコア: <span class="stat-value" id="score">0</span></div>
+            <div class="stat">時間: <span class="stat-value" id="timer">30</span>秒</div>
+            <div class="stat">コンボ: <span class="stat-value" id="combo">0</span></div>
+        </div>
+        <canvas id="gameCanvas" width="700" height="500"></canvas>
+        <div class="controls">
+            <button class="start-btn" id="startBtn">🎮 ゲーム開始</button>
+            <button id="fullscreenBtn">📺 全画面</button>
+        </div>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <div class="game-over-content">
+            <h2>🎉 ゲーム終了！</h2>
+            <p>最終スコア: <span id="finalScore">0</span></p>
+            <p>最大コンボ: <span id="maxCombo">0</span></p>
+            <button class="start-btn" id="restartBtn">🔄 もう一度</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let bubbles = [];
+        let particles = [];
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let timeLeft = 30;
+        let gameRunning = false;
+        let gameTimer = null;
+        let spawnTimer = null;
+
+        // 泡のクラス
+        class Bubble {
+            constructor() {
+                this.radius = 20 + Math.random() * 40;
+                this.x = this.radius + Math.random() * (canvas.width - this.radius * 2);
+                this.y = canvas.height + this.radius;
+                this.speed = 0.5 + Math.random() * 1.5;
+                this.hue = Math.random() * 360;
+                this.alpha = 0.7;
+                this.wobble = Math.random() * Math.PI * 2;
+                this.wobbleSpeed = 0.02 + Math.random() * 0.03;
+                this.points = Math.floor(100 / this.radius * 10);
+            }
+
+            update() {
+                this.y -= this.speed;
+                this.wobble += this.wobbleSpeed;
+                this.x += Math.sin(this.wobble) * 0.5;
+            }
+
+            draw() {
+                // 泡の本体
+                const gradient = ctx.createRadialGradient(
+                    this.x - this.radius * 0.3, this.y - this.radius * 0.3, 0,
+                    this.x, this.y, this.radius
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 80%, 70%, ${this.alpha})`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 70%, 50%, ${this.alpha * 0.8})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 60%, 30%, ${this.alpha * 0.3})`);
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // ハイライト
+                ctx.beginPath();
+                ctx.arc(this.x - this.radius * 0.3, this.y - this.radius * 0.3, this.radius * 0.2, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, 0.6)`;
+                ctx.fill();
+
+                // ポイント表示
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.points, this.x, this.y);
+            }
+
+            isClicked(mouseX, mouseY) {
+                const dist = Math.sqrt((mouseX - this.x) ** 2 + (mouseY - this.y) ** 2);
+                return dist < this.radius;
+            }
+        }
+
+        // パーティクルのクラス
+        class Particle {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.hue = hue;
+                this.size = 2 + Math.random() * 4;
+                this.speedX = (Math.random() - 0.5) * 8;
+                this.speedY = (Math.random() - 0.5) * 8;
+                this.alpha = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.speedY += 0.1; // 重力
+                this.alpha -= this.decay;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${this.alpha})`;
+                ctx.fill();
+            }
+        }
+
+        // 泡を生成
+        function spawnBubble() {
+            if (!gameRunning) return;
+            bubbles.push(new Bubble());
+        }
+
+        // ゲーム開始
+        function startGame() {
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            timeLeft = 30;
+            bubbles = [];
+            particles = [];
+            gameRunning = true;
+
+            updateDisplay();
+            document.getElementById('gameOver').style.display = 'none';
+
+            // タイマー開始
+            gameTimer = setInterval(() => {
+                timeLeft--;
+                updateDisplay();
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+
+            // 泡の生成
+            spawnTimer = setInterval(spawnBubble, 600);
+
+            // ゲームループ
+            gameLoop();
+        }
+
+        // ゲーム終了
+        function endGame() {
+            gameRunning = false;
+            clearInterval(gameTimer);
+            clearInterval(spawnTimer);
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('maxCombo').textContent = maxCombo;
+            document.getElementById('gameOver').style.display = 'flex';
+        }
+
+        // 表示更新
+        function updateDisplay() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('timer').textContent = timeLeft;
+            document.getElementById('combo').textContent = combo;
+        }
+
+        // ゲームループ
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            // キャンバスクリア
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 泡を更新・描画
+            bubbles = bubbles.filter(bubble => bubble.y + bubble.radius > 0);
+            bubbles.forEach(bubble => {
+                bubble.update();
+                bubble.draw();
+            });
+
+            // パーティクルを更新・描画
+            particles = particles.filter(p => p.alpha > 0);
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            // コンボタイマー（時間経過でリセット）
+            if (combo > 0) {
+                setTimeout(() => {
+                    if (gameRunning && Date.now() - lastPopTime > 1500) {
+                        combo = 0;
+                        updateDisplay();
+                    }
+                }, 1500);
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        let lastPopTime = 0;
+
+        // クリック/タップ処理
+        function handleInput(e) {
+            if (!gameRunning) return;
+
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+
+            let clientX, clientY;
+            if (e.type === 'touchstart') {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+
+            const x = (clientX - rect.left) * scaleX;
+            const y = (clientY - rect.top) * scaleY;
+
+            // 泡をチェック（後ろの泡から）
+            for (let i = bubbles.length - 1; i >= 0; i--) {
+                if (bubbles[i].isClicked(x, y)) {
+                    // パーティクル生成
+                    for (let j = 0; j < 15; j++) {
+                        particles.push(new Particle(
+                            bubbles[i].x,
+                            bubbles[i].y,
+                            bubbles[i].hue
+                        ));
+                    }
+
+                    // スコア計算（コンボボーナス）
+                    combo++;
+                    if (combo > maxCombo) maxCombo = combo;
+                    const comboMultiplier = 1 + (combo - 1) * 0.2;
+                    const points = Math.floor(bubbles[i].points * comboMultiplier);
+                    score += points;
+
+                    lastPopTime = Date.now();
+                    updateDisplay();
+
+                    // 泡を削除
+                    bubbles.splice(i, 1);
+                    return; // 一度に1個のみ
+                }
+            }
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', handleInput);
+        canvas.addEventListener('touchstart', handleInput, { passive: false });
+
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (canvas.requestFullscreen) {
+                canvas.requestFullscreen();
+            } else if (canvas.webkitRequestFullscreen) {
+                canvas.webkitRequestFullscreen();
+            }
+        });
+
+        // キャンバスリサイズ対応
+        function resizeCanvas() {
+            const container = document.querySelector('.game-container');
+            const maxWidth = Math.min(700, container.clientWidth - 40);
+            const ratio = 500 / 700;
+            canvas.style.width = maxWidth + 'px';
+            canvas.style.height = (maxWidth * ratio) + 'px';
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 初期描画
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('「ゲーム開始」ボタンを押して始めてね！', canvas.width / 2, canvas.height / 2);
+    </script>
+</body>
+</html>
