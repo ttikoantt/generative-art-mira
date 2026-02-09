@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galaxy Spiral - ギャラクシースパイラル</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .controls button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 24px;
+            font-weight: 300;
+            z-index: 100;
+            text-shadow: 0 0 20px rgba(138, 43, 226, 0.8);
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-wrap: wrap;
+                justify-content: center;
+                bottom: 10px;
+            }
+
+            .controls button {
+                padding: 10px 20px;
+                font-size: 12px;
+            }
+
+            .title {
+                font-size: 18px;
+                top: 10px;
+                left: 10px;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">Galaxy Spiral</div>
+    <canvas id="canvas"></canvas>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    <div class="controls">
+        <button onclick="generateNew()">新しい銀河</button>
+        <button onclick="toggleAnimation()">アニメーション</button>
+        <button onclick="changePalette()">カラーパレット</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height, centerX, centerY;
+        let particles = [];
+        let animationId;
+        let isAnimating = true;
+        let paletteIndex = 0;
+
+        // カラーパレット
+        const palettes = [
+            { name: '紫銀河', colors: ['#8A2BE2', '#9932CC', '#BA55D3', '#DA70D6', '#FFB6C1'] },
+            { name: '青銀河', colors: ['#00CED1', '#40E0D0', '#48D1CC', '#00FFFF', '#AFEEEE'] },
+            { name: '赤銀河', colors: ['#FF4500', '#FF6347', '#FF7F50', '#FFA07A', '#FFB6C1'] },
+            { name: '緑銀河', colors: ['#00FF7F', '#32CD32', '#7CFC00', '#98FB98', '#90EE90'] },
+            { name: '虹色銀河', colors: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8'] }
+        ];
+
+        class Particle {
+            constructor(armIndex, totalArms) {
+                this.reset(armIndex, totalArms);
+            }
+
+            reset(armIndex, totalArms) {
+                const palette = palettes[paletteIndex];
+                
+                // 腕の角度
+                this.baseAngle = (armIndex / totalArms) * Math.PI * 2;
+                
+                // 腕からのオフセット（正規分布に近い）
+                const angleOffset = (Math.random() - 0.5) * 0.8;
+                this.angle = this.baseAngle + angleOffset;
+                
+                // 距離（中心に近いほど多くなる）
+                const distanceFactor = Math.random();
+                this.distance = Math.pow(distanceFactor, 0.7) * Math.min(width, height) * 0.45;
+                
+                // 速度（外側ほど遅い）
+                this.speed = (0.0003 + Math.random() * 0.0005) * (1 - distanceFactor * 0.7);
+                
+                // サイズ（ランダム）
+                this.size = 1 + Math.random() * 2.5;
+                
+                // 色（距離に応じて変化）
+                const colorIndex = Math.floor(distanceFactor * (palette.colors.length - 1));
+                this.color = palette.colors[colorIndex];
+                
+                // 明るさ（変動）
+                this.brightness = 0.5 + Math.random() * 0.5;
+                
+                // 速度のランダム成分
+                this.wobbleSpeed = (Math.random() - 0.5) * 0.0001;
+                
+                // 螺旋の巻き
+                this.spiralFactor = this.distance * 0.002;
+            }
+
+            update() {
+                this.angle += this.speed;
+                this.spiralFactor += this.wobbleSpeed;
+                this.brightness = 0.5 + Math.sin(Date.now() * 0.001 + this.distance) * 0.3;
+            }
+
+            draw() {
+                const x = centerX + Math.cos(this.angle + this.spiralFactor) * this.distance;
+                const y = centerY + Math.sin(this.angle + this.spiralFactor) * this.distance;
+
+                // グロウ効果
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, this.size * 3);
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(0.4, this.color + '80');
+                gradient.addColorStop(1, 'transparent');
+
+                ctx.beginPath();
+                ctx.arc(x, y, this.size * 3, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.globalAlpha = this.brightness * 0.6;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // 中心の明るい点
+                ctx.beginPath();
+                ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = '#FFFFFF';
+                ctx.globalAlpha = this.brightness;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+
+        function generateNew() {
+            particles = [];
+            const numArms = 2 + Math.floor(Math.random() * 4); // 2-5本の腕
+            const particlesPerArm = 250 + Math.floor(Math.random() * 200); // 各腕250-450個
+
+            for (let arm = 0; arm < numArms; arm++) {
+                for (let i = 0; i < particlesPerArm; i++) {
+                    particles.push(new Particle(arm, numArms));
+                }
+            }
+
+            // 中心部に追加の粒子
+            for (let i = 0; i < 100; i++) {
+                const p = new Particle(0, 1);
+                p.distance = Math.random() * Math.min(width, height) * 0.1;
+                p.angle = Math.random() * Math.PI * 2;
+                particles.push(p);
+            }
+        }
+
+        function animate() {
+            if (!isAnimating) return;
+
+            // トレイル効果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 粒子を更新・描画
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+            if (isAnimating) {
+                animate();
+            }
+        }
+
+        function changePalette() {
+            paletteIndex = (paletteIndex + 1) % palettes.length;
+            
+            // 既存の粒子の色を更新
+            const palette = palettes[paletteIndex];
+            particles.forEach(p => {
+                const distanceFactor = p.distance / (Math.min(width, height) * 0.45);
+                const colorIndex = Math.floor(Math.min(distanceFactor * palette.colors.length, palette.colors.length - 1));
+                p.color = palette.colors[colorIndex];
+            });
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        window.addEventListener('resize', () => {
+            resize();
+            generateNew();
+        });
+
+        resize();
+        generateNew();
+        animate();
+    </script>
+</body>
+</html>
