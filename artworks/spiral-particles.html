@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spiral Particles - Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #canvas {
+            border: none;
+            display: block;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 25px;
+            border-radius: 10px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .controls button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .controls button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .controls button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 15px;
+            border-radius: 5px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="info">
+        <div>Spiral Particles</div>
+        <div style="margin-top: 5px; font-size: 10px;">クリックで中心を変更</div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="controls">
+        <button onclick="reset()">リセット</button>
+        <button onclick="changeColors()">色変更</button>
+        <button onclick="toggleAnimation()">一時停止</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height, centerX, centerY;
+        let particles = [];
+        let animationId;
+        let isAnimating = true;
+        let hueStart = 0;
+
+        // カラーパレット
+        const palettes = [
+            { name: 'rainbow', getHue: (i, total) => (i / total) * 360 },
+            { name: 'sunset', getHue: (i, total) => 200 + (i / total) * 60 },
+            { name: 'ocean', getHue: (i, total) => 160 + (i / total) * 80 },
+            { name: 'forest', getHue: (i, total) => 80 + (i / total) * 60 },
+            { name: 'purple', getHue: (i, total) => 260 + (i / total) * 60 }
+        ];
+
+        let currentPalette = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+
+        class Particle {
+            constructor(index, total) {
+                this.index = index;
+                this.total = total;
+                this.reset();
+            }
+
+            reset() {
+                this.angle = (this.index / this.total) * Math.PI * 20;
+                this.radius = 0;
+                this.speed = 0.5 + Math.random() * 0.5;
+                this.size = 2 + Math.random() * 3;
+                this.hue = palettes[currentPalette].getHue(this.index, this.total);
+                this.alpha = 1;
+                this.decay = 0.003 + Math.random() * 0.005;
+                this.spiral = 0.5 + Math.random() * 0.5;
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.angle += 0.02 * this.spiral;
+                this.alpha -= this.decay;
+
+                if (this.alpha <= 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const x = centerX + Math.cos(this.angle) * this.radius;
+                const y = centerY + Math.sin(this.angle) * this.radius;
+
+                ctx.beginPath();
+                ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue + hueStart}, 80%, 60%, ${this.alpha})`;
+                ctx.fill();
+
+                // 光る効果
+                ctx.beginPath();
+                ctx.arc(x, y, this.size * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue + hueStart}, 80%, 60%, ${this.alpha * 0.3})`;
+                ctx.fill();
+            }
+        }
+
+        function init() {
+            resize();
+            particles = [];
+            const particleCount = 200;
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle(i, particleCount));
+            }
+        }
+
+        function animate() {
+            // 半透明の黒でフェード効果
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            hueStart += 0.2;
+
+            if (isAnimating) {
+                animationId = requestAnimationFrame(animate);
+            }
+        }
+
+        function reset() {
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, width, height);
+            particles.forEach(p => p.reset());
+            if (!isAnimating) {
+                isAnimating = true;
+                animate();
+            }
+        }
+
+        function changeColors() {
+            currentPalette = (currentPalette + 1) % palettes.length;
+            particles.forEach(p => {
+                p.hue = palettes[currentPalette].getHue(p.index, p.total);
+            });
+        }
+
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+            if (isAnimating) {
+                animate();
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // クリックで中心を変更
+        canvas.addEventListener('click', (e) => {
+            centerX = e.clientX;
+            centerY = e.clientY;
+        });
+
+        // タッチ対応
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            centerX = touch.clientX;
+            centerY = touch.clientY;
+        });
+
+        window.addEventListener('resize', resize);
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
