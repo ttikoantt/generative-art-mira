@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Neon Snake - ネオンスネーク</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .score {
+            color: #0ff;
+            font-size: 24px;
+            margin-bottom: 15px;
+            text-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
+            letter-spacing: 0.1em;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border: 2px solid #0ff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5),
+                        inset 0 0 20px rgba(0, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        .info {
+            color: #888;
+            font-size: 14px;
+            margin-top: 15px;
+            letter-spacing: 0.1em;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(3, 60px);
+            grid-template-rows: repeat(3, 60px);
+            gap: 5px;
+        }
+
+        .control-btn {
+            background: rgba(0, 255, 255, 0.1);
+            border: 2px solid #0ff;
+            color: #0ff;
+            font-size: 24px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .control-btn:hover {
+            background: rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+        }
+
+        .control-btn:active {
+            background: rgba(0, 255, 255, 0.5);
+            transform: scale(0.95);
+        }
+
+        .control-btn.up { grid-column: 2; grid-row: 1; }
+        .control-btn.left { grid-column: 1; grid-row: 2; }
+        .control-btn.down { grid-column: 2; grid-row: 3; }
+        .control-btn.right { grid-column: 3; grid-row: 2; }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+        }
+
+        @media (max-width: 768px) {
+            .score {
+                font-size: 20px;
+                margin-bottom: 10px;
+            }
+
+            .info {
+                font-size: 12px;
+                margin-top: 10px;
+            }
+
+            .controls {
+                margin-top: 15px;
+                grid-template-columns: repeat(3, 50px);
+                grid-template-rows: repeat(3, 50px);
+            }
+
+            .control-btn {
+                font-size: 20px;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="container">
+        <div class="score">SCORE: <span id="score">0</span></div>
+        <canvas id="canvas"></canvas>
+        <div class="info">矢印キーまたはボタンで操作</div>
+        <div class="controls">
+            <button class="control-btn up" onclick="changeDirection(0, -1)">↑</button>
+            <button class="control-btn left" onclick="changeDirection(-1, 0)">←</button>
+            <button class="control-btn down" onclick="changeDirection(0, 1)">↓</button>
+            <button class="control-btn right" onclick="changeDirection(1, 0)">→</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+
+        // Canvasサイズ設定
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 400);
+            const maxHeight = Math.min(window.innerHeight - 280, 400);
+            const size = Math.min(maxWidth, maxHeight);
+            canvas.width = size;
+            canvas.height = size;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ゲーム設定
+        const gridSize = 20;
+        const gridCount = Math.floor(canvas.width / gridSize);
+
+        // スネーク
+        let snake = [
+            { x: Math.floor(gridCount / 2), y: Math.floor(gridCount / 2) }
+        ];
+        let direction = { x: 1, y: 0 };
+        let nextDirection = { x: 1, y: 0 };
+
+        // 餌
+        let food = spawnFood();
+
+        // スコア
+        let score = 0;
+        let highScore = localStorage.getItem('neonSnakeHighScore') || 0;
+
+        // ゲーム速度
+        let gameSpeed = 150;
+        let lastUpdateTime = 0;
+
+        // ゲームオーバーフラグ
+        let gameOver = false;
+
+        // 餌を生成
+        function spawnFood() {
+            let newFood;
+            do {
+                newFood = {
+                    x: Math.floor(Math.random() * gridCount),
+                    y: Math.floor(Math.random() * gridCount)
+                };
+            } while (snake.some(seg => seg.x === newFood.x && seg.y === newFood.y));
+            return newFood;
+        }
+
+        // 方向を変更
+        function changeDirection(x, y) {
+            // 逆方向を防ぐ
+            if (direction.x + x !== 0 || direction.y + y !== 0) {
+                nextDirection = { x, y };
+            }
+        }
+
+        // キーボード操作
+        document.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    changeDirection(0, -1);
+                    e.preventDefault();
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    changeDirection(0, 1);
+                    e.preventDefault();
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    changeDirection(-1, 0);
+                    e.preventDefault();
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    changeDirection(1, 0);
+                    e.preventDefault();
+                    break;
+            }
+        });
+
+        // ゲームを更新
+        function update() {
+            if (gameOver) return;
+
+            direction = { ...nextDirection };
+
+            // 新しい頭の位置
+            const head = {
+                x: snake[0].x + direction.x,
+                y: snake[0].y + direction.y
+            };
+
+            // 壁衝突チェック
+            if (head.x < 0 || head.x >= gridCount ||
+                head.y < 0 || head.y >= gridCount) {
+                endGame();
+                return;
+            }
+
+            // 自己衝突チェック
+            if (snake.some(seg => seg.x === head.x && seg.y === head.y)) {
+                endGame();
+                return;
+            }
+
+            // 頭を追加
+            snake.unshift(head);
+
+            // 餌を食べたかチェック
+            if (head.x === food.x && head.y === food.y) {
+                score += 10;
+                scoreEl.textContent = score;
+                food = spawnFood();
+
+                // スピードアップ
+                if (score % 50 === 0 && gameSpeed > 50) {
+                    gameSpeed -= 10;
+                }
+            } else {
+                // 尻を削除
+                snake.pop();
+            }
+        }
+
+        // ゲームオーバー
+        function endGame() {
+            gameOver = true;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('neonSnakeHighScore', highScore);
+            }
+
+            // 3秒後に再開
+            setTimeout(() => {
+                resetGame();
+            }, 3000);
+        }
+
+        // ゲームをリセット
+        function resetGame() {
+            snake = [
+                { x: Math.floor(gridCount / 2), y: Math.floor(gridCount / 2) }
+            ];
+            direction = { x: 1, y: 0 };
+            nextDirection = { x: 1, y: 0 };
+            food = spawnFood();
+            score = 0;
+            scoreEl.textContent = score;
+            gameSpeed = 150;
+            gameOver = false;
+        }
+
+        // 背景を描画
+        function drawBackground() {
+            // 暗いグラデーション背景
+            const gradient = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, 0,
+                canvas.width / 2, canvas.height / 2, canvas.width / 2
+            );
+            gradient.addColorStop(0, '#151520');
+            gradient.addColorStop(1, '#0a0a0f');
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // グリッド
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+
+            for (let x = 0; x <= canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+
+            for (let y = 0; y <= canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        // スネークを描画
+        function drawSnake() {
+            snake.forEach((segment, index) => {
+                const x = segment.x * gridSize;
+                const y = segment.y * gridSize;
+
+                // グロー効果
+                const alpha = 1 - (index / snake.length) * 0.5;
+                const glowIntensity = 20 - (index / snake.length) * 10;
+
+                ctx.shadowColor = 'rgba(0, 255, 255, 0.8)';
+                ctx.shadowBlur = glowIntensity;
+
+                // 体の色
+                const hue = 180; // シアン
+                ctx.fillStyle = `hsla(${hue}, 100%, 50%, ${alpha})`;
+                ctx.fillRect(x + 1, y + 1, gridSize - 2, gridSize - 2);
+
+                // 頭の目
+                if (index === 0) {
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#fff';
+                    const eyeSize = 3;
+                    const eyeOffset = 5;
+
+                    if (direction.x === 1) {
+                        ctx.fillRect(x + gridSize - eyeOffset, y + eyeOffset, eyeSize, eyeSize);
+                        ctx.fillRect(x + gridSize - eyeOffset, y + gridSize - eyeOffset - eyeSize, eyeSize, eyeSize);
+                    } else if (direction.x === -1) {
+                        ctx.fillRect(x + eyeOffset - eyeSize, y + eyeOffset, eyeSize, eyeSize);
+                        ctx.fillRect(x + eyeOffset - eyeSize, y + gridSize - eyeOffset - eyeSize, eyeSize, eyeSize);
+                    } else if (direction.y === 1) {
+                        ctx.fillRect(x + eyeOffset, y + gridSize - eyeOffset, eyeSize, eyeSize);
+                        ctx.fillRect(x + gridSize - eyeOffset - eyeSize, y + gridSize - eyeOffset, eyeSize, eyeSize);
+                    } else if (direction.y === -1) {
+                        ctx.fillRect(x + eyeOffset, y + eyeOffset - eyeSize, eyeSize, eyeSize);
+                        ctx.fillRect(x + gridSize - eyeOffset - eyeSize, y + eyeOffset - eyeSize, eyeSize, eyeSize);
+                    }
+                }
+
+                ctx.shadowBlur = 0;
+            });
+        }
+
+        // 餌を描画
+        function drawFood() {
+            const x = food.x * gridSize + gridSize / 2;
+            const y = food.y * gridSize + gridSize / 2;
+
+            // グロー効果
+            ctx.shadowColor = 'rgba(255, 0, 255, 0.8)';
+            ctx.shadowBlur = 15;
+
+            // 餌の色
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, gridSize / 2);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.5, 'rgba(255, 0, 255, 1)');
+            gradient.addColorStop(1, 'rgba(255, 0, 255, 0)');
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(x, y, gridSize / 2 - 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+        }
+
+        // ゲームオーバー表示
+        function drawGameOver() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.shadowColor = 'rgba(255, 0, 0, 0.8)';
+            ctx.shadowBlur = 20;
+            ctx.fillStyle = '#f00';
+            ctx.font = 'bold 36px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 30);
+
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#fff';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Score: ${score}`, canvas.width / 2, canvas.height / 2 + 10);
+            ctx.fillText(`High Score: ${highScore}`, canvas.width / 2, canvas.height / 2 + 40);
+            ctx.font = '16px Arial';
+            ctx.fillStyle = '#0ff';
+            ctx.fillText('Restarting...', canvas.width / 2, canvas.height / 2 + 80);
+        }
+
+        // ゲームループ
+        function gameLoop(currentTime) {
+            requestAnimationFrame(gameLoop);
+
+            // 背景を描画
+            drawBackground();
+
+            // 餌を描画
+            drawFood();
+
+            // スネークを描画
+            drawSnake();
+
+            // ゲームオーバー表示
+            if (gameOver) {
+                drawGameOver();
+                return;
+            }
+
+            // ゲーム更新
+            if (currentTime - lastUpdateTime > gameSpeed) {
+                update();
+                lastUpdateTime = currentTime;
+            }
+        }
+
+        // 全画面トグル
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // ゲーム開始
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
