@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Life Simulation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        h1 {
+            padding: 20px;
+            font-size: 1.5rem;
+            text-align: center;
+            color: #0ff;
+            text-shadow: 0 0 10px #0ff;
+        }
+
+        #canvas-container {
+            position: relative;
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        canvas {
+            border: 2px solid #0ff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+            background: #000;
+        }
+
+        .controls {
+            padding: 15px;
+            background: rgba(0, 20, 40, 0.9);
+            border-top: 2px solid #0ff;
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        label {
+            font-size: 0.7rem;
+            color: #0ff;
+        }
+
+        input[type="range"] {
+            width: 100px;
+            accent-color: #0ff;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #0ff;
+            color: #0ff;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 15px #0ff;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            font-size: 0.8rem;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #0ff;
+            color: #0ff;
+            cursor: pointer;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.2rem;
+                padding: 15px;
+            }
+
+            .controls {
+                padding: 10px;
+            }
+
+            input[type="range"] {
+                width: 80px;
+            }
+
+            button {
+                padding: 8px 15px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🔬 Particle Life Simulation</h1>
+    
+    <div id="canvas-container">
+        <canvas id="canvas"></canvas>
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>パーティクル数</label>
+            <input type="range" id="particleCount" min="100" max="800" value="400">
+        </div>
+        <div class="control-group">
+            <label>相互作用範囲</label>
+            <input type="range" id="forceRange" min="50" max="200" value="100">
+        </div>
+        <div class="control-group">
+            <label>摩擦</label>
+            <input type="range" id="friction" min="900" max="999" value="970">
+        </div>
+        <button onclick="resetSimulation()">リセット</button>
+        <button onclick="randomizeRules()">ランダムルール</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 設定
+        let PARTICLE_COUNT = 400;
+        const FORCE_RANGE = 100;
+        let FRICTION = 0.97;
+
+        // パーティクルの色
+        const COLORS = [
+            '#ff006e', // ピンク
+            '#00f5ff', // シアン
+            '#ffeb3b', // イエロー
+            '#76ff03'  // ライム
+        ];
+
+        // 粒子間相互作用ルール（正=引力、負=斥力）
+        let forceRules = [];
+
+        // パーティクル配列
+        let particles = [];
+
+        // キャンバスサイズ設定
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container');
+            const size = Math.min(container.clientWidth, container.clientHeight) - 20;
+            canvas.width = size;
+            canvas.height = size;
+        }
+
+        // パーティクルクラス
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = 0;
+                this.vy = 0;
+                this.type = Math.floor(Math.random() * COLORS.length);
+                this.radius = 3;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 摩擦
+                this.vx *= FRICTION;
+                this.vy *= FRICTION;
+
+                // 境界で跳ね返る
+                if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+
+                this.x = Math.max(0, Math.min(canvas.width, this.x));
+                this.y = Math.max(0, Math.min(canvas.height, this.y));
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = COLORS[this.type];
+                ctx.fill();
+            }
+        }
+
+        // 粒子間相互作用を計算
+        function applyForces(p1, p2) {
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < FORCE_RANGE && distance > 0) {
+                const forceType = forceRules[p1.type][p2.type];
+                const force = forceType * (1 - distance / FORCE_RANGE);
+                
+                const fx = (dx / distance) * force;
+                const fy = (dy / distance) * force;
+
+                p1.vx += fx * 0.5;
+                p1.vy += fy * 0.5;
+                p2.vx -= fx * 0.5;
+                p2.vy -= fy * 0.5;
+            }
+        }
+
+        // 相互作用ルールを初期化
+        function initRules() {
+            forceRules = [];
+            for (let i = 0; i < COLORS.length; i++) {
+                forceRules[i] = [];
+                for (let j = 0; j < COLORS.length; j++) {
+                    // ランダムな値：正なら引力、負なら斥力
+                    forceRules[i][j] = (Math.random() - 0.5) * 2;
+                }
+            }
+        }
+
+        // パーティクルを初期化
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        // アニメーションループ
+        function animate() {
+            // 半透明でクリア（トレイル効果）
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 全パーティクルのペアに対して相互作用を計算
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    applyForces(particles[i], particles[j]);
+                }
+            }
+
+            // パーティクルを更新・描画
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // リセット
+        function resetSimulation() {
+            PARTICLE_COUNT = parseInt(document.getElementById('particleCount').value);
+            const forceRangeValue = parseInt(document.getElementById('forceRange').value);
+            const frictionValue = parseInt(document.getElementById('friction').value) / 1000;
+            
+            initParticles();
+        }
+
+        // ルールをランダム化
+        function randomizeRules() {
+            initRules();
+            initParticles();
+        }
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        document.getElementById('particleCount').addEventListener('input', (e) => {
+            PARTICLE_COUNT = parseInt(e.target.value);
+            initParticles();
+        });
+
+        document.getElementById('friction').addEventListener('input', (e) => {
+            FRICTION = parseInt(e.target.value) / 1000;
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // 初期化
+        resizeCanvas();
+        initRules();
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>
