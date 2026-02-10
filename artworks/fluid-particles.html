@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Fluid Particles - Mira's Generative Art</title>
     <style>
         * {
@@ -12,230 +12,289 @@
         }
 
         body {
-            background: #0a0a0f;
+            background: #0a0a1a;
             overflow: hidden;
-            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
 
         canvas {
             display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
         }
 
         .info {
             position: fixed;
-            bottom: 20px;
+            top: 20px;
             left: 20px;
             color: rgba(255, 255, 255, 0.6);
-            font-size: 12px;
+            font-size: 14px;
+            z-index: 10;
             pointer-events: none;
-            user-select: none;
         }
 
-        .title {
+        .fullscreen-btn {
             position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 24px;
-            font-weight: 300;
-            letter-spacing: 4px;
-            pointer-events: none;
-            user-select: none;
-            text-transform: uppercase;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
         }
     </style>
 </head>
 <body>
-    <div class="title">Fluid Particles</div>
-    <div class="info">Move mouse/touch to interact • Click to change mode</div>
     <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <h2>Fluid Particles</h2>
+        <p>Touch & move to create flow</p>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">🖥️ 全画面表示</button>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
 
-        let width, height;
-        let particles = [];
-        let mouse = { x: null, y: null, active: false };
-        let time = 0;
-        let mode = 0; // 0: attract, 1: repel, 2: orbit
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
 
-        const PARTICLE_COUNT = 800;
-        const CONNECTION_RADIUS = 100;
+        // Particle system
+        const particles = [];
+        const PARTICLE_COUNT = 2000;
 
-        function resize() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-        }
+        // Mouse/touch position
+        let mouse = { x: null, y: null };
+        let isMouseMoving = false;
+        let mouseTimeout = null;
+
+        // Color palette - beautiful gradient colors
+        const colors = [
+            '#FF6B9D', // Pink
+            '#C44DFF', // Purple
+            '#4D7BFF', // Blue
+            '#4DFFFF', // Cyan
+            '#4DFFB8', // Teal
+            '#FFD74D', // Gold
+        ];
 
         class Particle {
-            constructor() {
-                this.reset();
-            }
-
-            reset() {
-                this.x = Math.random() * width;
-                this.y = Math.random() * height;
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.baseX = this.x;
+                this.baseY = this.y;
                 this.vx = 0;
                 this.vy = 0;
-                this.baseHue = Math.random() * 60 + 180; // Blue-cyan range
-                this.size = Math.random() * 2 + 1;
-                this.friction = 0.98;
-                this.noiseOffset = Math.random() * 1000;
+                this.size = Math.random() * 3 + 1;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.alpha = Math.random() * 0.5 + 0.5;
+                this.angle = Math.random() * Math.PI * 2;
+                this.speed = Math.random() * 2 + 1;
+                this.amplitude = Math.random() * 50 + 20;
+                this.frequency = Math.random() * 0.02 + 0.01;
             }
 
-            update() {
-                // Simple noise-like movement
-                const noiseScale = 0.002;
-                const angle = Math.sin(time * 0.5 + this.noiseOffset) * Math.PI * 2 +
-                             Math.cos(time * 0.3 + this.noiseOffset * 0.5) * Math.PI;
+            update(time) {
+                // Natural flowing movement
+                this.angle += this.frequency;
+                const flowX = Math.cos(this.angle) * this.amplitude;
+                const flowY = Math.sin(this.angle * 1.5) * this.amplitude * 0.5;
 
-                // Add noise-based force
-                this.vx += Math.cos(angle) * 0.02;
-                this.vy += Math.sin(angle) * 0.02;
-
-                // Mouse interaction
-                if (mouse.active) {
+                // Mouse attraction/repulsion
+                if (mouse.x !== null && mouse.y !== null) {
                     const dx = mouse.x - this.x;
                     const dy = mouse.y - this.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const maxDistance = 200;
 
-                    if (dist < 200 && dist > 0) {
-                        const force = (200 - dist) / 200;
-                        const angleToMouse = Math.atan2(dy, dx);
+                    if (distance < maxDistance) {
+                        const force = (maxDistance - distance) / maxDistance;
+                        const angle = Math.atan2(dy, dx);
+                        const pullStrength = 2;
 
-                        if (mode === 0) {
-                            // Attract
-                            this.vx += Math.cos(angleToMouse) * force * 0.5;
-                            this.vy += Math.sin(angleToMouse) * force * 0.5;
-                        } else if (mode === 1) {
-                            // Repel
-                            this.vx -= Math.cos(angleToMouse) * force * 0.8;
-                            this.vy -= Math.sin(angleToMouse) * force * 0.8;
-                        } else if (mode === 2) {
-                            // Orbit
-                            this.vx += Math.cos(angleToMouse + Math.PI/2) * force * 0.3;
-                            this.vy += Math.sin(angleToMouse + Math.PI/2) * force * 0.3;
-                        }
+                        // Swirling motion around mouse
+                        const perpAngle = angle + Math.PI / 2;
+                        this.vx += Math.cos(perpAngle) * force * pullStrength;
+                        this.vy += Math.sin(perpAngle) * force * pullStrength;
+
+                        // Slight attraction
+                        this.vx += Math.cos(angle) * force * 0.3;
+                        this.vy += Math.sin(angle) * force * 0.3;
                     }
                 }
 
-                // Apply friction and velocity
-                this.vx *= this.friction;
-                this.vy *= this.friction;
-                this.x += this.vx;
-                this.y += this.vy;
+                // Apply velocity
+                this.x += this.vx + flowX * 0.01;
+                this.y += this.vy + flowY * 0.01;
+
+                // Friction
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+
+                // Gentle return to base position
+                const returnForce = 0.001;
+                this.vx += (this.baseX - this.x) * returnForce;
+                this.vy += (this.baseY - this.y) * returnForce;
 
                 // Wrap around edges
                 if (this.x < 0) this.x = width;
                 if (this.x > width) this.x = 0;
                 if (this.y < 0) this.y = height;
                 if (this.y > height) this.y = 0;
-
-                // Limit speed
-                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                if (speed > 5) {
-                    this.vx = (this.vx / speed) * 5;
-                    this.vy = (this.vy / speed) * 5;
-                }
             }
 
             draw() {
-                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                const hue = (this.baseHue + time * 10 + speed * 10) % 360;
-                const lightness = 40 + speed * 10;
-                const alpha = 0.6 + speed * 0.1;
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+
+                // Draw particle with glow effect
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
 
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                ctx.fillStyle = `hsla(${hue}, 80%, ${lightness}%, ${alpha})`;
                 ctx.fill();
 
-                // Draw trail
-                if (speed > 1) {
-                    ctx.beginPath();
-                    ctx.moveTo(this.x, this.y);
-                    ctx.lineTo(this.x - this.vx * 3, this.y - this.vy * 3);
-                    ctx.strokeStyle = `hsla(${hue}, 80%, ${lightness}%, ${alpha * 0.3})`;
-                    ctx.lineWidth = this.size * 0.5;
-                    ctx.stroke();
-                }
+                ctx.restore();
             }
         }
 
-        function drawConnections() {
+        // Initialize particles
+        function init() {
+            particles.length = 0;
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        // Connect nearby particles with lines
+        function connectParticles() {
+            const maxDistance = 80;
+
             for (let i = 0; i < particles.length; i++) {
                 for (let j = i + 1; j < particles.length; j++) {
                     const dx = particles[i].x - particles[j].x;
                     const dy = particles[i].y - particles[j].y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const distance = Math.sqrt(dx * dx + dy * dy);
 
-                    if (dist < CONNECTION_RADIUS) {
-                        const alpha = (1 - dist / CONNECTION_RADIUS) * 0.15;
-                        const hue = (particles[i].baseHue + time * 10) % 360;
-
+                    if (distance < maxDistance) {
+                        const opacity = (1 - distance / maxDistance) * 0.2;
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
+                        ctx.lineWidth = 0.5;
                         ctx.beginPath();
                         ctx.moveTo(particles[i].x, particles[i].y);
                         ctx.lineTo(particles[j].x, particles[j].y);
-                        ctx.strokeStyle = `hsla(${hue}, 70%, 60%, ${alpha})`;
-                        ctx.lineWidth = 0.5;
                         ctx.stroke();
                     }
                 }
             }
         }
 
-        function init() {
-            resize();
-            particles = [];
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
-                particles.push(new Particle());
-            }
-        }
-
+        // Animation loop
+        let time = 0;
         function animate() {
-            // Fade effect for trails
-            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            // Create trail effect
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
             ctx.fillRect(0, 0, width, height);
 
-            time += 0.01;
+            time++;
 
-            particles.forEach(p => p.update());
-            drawConnections();
-            particles.forEach(p => p.draw());
+            // Update and draw particles
+            particles.forEach(particle => {
+                particle.update(time);
+                particle.draw();
+            });
+
+            // Draw connections
+            connectParticles();
 
             requestAnimationFrame(animate);
         }
 
         // Event listeners
-        window.addEventListener('resize', resize);
-
         canvas.addEventListener('mousemove', (e) => {
             mouse.x = e.clientX;
             mouse.y = e.clientY;
-            mouse.active = true;
-        });
+            isMouseMoving = true;
 
-        canvas.addEventListener('mouseleave', () => {
-            mouse.active = false;
+            clearTimeout(mouseTimeout);
+            mouseTimeout = setTimeout(() => {
+                isMouseMoving = false;
+                mouse.x = null;
+                mouse.y = null;
+            }, 2000);
         });
 
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
             mouse.x = e.touches[0].clientX;
             mouse.y = e.touches[0].clientY;
-            mouse.active = true;
-        });
+            isMouseMoving = true;
+
+            clearTimeout(mouseTimeout);
+            mouseTimeout = setTimeout(() => {
+                isMouseMoving = false;
+                mouse.x = null;
+                mouse.y = null;
+            }, 2000);
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        }, { passive: false });
 
         canvas.addEventListener('touchend', () => {
-            mouse.active = false;
+            mouse.x = null;
+            mouse.y = null;
         });
 
-        canvas.addEventListener('click', () => {
-            mode = (mode + 1) % 3;
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            init();
         });
 
+        // Fullscreen button
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                fullscreenBtn.textContent = '🖥️ 全画面解除';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = '🖥️ 全画面表示';
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                fullscreenBtn.textContent = '🖥️ 全画面表示';
+            }
+        });
+
+        // Start
         init();
         animate();
     </script>

@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Gravity Flip - Mira's Games</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            touch-action: manipulation;
+        }
+
+        #gameCanvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+        }
+
+        .score-display {
+            color: white;
+            font-size: 32px;
+            font-weight: bold;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            pointer-events: auto;
+        }
+
+        .best-score {
+            font-size: 14px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .instructions {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 16px;
+            text-align: center;
+            pointer-events: auto;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            pointer-events: auto;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 40px 60px;
+            border-radius: 20px;
+            text-align: center;
+            display: none;
+            pointer-events: auto;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .game-over h2 {
+            font-size: 36px;
+            margin-bottom: 20px;
+        }
+
+        .game-over p {
+            font-size: 18px;
+            margin: 10px 0;
+            opacity: 0.8;
+        }
+
+        .game-over button {
+            margin-top: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .game-over button:hover {
+            transform: scale(1.05);
+        }
+
+        .tap-area {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 5;
+            cursor: pointer;
+        }
+
+        @media (max-width: 768px) {
+            .score-display {
+                font-size: 24px;
+            }
+
+            .instructions {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="tap-area" id="tapArea"></div>
+
+    <div class="ui-overlay">
+        <div class="score-display">
+            <div id="score">0</div>
+            <div class="best-score">Best: <span id="bestScore">0</span></div>
+        </div>
+        <div class="instructions">Tap to flip gravity</div>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">🖥️ 全画面</button>
+
+    <div class="game-over" id="gameOver">
+        <h2>💫 Game Over</h2>
+        <p>Score: <span id="finalScore">0</span></p>
+        <p>Best: <span id="finalBestScore">0</span></p>
+        <button id="restartBtn">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const tapArea = document.getElementById('tapArea');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const gameOverScreen = document.getElementById('gameOver');
+        const restartBtn = document.getElementById('restartBtn');
+
+        // Game state
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let gravity = 1;
+        let score = 0;
+        let bestScore = localStorage.getItem('gravityFlipBest') || 0;
+        let gameRunning = true;
+        let gameSpeed = 3;
+
+        // Player
+        const player = {
+            x: 100,
+            y: height / 2,
+            width: 30,
+            height: 30,
+            vy: 0,
+            color: '#FFD700',
+            rotation: 0
+        };
+
+        // Obstacles
+        const obstacles = [];
+        const OBSTACLE_INTERVAL = 150;
+        let frameCount = 0;
+
+        // Particles
+        const particles = [];
+
+        // Create obstacle
+        function createObstacle() {
+            const gap = 200;
+            const minHeight = 50;
+            const maxHeight = height - gap - minHeight;
+            const topHeight = Math.random() * (maxHeight - minHeight) + minHeight;
+
+            obstacles.push({
+                x: width,
+                topHeight: topHeight,
+                bottomY: topHeight + gap,
+                bottomHeight: height - topHeight - gap,
+                passed: false,
+                color: `hsl(${Math.random() * 360}, 70%, 60%)`
+            });
+        }
+
+        // Create particle effect
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 5,
+                    vy: (Math.random() - 0.5) * 5,
+                    size: Math.random() * 5 + 2,
+                    color: color,
+                    life: 1
+                });
+            }
+        }
+
+        // Update particles
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                p.size *= 0.95;
+
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // Draw particles
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        // Flip gravity
+        function flipGravity() {
+            if (!gameRunning) return;
+
+            gravity *= -1;
+            player.rotation = gravity === 1 ? 0 : Math.PI;
+
+            // Create particle effect
+            createParticles(player.x, player.y, player.color);
+        }
+
+        // Update game
+        function update() {
+            if (!gameRunning) return;
+
+            // Apply gravity to player
+            player.vy += gravity * 0.5;
+            player.y += player.vy;
+
+            // Keep player in bounds
+            if (player.y < 0) {
+                player.y = 0;
+                player.vy = 0;
+            }
+            if (player.y + player.height > height) {
+                player.y = height - player.height;
+                player.vy = 0;
+            }
+
+            // Spawn obstacles
+            frameCount++;
+            if (frameCount % OBSTACLE_INTERVAL === 0) {
+                createObstacle();
+            }
+
+            // Update obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.x -= gameSpeed;
+
+                // Score
+                if (!obs.passed && obs.x + 50 < player.x) {
+                    obs.passed = true;
+                    score++;
+                    document.getElementById('score').textContent = score;
+
+                    // Increase speed
+                    if (score % 5 === 0) {
+                        gameSpeed += 0.3;
+                    }
+                }
+
+                // Remove off-screen obstacles
+                if (obs.x < -100) {
+                    obstacles.splice(i, 1);
+                    continue;
+                }
+
+                // Collision detection
+                if (player.x < obs.x + 50 &&
+                    player.x + player.width > obs.x) {
+                    // Check top obstacle
+                    if (player.y < obs.topHeight ||
+                        player.y + player.height > obs.bottomY) {
+                        gameOver();
+                    }
+                }
+            }
+
+            // Update particles
+            updateParticles();
+        }
+
+        // Draw game
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw particles
+            drawParticles();
+
+            // Draw obstacles
+            obstacles.forEach(obs => {
+                // Top obstacle
+                ctx.fillStyle = obs.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = obs.color;
+                ctx.fillRect(obs.x, 0, 50, obs.topHeight);
+
+                // Bottom obstacle
+                ctx.fillRect(obs.x, obs.bottomY, 50, obs.bottomHeight);
+
+                // Glow effect
+                ctx.shadowBlur = 0;
+            });
+
+            // Draw player
+            ctx.save();
+            ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+            ctx.rotate(player.rotation);
+
+            // Glow
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = player.color;
+
+            // Player body
+            ctx.fillStyle = player.color;
+            ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height);
+
+            // Player eye
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(2, -8, 8, 8);
+            ctx.fillRect(2, 0, 8, 8);
+
+            ctx.restore();
+        }
+
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+
+            // Update best score
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('gravityFlipBest', bestScore);
+            }
+
+            // Show game over screen
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalBestScore').textContent = bestScore;
+            gameOverScreen.style.display = 'block';
+        }
+
+        // Restart game
+        function restartGame() {
+            gravity = 1;
+            score = 0;
+            gameSpeed = 3;
+            gameRunning = true;
+            player.y = height / 2;
+            player.vy = 0;
+            player.rotation = 0;
+            obstacles.length = 0;
+            particles.length = 0;
+            frameCount = 0;
+
+            document.getElementById('score').textContent = '0';
+            document.getElementById('bestScore').textContent = bestScore;
+            gameOverScreen.style.display = 'none';
+        }
+
+        // Game loop
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Event listeners
+        tapArea.addEventListener('click', flipGravity);
+        tapArea.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            flipGravity();
+        });
+
+        restartBtn.addEventListener('click', restartGame);
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                e.preventDefault();
+                if (!gameRunning) {
+                    restartGame();
+                } else {
+                    flipGravity();
+                }
+            }
+        });
+
+        // Fullscreen button
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                fullscreenBtn.textContent = '🖥️ 解除';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = '🖥️ 全画面';
+            }
+        });
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            player.y = Math.min(player.y, height - player.height);
+        });
+
+        // Initialize
+        document.getElementById('bestScore').textContent = bestScore;
+        gameLoop();
+    </script>
+</body>
+</html>
