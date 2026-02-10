@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magnetic Letters - Interactive Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            cursor: crosshair;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            pointer-events: none;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            pointer-events: none;
+            text-align: center;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="info">🧲 Magnetic Letters</div>
+    <div class="instructions">移動: 文字がマウスに引き寄せられる • クリック: 新しい文字を追加</div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvas size
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Mouse position
+        let mouse = { x: canvas.width / 2, y: canvas.height / 2 };
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        }, { passive: false });
+
+        // Letter class
+        class Letter {
+            constructor(char, x, y) {
+                this.char = char;
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.baseSize = Math.random() * 30 + 20;
+                this.size = this.baseSize;
+                this.hue = Math.random() * 360;
+                this.alpha = 0.8;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.05;
+                this.trail = [];
+                this.maxTrail = 5;
+            }
+
+            update(letters) {
+                // Attraction to mouse (magnetic effect)
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const distToMouse = Math.sqrt(dx * dx + dy * dy);
+
+                // Magnetic attraction (stronger when closer)
+                const magneticStrength = 0.03;
+                this.vx += (dx / distToMouse) * magneticStrength;
+                this.vy += (dy / distToMouse) * magneticStrength;
+
+                // Repulsion from other letters
+                letters.forEach(other => {
+                    if (other === this) return;
+
+                    const ox = other.x - this.x;
+                    const oy = other.y - this.y;
+                    const dist = Math.sqrt(ox * ox + oy * oy);
+
+                    if (dist < 100 && dist > 0) {
+                        const repulsion = 0.5;
+                        this.vx -= (ox / dist) * repulsion;
+                        this.vy -= (oy / dist) * repulsion;
+                    }
+                });
+
+                // Damping
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+
+                // Speed limit
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 8) {
+                    this.vx = (this.vx / speed) * 8;
+                    this.vy = (this.vy / speed) * 8;
+                }
+
+                // Store trail
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > this.maxTrail) {
+                    this.trail.shift();
+                }
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Rotation based on velocity
+                this.rotation += this.rotationSpeed + (this.vx * 0.02);
+
+                // Boundary bounce
+                if (this.x < 0 || this.x > canvas.width) {
+                    this.vx *= -0.8;
+                    this.x = Math.max(0, Math.min(canvas.width, this.x));
+                }
+                if (this.y < 0 || this.y > canvas.height) {
+                    this.vy *= -0.8;
+                    this.y = Math.max(0, Math.min(canvas.height, this.y));
+                }
+
+                // Pulsing size based on speed
+                this.size = this.baseSize + speed * 2;
+
+                // Color shift based on position
+                this.hue = (this.x / canvas.width) * 60 + (this.y / canvas.height) * 60 + 180;
+            }
+
+            draw() {
+                // Draw trail
+                this.trail.forEach((pos, i) => {
+                    const alpha = (i / this.trail.length) * 0.3;
+                    ctx.save();
+                    ctx.translate(pos.x, pos.y);
+                    ctx.rotate(this.rotation);
+                    ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha})`;
+                    ctx.font = `${this.size * 0.8}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(this.char, 0, 0);
+                    ctx.restore();
+                });
+
+                // Draw letter
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // Glow effect
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const glowSize = speed * 2;
+                ctx.shadowColor = `hsl(${this.hue}, 80%, 60%)`;
+                ctx.shadowBlur = 10 + glowSize;
+
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 65%, ${this.alpha})`;
+                ctx.font = `bold ${this.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.char, 0, 0);
+
+                ctx.restore();
+            }
+        }
+
+        // Create letters
+        const letters = [];
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+        function createLetter(x, y) {
+            const char = chars[Math.floor(Math.random() * chars.length)];
+            letters.push(new Letter(char, x, y));
+
+            // Limit total letters
+            if (letters.length > 50) {
+                letters.shift();
+            }
+        }
+
+        // Initialize with some letters
+        for (let i = 0; i < 20; i++) {
+            createLetter(
+                Math.random() * canvas.width,
+                Math.random() * canvas.height
+            );
+        }
+
+        // Click to add letters
+        canvas.addEventListener('click', (e) => {
+            createLetter(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            createLetter(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        // Background particles
+        const particles = [];
+        for (let i = 0; i < 100; i++) {
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 2 + 1,
+                speedY: Math.random() * 0.5 + 0.2,
+                alpha: Math.random() * 0.5 + 0.2
+            });
+        }
+
+        // Animation loop
+        function animate() {
+            // Clear with fade effect
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw background particles
+            particles.forEach(p => {
+                p.y += p.speedY;
+                if (p.y > canvas.height) {
+                    p.y = 0;
+                    p.x = Math.random() * canvas.width;
+                }
+
+                ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha * 0.3})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Update and draw letters
+            letters.forEach(letter => {
+                letter.update(letters);
+                letter.draw();
+            });
+
+            // Draw connection lines between nearby letters
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < letters.length; i++) {
+                for (let j = i + 1; j < letters.length; j++) {
+                    const dx = letters[i].x - letters[j].x;
+                    const dy = letters[i].y - letters[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 150) {
+                        ctx.beginPath();
+                        ctx.moveTo(letters[i].x, letters[i].y);
+                        ctx.lineTo(letters[j].x, letters[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        // Fullscreen toggle
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
