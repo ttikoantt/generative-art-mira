@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Particle Art - Generative Art by Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Helvetica', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: grab;
+        }
+
+        canvas:active {
+            cursor: grabbing;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 14px;
+            opacity: 0.7;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 10;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        🖱️ ドラッグで回転 | スクロールでズーム
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">全画面表示</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 設定
+        const PARTICLE_COUNT = 3000;
+        const PARTICLE_SIZE = 1.5;
+        const ROTATION_SPEED = 0.002;
+
+        let width, height;
+        let centerX, centerY;
+        let rotationX = 0;
+        let rotationY = 0;
+        let zoom = 1;
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+
+        // 色パレット
+        const colorPalettes = [
+            ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff'],
+            ['#00d2d3', '#ff9f43', '#ee5a6f', '#c44569', '#5f27cd'],
+            ['#26de81', '#fed330', '#fd79a8', '#a29bfe', '#6c5ce7'],
+            ['#ff6b6b', '#c56cf0', '#ffb8b8', '#ffcccc', '#686de0']
+        ];
+        let palette = colorPalettes[Math.floor(Math.random() * colorPalettes.length)];
+
+        // パーティクルクラス
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                // 球面上のランダムな位置
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                const radius = 100 + Math.random() * 150;
+
+                this.x = radius * Math.sin(phi) * Math.cos(theta);
+                this.y = radius * Math.sin(phi) * Math.sin(theta);
+                this.z = radius * Math.cos(phi);
+
+                this.baseX = this.x;
+                this.baseY = this.y;
+                this.baseZ = this.z;
+
+                this.size = PARTICLE_SIZE * (0.5 + Math.random());
+                this.color = palette[Math.floor(Math.random() * palette.length)];
+                this.alpha = 0.3 + Math.random() * 0.7;
+                this.speed = 0.005 + Math.random() * 0.01;
+                this.phase = Math.random() * Math.PI * 2;
+            }
+
+            update(time) {
+                // ゆらぎ
+                const wobble = Math.sin(time * this.speed + this.phase) * 10;
+                this.x = this.baseX + wobble;
+                this.y = this.baseY + wobble;
+                this.z = this.baseZ + wobble;
+            }
+
+            project() {
+                // 回転
+                let x = this.x;
+                let y = this.y;
+                let z = this.z;
+
+                // Y軸回転
+                let temp = x * Math.cos(rotationY) - z * Math.sin(rotationY);
+                z = x * Math.sin(rotationY) + z * Math.cos(rotationY);
+                x = temp;
+
+                // X軸回転
+                temp = y * Math.cos(rotationX) - z * Math.sin(rotationX);
+                z = y * Math.sin(rotationX) + z * Math.cos(rotationX);
+                y = temp;
+
+                // 透視投影
+                const perspective = 500;
+                const scale = perspective / (perspective + z) * zoom;
+
+                return {
+                    x: centerX + x * scale,
+                    y: centerY + y * scale,
+                    scale: scale,
+                    z: z
+                };
+            }
+
+            draw() {
+                const projected = this.project();
+                
+                if (projected.z > -perspective) {
+                    const size = this.size * projected.scale;
+                    const alpha = this.alpha * Math.min(1, (projected.scale + 0.5));
+                    
+                    ctx.beginPath();
+                    ctx.arc(projected.x, projected.y, size, 0, Math.PI * 2);
+                    ctx.fillStyle = this.color;
+                    ctx.globalAlpha = alpha;
+                    ctx.fill();
+                }
+            }
+        }
+
+        // パーティクル配列
+        let particles = [];
+
+        // 初期化
+        function init() {
+            resize();
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        // リサイズ
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+
+        // 描画
+        let time = 0;
+        function draw() {
+            // 背景をフェード
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // パーティクルをZソート
+            particles.sort((a, b) => {
+                const pa = a.project();
+                const pb = b.project();
+                return pa.z - pb.z;
+            });
+
+            // パーティクルを更新・描画
+            time++;
+            particles.forEach(particle => {
+                particle.update(time);
+                particle.draw();
+            });
+
+            // 自動回転
+            if (!isDragging) {
+                rotationY += ROTATION_SPEED;
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        // マウス操作
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - lastMouseX;
+                const deltaY = e.clientY - lastMouseY;
+                rotationY += deltaX * 0.005;
+                rotationX += deltaY * 0.005;
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+
+        // タッチ操作
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isDragging = true;
+            lastMouseX = e.touches[0].clientX;
+            lastMouseY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isDragging) {
+                const deltaX = e.touches[0].clientX - lastMouseX;
+                const deltaY = e.touches[0].clientY - lastMouseY;
+                rotationY += deltaX * 0.005;
+                rotationX += deltaY * 0.005;
+                lastMouseX = e.touches[0].clientX;
+                lastMouseY = e.touches[0].clientY;
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+
+        // ズーム
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            zoom += e.deltaY * -0.001;
+            zoom = Math.max(0.5, Math.min(3, zoom));
+        });
+
+        // 全画面
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        window.addEventListener('resize', resize);
+
+        init();
+        draw();
+    </script>
+</body>
+</html>
