@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Fireworks - 花火</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(to bottom, #0a0a1a 0%, #1a1a3a 100%);
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .controls button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            font-size: 14px;
+            border-radius: 25px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .controls button.active {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            font-size: 14px;
+            border-radius: 25px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .title {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 24px;
+            font-weight: 300;
+            letter-spacing: 8px;
+            z-index: 100;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            pointer-events: none;
+        }
+
+        .hint {
+            position: fixed;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button id="autoBtn" class="active">自動: ON</button>
+        <button id="trailBtn" class="active">トレイル: ON</button>
+        <button id="soundBtn">サウンド: OFF</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">全画面</button>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="title">FIREWORKS</div>
+    <div class="hint">クリックで花火を打ち上げ</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Fullscreen
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Controls
+        let autoLaunch = true;
+        let showTrails = true;
+        let soundEnabled = false;
+
+        document.getElementById('autoBtn').addEventListener('click', function() {
+            autoLaunch = !autoLaunch;
+            this.textContent = `自動: ${autoLaunch ? 'ON' : 'OFF'}`;
+            this.classList.toggle('active', autoLaunch);
+        });
+
+        document.getElementById('trailBtn').addEventListener('click', function() {
+            showTrails = !showTrails;
+            this.textContent = `トレイル: ${showTrails ? 'ON' : 'OFF'}`;
+            this.classList.toggle('active', showTrails);
+        });
+
+        document.getElementById('soundBtn').addEventListener('click', function() {
+            soundEnabled = !soundEnabled;
+            this.textContent = `サウンド: ${soundEnabled ? 'ON' : 'OFF'}`;
+            this.classList.toggle('active', soundEnabled);
+        });
+
+        // Resize
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Audio context for sound
+        let audioCtx = null;
+        function playSound() {
+            if (!soundEnabled) return;
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(400 + Math.random() * 400, audioCtx.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.5);
+
+            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.5);
+        }
+
+        // Firework rocket
+        class Rocket {
+            constructor(x, targetY, color) {
+                this.x = x;
+                this.y = canvas.height;
+                this.targetY = targetY;
+                this.color = color;
+                this.velocity = -12 - Math.random() * 4;
+                this.acceleration = -0.15;
+                this.trail = [];
+                this.exploded = false;
+            }
+
+            update() {
+                this.velocity += this.acceleration;
+                this.y += this.velocity;
+
+                // Trail
+                this.trail.push({ x: this.x, y: this.y, alpha: 1 });
+                if (this.trail.length > 10) this.trail.shift();
+                this.trail.forEach(t => t.alpha *= 0.9);
+
+                // Explode when reaching target
+                if (this.y <= this.targetY || this.velocity >= 0) {
+                    this.exploded = true;
+                    createParticles(this.x, this.y, this.color);
+                    playSound();
+                }
+            }
+
+            draw() {
+                // Draw trail
+                this.trail.forEach(t => {
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, 2, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 200, 100, ${t.alpha})`;
+                    ctx.fill();
+                });
+
+                // Draw rocket
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+
+                // Glow
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, 8);
+                gradient.addColorStop(0, 'rgba(255, 200, 100, 0.5)');
+                gradient.addColorStop(1, 'rgba(255, 200, 100, 0)');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+
+        // Firework particle
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 6;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+
+                this.gravity = 0.08;
+                this.friction = 0.99;
+                this.alpha = 1;
+                this.decay = 0.008 + Math.random() * 0.008;
+                this.size = 2 + Math.random() * 2;
+                this.trail = [];
+            }
+
+            update() {
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+                this.vy += this.gravity;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                this.alpha -= this.decay;
+
+                // Trail
+                this.trail.push({ x: this.x, y: this.y, alpha: this.alpha });
+                if (this.trail.length > 8) this.trail.shift();
+            }
+
+            draw() {
+                // Draw trail
+                if (showTrails) {
+                    this.trail.forEach((t, i) => {
+                        const trailAlpha = (i / this.trail.length) * this.alpha * 0.5;
+                        ctx.beginPath();
+                        ctx.arc(t.x, t.y, this.size * (i / this.trail.length), 0, Math.PI * 2);
+                        ctx.fillStyle = this.color.replace('1)', `${trailAlpha})`);
+                        ctx.fill();
+                    });
+                }
+
+                // Draw particle
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color.replace('1)', `${this.alpha})`);
+                ctx.fill();
+
+                // Glow
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 3);
+                gradient.addColorStop(0, this.color.replace('1)', `${this.alpha * 0.3})`));
+                gradient.addColorStop(1, this.color.replace('1)', '0)'));
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+
+        let rockets = [];
+        let particles = [];
+
+        // Color palettes
+        const colorPalettes = [
+            ['rgba(255, 100, 100, 1)', 'rgba(255, 150, 100, 1)', 'rgba(255, 200, 100, 1)'], // Warm
+            ['rgba(100, 150, 255, 1)', 'rgba(150, 200, 255, 1)', 'rgba(200, 230, 255, 1)'], // Cool
+            ['rgba(150, 100, 255, 1)', 'rgba(200, 150, 255, 1)', 'rgba(255, 200, 255, 1)'], // Purple
+            ['rgba(100, 255, 150, 1)', 'rgba(150, 255, 200, 1)', 'rgba(200, 255, 230, 1)'], // Green
+            ['rgba(255, 200, 100, 1)', 'rgba(255, 150, 200, 1)', 'rgba(150, 200, 255, 1)'], // Rainbow
+        ];
+
+        function getRandomColor() {
+            const palette = colorPalettes[Math.floor(Math.random() * colorPalettes.length)];
+            return palette[Math.floor(Math.random() * palette.length)];
+        }
+
+        function createParticles(x, y, baseColor) {
+            const particleCount = 80 + Math.floor(Math.random() * 60);
+            const palette = colorPalettes.find(p => p.includes(baseColor)) || colorPalettes[0];
+
+            for (let i = 0; i < particleCount; i++) {
+                const color = palette[Math.floor(Math.random() * palette.length)];
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function launchFirework(x) {
+            const targetY = canvas.height * (0.2 + Math.random() * 0.3);
+            const color = getRandomColor();
+            rockets.push(new Rocket(x || Math.random() * canvas.width, targetY, color));
+        }
+
+        // Auto launch
+        let autoLaunchInterval = null;
+        function startAutoLaunch() {
+            if (autoLaunchInterval) clearInterval(autoLaunchInterval);
+            autoLaunchInterval = setInterval(() => {
+                if (autoLaunch && rockets.length < 5) {
+                    launchFirework();
+                }
+            }, 800 + Math.random() * 1200);
+        }
+        startAutoLaunch();
+
+        // Click to launch
+        canvas.addEventListener('click', (e) => {
+            launchFirework(e.clientX);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            launchFirework(touch.clientX);
+        });
+
+        // Animation loop
+        function animate() {
+            // Fade effect
+            ctx.fillStyle = showTrails ? 'rgba(10, 10, 26, 0.2)' : 'rgba(10, 10, 26, 1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw rockets
+            rockets = rockets.filter(rocket => !rocket.exploded);
+            rockets.forEach(rocket => {
+                rocket.update();
+                rocket.draw();
+            });
+
+            // Update and draw particles
+            particles = particles.filter(particle => particle.alpha > 0);
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        // Handle fullscreen change
+        document.addEventListener('fullscreenchange', () => {
+            setTimeout(resize, 100);
+        });
+    </script>
+</body>
+</html>
