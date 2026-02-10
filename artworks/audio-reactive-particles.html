@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Reactive Particles</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        #canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            font-size: 14px;
+            text-shadow: 0 0 10px #0ff;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .controls button {
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 10px 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .controls button:hover {
+            background: rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 20px #0ff;
+        }
+
+        .controls button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #fullscreenBtn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 10px 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            z-index: 10;
+        }
+
+        #fullscreenBtn:hover {
+            background: rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 20px #0ff;
+        }
+
+        .demo-mode {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #0ff;
+            font-size: 12px;
+            opacity: 0.5;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <div>🎵 Audio Reactive Particles</div>
+        <div id="status">デモモード中</div>
+    </div>
+
+    <div class="demo-mode" id="demoMode">デモモード - マイクを開始してください</div>
+
+    <div class="controls">
+        <button id="startBtn">🎤 マイク開始</button>
+        <button id="stopBtn" disabled>⏹ 停止</button>
+    </div>
+
+    <button id="fullscreenBtn">⛶ 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusDiv = document.getElementById('status');
+        const demoModeDiv = document.getElementById('demoMode');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let dataArray;
+        let isRunning = false;
+        let particles = [];
+        let demoMode = true;
+        let demoTime = 0;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initParticles();
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.baseX = this.x;
+                this.baseY = this.y;
+                this.size = Math.random() * 3 + 1;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.speedY = (Math.random() - 0.5) * 2;
+                this.hue = Math.random() * 60 + 160; // Cyan to blue
+                this.alpha = Math.random() * 0.5 + 0.5;
+            }
+
+            update(audioLevel) {
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+
+                // 音に反応して動く
+                const audioReactivity = audioLevel * 500;
+
+                // 中心から遠ざかる方向
+                const dx = this.x - centerX;
+                const dy = this.y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist > 0) {
+                    this.x += (dx / dist) * audioReactivity * 0.5;
+                    this.y += (dy / dist) * audioReactivity * 0.5;
+                }
+
+                // 渦巻き運動
+                const angle = Math.atan2(dy, dx);
+                this.x += Math.cos(angle + Math.PI / 2) * audioReactivity * 0.3;
+                this.y += Math.sin(angle + Math.PI / 2) * audioReactivity * 0.3;
+
+                // ゆっくり戻る
+                this.x += (this.baseX - this.x) * 0.01;
+                this.y += (this.baseY - this.y) * 0.01;
+
+                // 色が変化
+                this.hue = (this.hue + audioLevel * 10) % 360;
+
+                // サイズが変化
+                this.currentSize = this.size * (1 + audioLevel * 3);
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.currentSize || this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${this.alpha})`;
+                ctx.fill();
+
+                // グロー
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsla(${this.hue}, 100%, 60%, 0.8)`;
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            const numParticles = Math.floor((canvas.width * canvas.height) / 8000);
+            for (let i = 0; i < numParticles; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function getAudioLevel() {
+            if (demoMode) {
+                demoTime += 0.02;
+                // デモ用の擬似オーディオ波形
+                const wave1 = Math.sin(demoTime * 2) * 0.3 + 0.3;
+                const wave2 = Math.sin(demoTime * 5) * 0.2;
+                const wave3 = Math.sin(demoTime * 10) * 0.1;
+                return Math.max(0, wave1 + wave2 + wave3);
+            }
+
+            if (!dataArray) return 0;
+
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            return sum / dataArray.length / 255;
+        }
+
+        function animate() {
+            // トレイル
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.shadowBlur = 0;
+
+            const audioLevel = getAudioLevel();
+
+            particles.forEach(p => {
+                p.update(audioLevel);
+                p.draw();
+            });
+
+            // 中心の円
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 50 + audioLevel * 200;
+
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+            gradient.addColorStop(0, `hsla(${(demoTime * 50) % 360}, 100%, 60%, 0.3)`);
+            gradient.addColorStop(1, 'transparent');
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            if (isRunning || demoMode) {
+                requestAnimationFrame(animate);
+            }
+        }
+
+        async function startAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                demoMode = false;
+                isRunning = true;
+                demoModeDiv.style.display = 'none';
+                statusDiv.textContent = 'マイクアクティブ';
+
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+
+                animate();
+            } catch (err) {
+                alert('マイクへのアクセスが許可されませんでした: ' + err.message);
+            }
+        }
+
+        function stopAudio() {
+            if (microphone) {
+                microphone.disconnect();
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+
+            isRunning = false;
+            demoMode = true;
+            demoModeDiv.style.display = 'block';
+            statusDiv.textContent = 'デモモード中';
+
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+
+            animate();
+        }
+
+        startBtn.addEventListener('click', startAudio);
+        stopBtn.addEventListener('click', stopAudio);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        window.addEventListener('resize', resize);
+        resize();
+        animate();
+    </script>
+</body>
+</html>
