@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Music Visualizer Game - リズムタップゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: clamp(1.2rem, 3vw, 2rem);
+            margin: 15px 0 5px;
+            text-shadow: 0 0 20px rgba(255, 100, 150, 0.8);
+            letter-spacing: 0.05em;
+        }
+
+        .subtitle {
+            color: #aaddff;
+            font-size: clamp(0.8rem, 2vw, 1rem);
+            margin-bottom: 10px;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px 20px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-value {
+            color: #ffdd44;
+            font-size: 1.3em;
+        }
+
+        #canvas {
+            flex: 1;
+            width: 100%;
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        .controls {
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 25px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #e94560, #ff6b6b);
+            color: white;
+            box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(233, 69, 96, 0.6);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .fullscreen-btn {
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            color: white;
+            box-shadow: 0 4px 15px rgba(240, 147, 251, 0.4);
+        }
+
+        .fullscreen-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(240, 147, 251, 0.6);
+        }
+
+        .message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2rem;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 0 20px currentColor;
+            pointer-events: none;
+            animation: pop 0.3s ease-out;
+        }
+
+        @keyframes pop {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            50% { transform: translate(-50%, -50%) scale(1.2); }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+
+        @media (max-width: 768px) {
+            .stats {
+                gap: 10px;
+            }
+
+            .stat {
+                padding: 6px 15px;
+                font-size: 0.9rem;
+            }
+
+            .controls {
+                padding: 10px;
+                gap: 8px;
+            }
+
+            .btn {
+                padding: 8px 18px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Music Visualizer Game</h1>
+        <p class="subtitle">Tap when the circle is largest!</p>
+        <div class="stats">
+            <div class="stat">Score: <span class="stat-value" id="score">0</span></div>
+            <div class="stat">Combo: <span class="stat-value" id="combo">0</span></div>
+            <div class="stat">Best: <span class="stat-value" id="best">0</span></div>
+        </div>
+        <canvas id="canvas"></canvas>
+        <div class="controls">
+            <button class="btn btn-primary" id="startBtn">▶️ Start</button>
+            <button class="btn btn-secondary" id="stopBtn">⏸️ Stop</button>
+            <button class="btn fullscreen-btn" id="fullscreenBtn">⛶ Fullscreen</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let score = 0;
+        let combo = 0;
+        let bestScore = parseInt(localStorage.getItem('musicVizBest') || '0');
+        let isRunning = false;
+        let animationId = null;
+        let beatTime = 0;
+        let beatInterval = 60;
+        let currentBeat = 0;
+        let circleScale = 1;
+        let targetScale = 1;
+        let colorHue = 0;
+
+        document.getElementById('best').textContent = bestScore;
+
+        function resizeCanvas() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        function showMessage(text, color) {
+            const msg = document.createElement('div');
+            msg.className = 'message';
+            msg.textContent = text;
+            msg.style.color = color;
+            document.body.appendChild(msg);
+            setTimeout(() => msg.remove(), 800);
+        }
+
+        function updateBeat() {
+            if (!isRunning) return;
+            
+            currentBeat++;
+            colorHue = (colorHue + 30) % 360;
+            
+            // Create visual pulse
+            targetScale = 1.5;
+            
+            // Every 4 beats, create special beat
+            if (currentBeat % 4 === 0) {
+                targetScale = 2.0;
+                createParticles();
+            }
+        }
+
+        let particles = [];
+
+        class Particle {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 8 + 4;
+                this.speedX = (Math.random() - 0.5) * 8;
+                this.speedY = (Math.random() - 0.5) * 8;
+                this.hue = hue;
+                this.life = 1;
+                this.decay = Math.random() * 0.02 + 0.02;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= this.decay;
+                this.size *= 0.97;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsl(${this.hue}, 100%, 50%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function createParticles() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            for (let i = 0; i < 30; i++) {
+                particles.push(new Particle(centerX, centerY, colorHue));
+            }
+        }
+
+        function draw() {
+            // Create trail effect
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw animated background
+            const bgGradient = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, 0,
+                canvas.width / 2, canvas.height / 2, canvas.width / 2
+            );
+            bgGradient.addColorStop(0, `hsla(${colorHue}, 50%, 20%, 0.1)`);
+            bgGradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const baseRadius = Math.min(canvas.width, canvas.height) * 0.15;
+
+            // Smooth scale transition
+            circleScale += (targetScale - circleScale) * 0.15;
+            targetScale += (1 - targetScale) * 0.05;
+
+            // Draw outer glow
+            ctx.save();
+            ctx.shadowBlur = 40 + circleScale * 20;
+            ctx.shadowColor = `hsl(${colorHue}, 100%, 50%)`;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, baseRadius * circleScale, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${colorHue}, 80%, 50%, 0.3)`;
+            ctx.fill();
+            ctx.restore();
+
+            // Draw main circle
+            ctx.save();
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, baseRadius * circleScale
+            );
+            gradient.addColorStop(0, `hsla(${colorHue}, 100%, 70%, 0.8)`);
+            gradient.addColorStop(0.5, `hsla(${colorHue}, 100%, 50%, 0.6)`);
+            gradient.addColorStop(1, `hsla(${colorHue}, 100%, 40%, 0.3)`);
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, baseRadius * circleScale, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Inner bright core
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, baseRadius * circleScale * 0.3, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${colorHue}, 100%, 80%, 0.9)`;
+            ctx.fill();
+            ctx.restore();
+
+            // Draw particles
+            particles = particles.filter(p => {
+                p.update();
+                p.draw();
+                return p.life > 0;
+            });
+
+            // Draw beat indicator rings
+            for (let i = 1; i <= 3; i++) {
+                const ringRadius = baseRadius * circleScale + i * 20;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, ringRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${colorHue}, 100%, 60%, ${0.3 - i * 0.08})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // Draw center pulse text
+            if (circleScale > 1.2) {
+                ctx.save();
+                ctx.font = `bold ${24 * circleScale}px Arial`;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = 'white';
+                ctx.fillText('TAP!', centerX, centerY);
+                ctx.restore();
+            }
+
+            // Draw combo indicator
+            if (combo >= 3) {
+                ctx.save();
+                ctx.font = 'bold 20px Arial';
+                ctx.fillStyle = '#ffdd44';
+                ctx.textAlign = 'center';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#ffdd44';
+                ctx.fillText(`🔥 ${combo}x COMBO!`, centerX, 60);
+                ctx.restore();
+            }
+        }
+
+        function gameLoop() {
+            if (!isRunning) return;
+
+            beatTime++;
+            if (beatTime >= beatInterval) {
+                beatTime = 0;
+                updateBeat();
+            }
+
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function handleTap(x, y) {
+            if (!isRunning) return;
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+            const baseRadius = Math.min(canvas.width, canvas.height) * 0.15;
+
+            // Check if tap is on/near the circle
+            if (distance < baseRadius * circleScale + 50 && distance > baseRadius * circleScale * 0.5) {
+                // Score based on timing (circle size)
+                let points = 0;
+                let message = '';
+                let color = '';
+
+                if (circleScale > 1.4) {
+                    points = 100;
+                    message = 'PERFECT! +100';
+                    color = '#ffdd44';
+                } else if (circleScale > 1.2) {
+                    points = 50;
+                    message = 'GREAT! +50';
+                    color = '#44ff44';
+                } else if (circleScale > 1.05) {
+                    points = 25;
+                    message = 'GOOD +25';
+                    color = '#44aaff';
+                } else {
+                    points = 10;
+                    message = '+10';
+                    color = '#aaaaaa';
+                }
+
+                combo++;
+                score += points * (1 + Math.floor(combo / 5) * 0.5);
+
+                showMessage(message, color);
+                createParticles();
+            } else {
+                combo = 0;
+                showMessage('MISS!', '#ff4444');
+            }
+
+            // Update display
+            document.getElementById('score').textContent = Math.floor(score);
+            document.getElementById('combo').textContent = combo;
+
+            if (score > bestScore) {
+                bestScore = Math.floor(score);
+                localStorage.setItem('musicVizBest', bestScore.toString());
+                document.getElementById('best').textContent = bestScore;
+            }
+        }
+
+        // Event listeners
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            handleTap(x, y);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            handleTap(x, y);
+        });
+
+        document.getElementById('startBtn').addEventListener('click', () => {
+            if (!isRunning) {
+                isRunning = true;
+                score = 0;
+                combo = 0;
+                currentBeat = 0;
+                beatTime = 0;
+                colorHue = 0;
+                particles = [];
+                circleScale = 1;
+                targetScale = 1;
+                document.getElementById('score').textContent = '0';
+                document.getElementById('combo').textContent = '0';
+                showMessage('GO!', '#44ff44');
+                gameLoop();
+            }
+        });
+
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            isRunning = false;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            showMessage('STOPPED', '#ff8844');
+        });
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log('Fullscreen error:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Initial draw
+        draw();
+    </script>
+</body>
+</html>
