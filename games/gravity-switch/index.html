@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gravity Switch</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 10px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin: 10px 0;
+            text-align: center;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .game-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #gameCanvas {
+            border: 2px solid rgba(0, 255, 255, 0.3);
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+            display: block;
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+            color: #fff;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            color: #00ffff;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            color: #fff;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 212, 255, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 212, 255, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .instructions {
+            color: #9090b0;
+            font-size: 0.9rem;
+            text-align: center;
+            margin-top: 15px;
+            padding: 0 20px;
+            line-height: 1.6;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(10, 10, 26, 0.95);
+            padding: 40px;
+            border-radius: 15px;
+            border: 2px solid rgba(0, 255, 255, 0.3);
+            text-align: center;
+            display: none;
+            z-index: 100;
+        }
+
+        .game-over h2 {
+            color: #ff6b6b;
+            font-size: 2rem;
+            margin-bottom: 20px;
+        }
+
+        .game-over p {
+            color: #fff;
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+
+        .game-over .score {
+            font-size: 2.5rem;
+            color: #00ffff;
+            margin: 20px 0;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .stats {
+                gap: 15px;
+                font-size: 1rem;
+            }
+
+            .stat-value {
+                font-size: 1.4rem;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 0.9rem;
+            }
+
+            .instructions {
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🔄 Gravity Switch</h1>
+
+    <div class="game-container">
+        <div class="stats">
+            <div class="stat">
+                <span class="stat-value" id="score">0</span>
+                <span class="stat-label">スコア</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value" id="highScore">0</span>
+                <span class="stat-label">ハイスコア</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value" id="switches">0</span>
+                <span class="stat-label">反転回数</span>
+            </div>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div class="controls">
+            <button id="startBtn">▶️ スタート</button>
+            <button id="pauseBtn">⏸️ 一時停止</button>
+            <button id="fullscreenBtn">📺 全画面</button>
+        </div>
+
+        <p class="instructions">
+            🎮 スペースキー/タップで重力を反転<br>
+            ⚠️ 障害物を避けながら進め<br>
+            💎 コインを集めてスコアアップ
+        </p>
+
+        <div class="game-over" id="gameOver">
+            <h2>💀 Game Over</h2>
+            <p>スコア</p>
+            <div class="score" id="finalScore">0</div>
+            <button id="restartBtn">🔄 再挑戦</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // レスポンシブキャンバスサイズ
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 700);
+            const maxHeight = Math.min(window.innerHeight - 300, 500);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // ゲーム状態
+        let gameState = {
+            running: false,
+            paused: false,
+            score: 0,
+            highScore: parseInt(localStorage.getItem('gravitySwitchHighScore')) || 0,
+            switches: 0
+        };
+
+        // プレイヤー
+        let player = {
+            x: 100,
+            y: 250,
+            width: 30,
+            height: 30,
+            velocityY: 0,
+            gravity: 0.4,
+            jumpForce: -8,
+            grounded: false
+        };
+
+        // 重力方向
+        let gravityDirection = 1; // 1 = 下, -1 = 上
+
+        // 障害物とコイン
+        let obstacles = [];
+        let coins = [];
+        let gameSpeed = 3;
+        let frameCount = 0;
+
+        // パーティクル
+        let particles = [];
+
+        // プレイヤーを描画
+        function drawPlayer() {
+            ctx.save();
+            
+            // グロー効果
+            ctx.shadowColor = '#00ffff';
+            ctx.shadowBlur = 20;
+            
+            // プレイヤーの本体
+            const gradient = ctx.createRadialGradient(
+                player.x + player.width / 2,
+                player.y + player.height / 2,
+                0,
+                player.x + player.width / 2,
+                player.y + player.height / 2,
+                player.width
+            );
+            gradient.addColorStop(0, '#00ffff');
+            gradient.addColorStop(1, '#0099cc');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            
+            // 目
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(player.x + 8, player.y + 10, 6, 6);
+            ctx.fillRect(player.x + 16, player.y + 10, 6, 6);
+            
+            ctx.restore();
+        }
+
+        // 障害物を描画
+        function drawObstacles() {
+            obstacles.forEach(obstacle => {
+                ctx.save();
+                ctx.shadowColor = '#ff4444';
+                ctx.shadowBlur = 10;
+                
+                const gradient = ctx.createLinearGradient(
+                    obstacle.x, obstacle.y,
+                    obstacle.x + obstacle.width, obstacle.y
+                );
+                gradient.addColorStop(0, '#ff4444');
+                gradient.addColorStop(1, '#cc0000');
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                ctx.restore();
+            });
+        }
+
+        // コインを描画
+        function drawCoins() {
+            coins.forEach(coin => {
+                ctx.save();
+                ctx.shadowColor = '#ffd700';
+                ctx.shadowBlur = 15;
+                
+                const gradient = ctx.createRadialGradient(
+                    coin.x + coin.size / 2,
+                    coin.y + coin.size / 2,
+                    0,
+                    coin.x + coin.size / 2,
+                    coin.y + coin.size / 2,
+                    coin.size
+                );
+                gradient.addColorStop(0, '#ffd700');
+                gradient.addColorStop(1, '#ff9900');
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(coin.x + coin.size / 2, coin.y + coin.size / 2, coin.size / 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        // パーティクルを描画
+        function drawParticles() {
+            particles.forEach(particle => {
+                ctx.save();
+                ctx.globalAlpha = particle.alpha;
+                ctx.fillStyle = particle.color;
+                ctx.shadowColor = particle.color;
+                ctx.shadowBlur = 10;
+                ctx.fillRect(particle.x, particle.y, particle.size, particle.size);
+                ctx.restore();
+            });
+        }
+
+        // パーティクルを生成
+        function createParticles(x, y, color, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    velocityX: (Math.random() - 0.5) * 6,
+                    velocityY: (Math.random() - 0.5) * 6,
+                    size: Math.random() * 4 + 2,
+                    color: color,
+                    alpha: 1
+                });
+            }
+        }
+
+        // 障害物を生成
+        function spawnObstacle() {
+            const type = Math.floor(Math.random() * 3);
+            let obstacle = {
+                x: canvas.width,
+                width: 30 + Math.random() * 30,
+                height: 40 + Math.random() * 40
+            };
+
+            switch(type) {
+                case 0: // 床
+                    obstacle.y = canvas.height - obstacle.height;
+                    break;
+                case 1: // 天井
+                    obstacle.y = 0;
+                    break;
+                case 2: // 中央
+                    obstacle.y = canvas.height / 2 - obstacle.height / 2;
+                    obstacle.height = 60 + Math.random() * 40;
+                    break;
+            }
+
+            obstacles.push(obstacle);
+        }
+
+        // コインを生成
+        function spawnCoin() {
+            const coin = {
+                x: canvas.width,
+                y: 50 + Math.random() * (canvas.height - 100),
+                size: 20
+            };
+            coins.push(coin);
+        }
+
+        // 重力を反転
+        function switchGravity() {
+            gravityDirection *= -1;
+            gameState.switches++;
+            document.getElementById('switches').textContent = gameState.switches;
+            
+            // 反転エフェクト
+            createParticles(
+                player.x + player.width / 2,
+                player.y + player.height / 2,
+                '#00ffff',
+                10
+            );
+        }
+
+        // コリジョン判定
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        // ゲームオーバー
+        function gameOver() {
+            gameState.running = false;
+            document.getElementById('gameOver').style.display = 'block';
+            document.getElementById('finalScore').textContent = gameState.score;
+            
+            if (gameState.score > gameState.highScore) {
+                gameState.highScore = gameState.score;
+                localStorage.setItem('gravitySwitchHighScore', gameState.highScore);
+                document.getElementById('highScore').textContent = gameState.highScore;
+            }
+        }
+
+        // ゲームをリセット
+        function resetGame() {
+            player.y = canvas.height / 2;
+            player.velocityY = 0;
+            gravityDirection = 1;
+            obstacles = [];
+            coins = [];
+            particles = [];
+            gameState.score = 0;
+            gameState.switches = 0;
+            gameState.running = true;
+            gameState.paused = false;
+            gameSpeed = 3;
+            frameCount = 0;
+            
+            document.getElementById('score').textContent = 0;
+            document.getElementById('switches').textContent = 0;
+            document.getElementById('gameOver').style.display = 'none';
+        }
+
+        // ゲームループ
+        function gameLoop() {
+            if (!gameState.running || gameState.paused) {
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            // 背景をクリア
+            ctx.fillStyle = '#0a0a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 背景のグリッド
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            const gridSize = 40;
+            const offset = (frameCount * gameSpeed) % gridSize;
+            
+            for (let x = -offset; x < canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+
+            // プレイヤーの物理演算
+            player.velocityY += player.gravity * gravityDirection;
+            player.y += player.velocityY;
+
+            // 境界チェック
+            if (player.y < 0) {
+                player.y = 0;
+                player.velocityY = 0;
+            }
+            if (player.y + player.height > canvas.height) {
+                player.y = canvas.height - player.height;
+                player.velocityY = 0;
+            }
+
+            // 障害物の更新
+            obstacles.forEach((obstacle, index) => {
+                obstacle.x -= gameSpeed;
+                
+                if (obstacle.x + obstacle.width < 0) {
+                    obstacles.splice(index, 1);
+                }
+                
+                // コリジョン
+                if (checkCollision(player, obstacle)) {
+                    createParticles(
+                        player.x + player.width / 2,
+                        player.y + player.height / 2,
+                        '#ff4444',
+                        20
+                    );
+                    gameOver();
+                }
+            });
+
+            // コインの更新
+            coins.forEach((coin, index) => {
+                coin.x -= gameSpeed;
+                
+                if (coin.x + coin.size < 0) {
+                    coins.splice(index, 1);
+                }
+                
+                // コリジョン（円と矩形）
+                const closestX = Math.max(player.x, Math.min(coin.x + coin.size / 2, player.x + player.width));
+                const closestY = Math.max(player.y, Math.min(coin.y + coin.size / 2, player.y + player.height));
+                const distanceX = coin.x + coin.size / 2 - closestX;
+                const distanceY = coin.y + coin.size / 2 - closestY;
+                const distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+                
+                if (distance < coin.size / 2) {
+                    coins.splice(index, 1);
+                    gameState.score += 10;
+                    document.getElementById('score').textContent = gameState.score;
+                    createParticles(coin.x, coin.y, '#ffd700', 5);
+                }
+            });
+
+            // パーティクルの更新
+            particles.forEach((particle, index) => {
+                particle.x += particle.velocityX;
+                particle.y += particle.velocityY;
+                particle.alpha -= 0.02;
+                
+                if (particle.alpha <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+
+            // オブジェクトの生成
+            frameCount++;
+            if (frameCount % 100 === 0) {
+                spawnObstacle();
+            }
+            if (frameCount % 150 === 0) {
+                spawnCoin();
+            }
+            if (frameCount % 500 === 0) {
+                gameSpeed += 0.5; // 速度アップ
+            }
+
+            // 描画
+            drawParticles();
+            drawCoins();
+            drawObstacles();
+            drawPlayer();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // キーボードイベント
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && gameState.running && !gameState.paused) {
+                e.preventDefault();
+                switchGravity();
+            }
+        });
+
+        // タッチ/クリックイベント
+        canvas.addEventListener('click', () => {
+            if (gameState.running && !gameState.paused) {
+                switchGravity();
+            }
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameState.running && !gameState.paused) {
+                switchGravity();
+            }
+        });
+
+        // ボタンイベント
+        document.getElementById('startBtn').addEventListener('click', () => {
+            if (!gameState.running) {
+                resetGame();
+            }
+        });
+
+        document.getElementById('pauseBtn').addEventListener('click', () => {
+            if (gameState.running) {
+                gameState.paused = !gameState.paused;
+                document.getElementById('pauseBtn').textContent = gameState.paused ? '▶️ 再開' : '⏸️ 一時停止';
+            }
+        });
+
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            resetGame();
+        });
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                canvas.requestFullscreen();
+            }
+        });
+
+        // 初期化
+        document.getElementById('highScore').textContent = gameState.highScore;
+        gameLoop();
+    </script>
+</body>
+</html>

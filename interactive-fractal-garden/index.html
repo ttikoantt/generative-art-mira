@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Fractal Garden</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin: 20px 0;
+            text-align: center;
+            text-shadow: 0 0 20px rgba(138, 43, 226, 0.5);
+        }
+
+        #canvas {
+            border: 2px solid rgba(138, 43, 226, 0.3);
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(138, 43, 226, 0.3);
+            cursor: crosshair;
+        }
+
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            max-width: 90vw;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        label {
+            color: #b0b0ff;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        input[type="range"] {
+            width: 150px;
+            height: 6px;
+            border-radius: 3px;
+            background: linear-gradient(to right, #8a2be2, #4169e1);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(138, 43, 226, 0.8);
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #8a2be2, #4169e1);
+            color: #fff;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(138, 43, 226, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(138, 43, 226, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            color: #9090b0;
+            font-size: 0.85rem;
+            text-align: center;
+            margin-top: 15px;
+            padding: 0 20px;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5rem;
+                margin: 15px 0;
+            }
+
+            .controls {
+                gap: 10px;
+            }
+
+            input[type="range"] {
+                width: 120px;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🌿 Interactive Fractal Garden</h1>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>分岐角度: <span id="angleValue">25</span>°</label>
+            <input type="range" id="angle" min="10" max="45" value="25">
+        </div>
+
+        <div class="control-group">
+            <label>成長段階: <span id="depthValue">10</span></label>
+            <input type="range" id="depth" min="5" max="14" value="10">
+        </div>
+
+        <div class="control-group">
+            <label>枝の長さ: <span id="lengthValue">120</span></label>
+            <input type="range" id="length" min="80" max="160" value="120">
+        </div>
+
+        <button id="regenerate">🌱 新しい植物を生成</button>
+        <button id="fullscreen">📺 全画面</button>
+    </div>
+
+    <p class="info">🖱️ マウスを動かすと植物が反応します | スライダーでパラメータを調整</p>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // レスポンシブキャンバスサイズ
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 800);
+            const maxHeight = Math.min(window.innerHeight - 280, 600);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+            draw();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // パラメータ
+        let angle = 25;
+        let depth = 10;
+        let branchLength = 120;
+        let mouseX = 0;
+        let mouseY = 0;
+
+        // 色相を時刻で変化
+        function getHue() {
+            const hour = new Date().getHours();
+            return (hour * 15) % 360;
+        }
+
+        // 色相のグラデーション
+        function getColor(depth, maxDepth) {
+            const baseHue = getHue();
+            const hue = (baseHue + depth * 20) % 360;
+            const saturation = 70 + depth * 2;
+            const lightness = 60 + depth * 2;
+            return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+        }
+
+        // フラクタル木描画
+        function drawBranch(x, y, length, angle, currentDepth) {
+            if (currentDepth <= 0 || length < 2) return;
+
+            const endX = x + length * Math.cos(angle);
+            const endY = y - length * Math.sin(angle);
+
+            // 枝の描画
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(endX, endY);
+
+            const lineWidth = currentDepth * 0.8;
+            ctx.lineWidth = lineWidth;
+            ctx.strokeStyle = getColor(depth - currentDepth, depth);
+            ctx.lineCap = 'round';
+            ctx.shadowColor = getColor(depth - currentDepth, depth);
+            ctx.shadowBlur = currentDepth * 1.5;
+            ctx.stroke();
+
+            // 葉や花を描画（末端）
+            if (currentDepth <= 2) {
+                drawLeaf(endX, endY, currentDepth);
+            }
+
+            // マウス位置で分岐角度を微調整
+            const dx = (mouseX - canvas.width / 2) / canvas.width;
+            const dy = (mouseY - canvas.height) / canvas.height;
+
+            const angleRad = (angle + dx * 10) * Math.PI / 180;
+            const angleVariation = 1 + dy * 0.3;
+
+            // 左の枝
+            drawBranch(
+                endX,
+                endY,
+                length * 0.75 * angleVariation,
+                angle - angleRad,
+                currentDepth - 1
+            );
+
+            // 右の枝
+            drawBranch(
+                endX,
+                endY,
+                length * 0.75 * angleVariation,
+                angle + angleRad,
+                currentDepth - 1
+            );
+        }
+
+        // 葉や花の描画
+        function drawLeaf(x, y, size) {
+            ctx.beginPath();
+            const leafSize = size * 4;
+            ctx.arc(x, y, leafSize, 0, Math.PI * 2);
+            ctx.fillStyle = getColor(depth, depth);
+            ctx.shadowColor = getColor(depth, depth);
+            ctx.shadowBlur = 20;
+            ctx.globalAlpha = 0.6;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+
+        // メイン描画関数
+        function draw() {
+            // 背景クリア
+            ctx.fillStyle = '#0a0a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 星空効果
+            drawStars();
+
+            // 地面
+            const groundY = canvas.height - 30;
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, groundY, canvas.width, 30);
+
+            // 植物を描画
+            const startX = canvas.width / 2;
+            const startY = groundY;
+            drawBranch(startX, startY, branchLength, Math.PI / 2, depth);
+        }
+
+        // 星空を描画
+        function drawStars() {
+            const numStars = 50;
+            for (let i = 0; i < numStars; i++) {
+                const x = (i * 137.5) % canvas.width;
+                const y = (i * 73.3) % (canvas.height / 2);
+                const size = (Math.sin(Date.now() / 1000 + i) + 1) * 1.5;
+
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${0.3 + Math.random() * 0.4})`;
+                ctx.fill();
+            }
+        }
+
+        // マウスイベント
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+            requestAnimationFrame(draw);
+        });
+
+        // タッチイベント
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            mouseX = touch.clientX - rect.left;
+            mouseY = touch.clientY - rect.top;
+            requestAnimationFrame(draw);
+        }, { passive: false });
+
+        // スライダーイベント
+        document.getElementById('angle').addEventListener('input', (e) => {
+            angle = parseInt(e.target.value);
+            document.getElementById('angleValue').textContent = angle;
+            requestAnimationFrame(draw);
+        });
+
+        document.getElementById('depth').addEventListener('input', (e) => {
+            depth = parseInt(e.target.value);
+            document.getElementById('depthValue').textContent = depth;
+            requestAnimationFrame(draw);
+        });
+
+        document.getElementById('length').addEventListener('input', (e) => {
+            branchLength = parseInt(e.target.value);
+            document.getElementById('lengthValue').textContent = branchLength;
+            requestAnimationFrame(draw);
+        });
+
+        // 再生成ボタン
+        document.getElementById('regenerate').addEventListener('click', () => {
+            draw();
+        });
+
+        // 全画面ボタン
+        document.getElementById('fullscreen').addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                canvas.requestFullscreen();
+            }
+        });
+
+        // 初期化
+        resizeCanvas();
+
+        // アニメーションループ（星空の更新）
+        function animate() {
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        // アニメーション開始
+        animate();
+    </script>
+</body>
+</html>
