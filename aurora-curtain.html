@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>オーロラ・カーテン | Generative Art by Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            pointer-events: none;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+            }
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="aurora"></canvas>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    <div class="info">
+        🌌 オーロラ・カーテン<br>
+        マウス/タッチで操作
+    </div>
+
+    <script>
+        const canvas = document.getElementById('aurora');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // マウス/タッチ位置
+        let mouseX = width / 2;
+        let mouseY = height / 2;
+
+        // 複数の光のレイヤー
+        const layers = 5;
+        const particles = [];
+
+        // 色のパレット（オーロラカラー）
+        const colors = [
+            { r: 0, g: 255, b: 128 },   // グリーン
+            { r: 0, g: 200, b: 255 },   // シアン
+            { r: 128, g: 0, b: 255 },   // パープル
+            { r: 255, g: 0, b: 200 },   // ピンク
+            { r: 0, g: 150, b: 255 }    // ブルー
+        ];
+
+        // パーティクルクラス
+        class Particle {
+            constructor(layer) {
+                this.layer = layer;
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = height + Math.random() * 100;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = -Math.random() * 2 - 1;
+                this.radius = Math.random() * 3 + 2;
+                this.alpha = Math.random() * 0.5 + 0.3;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.life = Math.random() * 200 + 100;
+                this.waveOffset = Math.random() * Math.PI * 2;
+                this.waveSpeed = Math.random() * 0.02 + 0.01;
+                this.waveAmplitude = Math.random() * 30 + 20;
+            }
+
+            update(time) {
+                // 波の動き
+                this.waveOffset += this.waveSpeed;
+
+                // マウス/タッチの影響
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 200) {
+                    const force = (200 - dist) / 200;
+                    this.vx += dx * force * 0.01;
+                    this.vy += dy * force * 0.01;
+                }
+
+                // 波の動きを適用
+                this.x += this.vx + Math.sin(this.waveOffset) * 0.5;
+                this.y += this.vy + Math.cos(this.waveOffset) * 0.3;
+
+                // レイヤーごとの動きの違い
+                this.y -= this.layer * 0.5;
+
+                // 画面端でリセット
+                if (this.y < -50 || this.x < -50 || this.x > width + 50) {
+                    this.reset();
+                }
+
+                this.life--;
+                if (this.life <= 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius * 3
+                );
+                gradient.addColorStop(0, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${this.alpha})`);
+                gradient.addColorStop(0.5, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${this.alpha * 0.5})`);
+                gradient.addColorStop(1, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, 0)`);
+                ctx.fillStyle = gradient;
+                ctx.arc(this.x, this.y, this.radius * 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // パーティクルを生成
+        for (let layer = 0; layer < layers; layer++) {
+            for (let i = 0; i < 100; i++) {
+                particles.push(new Particle(layer));
+            }
+        }
+
+        // 時間
+        let time = 0;
+
+        // アニメーションループ
+        function animate() {
+            time++;
+
+            // 背景を薄くクリア
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // パーティクルを更新・描画
+            particles.forEach(p => {
+                p.update(time);
+                p.draw();
+            });
+
+            // ブレンドモードで美しい効果
+            ctx.globalCompositeOperation = 'lighter';
+
+            requestAnimationFrame(animate);
+        }
+
+        // マウスイベント
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // ウィンドウリサイズ
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // 開始
+        animate();
+    </script>
+</body>
+</html>

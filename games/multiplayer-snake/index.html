@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Multiplayer Snake | Games by Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 600px;
+            padding: 20px;
+        }
+
+        .scores {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+            color: white;
+            font-size: 24px;
+        }
+
+        .score {
+            padding: 10px 30px;
+            border-radius: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 2px solid;
+        }
+
+        .score.p1 {
+            border-color: #00ff88;
+            color: #00ff88;
+        }
+
+        .score.p2 {
+            border-color: #ff00ff;
+            color: #ff00ff;
+        }
+
+        canvas {
+            background: #1a1a2e;
+            border: 3px solid #333;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
+            max-width: 100%;
+            touch-action: none;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .mode-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .mode-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .mode-btn.active {
+            background: rgba(0, 255, 136, 0.3);
+            border-color: #00ff88;
+        }
+
+        .info {
+            margin-top: 15px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .scores {
+                font-size: 18px;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .mode-btn {
+                padding: 10px 16px;
+                font-size: 14px;
+            }
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    
+    <div class="container">
+        <div class="scores">
+            <div class="score p1">
+                <span>🐍 P1: </span><span id="score1">0</span>
+            </div>
+            <div class="score p2">
+                <span>🐍 P2: </span><span id="score2">0</span>
+            </div>
+        </div>
+
+        <canvas id="game"></canvas>
+
+        <div class="controls">
+            <button class="mode-btn active" onclick="setMode('co-op')">協力モード</button>
+            <button class="mode-btn" onclick="setMode('versus')">対戦モード</button>
+            <button class="mode-btn" onclick="resetGame()">リセット</button>
+        </div>
+
+        <div class="info">
+            P1: 矢印キー | P2: WASD<br>
+            モバイル: 左側でP1、右側でP2をスワイプ
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        // キャンバスサイズ
+        const gridSize = 20;
+        const canvasSize = 400;
+        canvas.width = canvasSize;
+        canvas.height = canvasSize;
+
+        const cellSize = canvasSize / gridSize;
+
+        // ゲームモード
+        let gameMode = 'co-op';
+
+        // スネークのクラス
+        class Snake {
+            constructor(color, startX, startY, startDir) {
+                this.color = color;
+                this.reset(startX, startY, startDir);
+            }
+
+            reset(startX, startY, startDir) {
+                this.body = [
+                    { x: startX, y: startY },
+                    { x: startX - startDir.x, y: startY - startDir.y },
+                    { x: startX - startDir.x * 2, y: startY - startDir.y * 2 }
+                ];
+                this.dir = startDir;
+                this.nextDir = startDir;
+                this.score = 0;
+                this.alive = true;
+            }
+
+            update() {
+                if (!this.alive) return;
+
+                this.dir = this.nextDir;
+                const head = this.body[0];
+                const newHead = {
+                    x: head.x + this.dir.x,
+                    y: head.y + this.dir.y
+                };
+
+                // 壁との衝突
+                if (newHead.x < 0 || newHead.x >= gridSize ||
+                    newHead.y < 0 || newHead.y >= gridSize) {
+                    this.alive = false;
+                    return;
+                }
+
+                // 自分との衝突
+                for (let segment of this.body) {
+                    if (newHead.x === segment.x && newHead.y === segment.y) {
+                        this.alive = false;
+                        return;
+                    }
+                }
+
+                this.body.unshift(newHead);
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 10;
+
+                this.body.forEach((segment, index) => {
+                    const alpha = 1 - (index / this.body.length) * 0.5;
+                    ctx.fillStyle = index === 0 ? this.color :
+                        `rgba(${this.color === '#00ff88' ? '0, 255, 136' : '255, 0, 255'}, ${alpha})`;
+                    ctx.fillRect(
+                        segment.x * cellSize + 1,
+                        segment.y * cellSize + 1,
+                        cellSize - 2,
+                        cellSize - 2
+                    );
+                });
+
+                ctx.shadowBlur = 0;
+            }
+
+            setDir(x, y) {
+                if (!this.alive) return;
+                if (this.dir.x + x === 0 && this.dir.y + y === 0) return;
+                this.nextDir = { x, y };
+            }
+        }
+
+        // スネークを作成
+        const snake1 = new Snake('#00ff88', 5, 10, { x: 1, y: 0 });
+        const snake2 = new Snake('#ff00ff', 15, 10, { x: -1, y: 0 });
+
+        // 餌
+        let foods = [];
+
+        // 餌を生成
+        function spawnFood() {
+            let pos;
+            do {
+                pos = {
+                    x: Math.floor(Math.random() * gridSize),
+                    y: Math.floor(Math.random() * gridSize)
+                };
+            } while (isOccupied(pos));
+            foods.push(pos);
+        }
+
+        function isOccupied(pos) {
+            // スネーク1の体
+            for (let segment of snake1.body) {
+                if (segment.x === pos.x && segment.y === pos.y) return true;
+            }
+            // スネーク2の体
+            for (let segment of snake2.body) {
+                if (segment.x === pos.x && segment.y === pos.y) return true;
+            }
+            // 既存の餌
+            for (let food of foods) {
+                if (food.x === pos.x && food.y === pos.y) return true;
+            }
+            return false;
+        }
+
+        // 初期餌
+        for (let i = 0; i < 3; i++) {
+            spawnFood();
+        }
+
+        // 衝突判定
+        function checkCollisions() {
+            // スネーク同士の衝突
+            if (gameMode === 'versus') {
+                // P1がP2にぶつかる
+                for (let segment of snake2.body) {
+                    if (snake1.body[0].x === segment.x && snake1.body[0].y === segment.y) {
+                        snake1.alive = false;
+                        snake2.score += 5;
+                    }
+                }
+                // P2がP1にぶつかる
+                for (let segment of snake1.body) {
+                    if (snake2.body[0].x === segment.x && snake2.body[0].y === segment.y) {
+                        snake2.alive = false;
+                        snake1.score += 5;
+                    }
+                }
+            }
+
+            // 餌との衝突
+            foods = foods.filter(food => {
+                let eaten = false;
+
+                // P1
+                if (snake1.alive && snake1.body[0].x === food.x && snake1.body[0].y === food.y) {
+                    snake1.score++;
+                    eaten = true;
+                }
+                // P2
+                else if (snake2.alive && snake2.body[0].x === food.x && snake2.body[0].y === food.y) {
+                    snake2.score++;
+                    eaten = true;
+                }
+
+                if (eaten) {
+                    // 餌を追加
+                    if (gameMode === 'co-op') {
+                        spawnFood();
+                        spawnFood();
+                    } else {
+                        spawnFood();
+                    }
+                }
+
+                return !eaten;
+            });
+        }
+
+        // 描画
+        function draw() {
+            // クリア
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 餌を描画
+            foods.forEach(food => {
+                ctx.fillStyle = '#ffff00';
+                ctx.shadowColor = '#ffff00';
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(
+                    food.x * cellSize + cellSize / 2,
+                    food.y * cellSize + cellSize / 2,
+                    cellSize / 3,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+            });
+
+            ctx.shadowBlur = 0;
+
+            // スネークを描画
+            snake1.draw();
+            snake2.draw();
+
+            // ゲームオーバー
+            if (!snake1.alive && !snake2.alive) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 30px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Game Over!', canvas.width / 2, canvas.height / 2);
+                ctx.font = '20px Arial';
+                const winner = snake1.score > snake2.score ? 'P1 Wins!' :
+                               snake2.score > snake1.score ? 'P2 Wins!' : 'Draw!';
+                ctx.fillText(winner, canvas.width / 2, canvas.height / 2 + 30);
+            }
+        }
+
+        // スコア更新
+        function updateScores() {
+            document.getElementById('score1').textContent = snake1.score;
+            document.getElementById('score2').textContent = snake2.score;
+        }
+
+        // ゲームループ
+        let lastUpdate = 0;
+        const gameSpeed = 150;
+
+        function gameLoop(timestamp) {
+            if (timestamp - lastUpdate > gameSpeed) {
+                snake1.update();
+                snake2.update();
+                checkCollisions();
+                updateScores();
+                lastUpdate = timestamp;
+            }
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // キー入力
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowUp':
+                    e.preventDefault();
+                    snake1.setDir(0, -1);
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    snake1.setDir(0, 1);
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    snake1.setDir(-1, 0);
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    snake1.setDir(1, 0);
+                    break;
+                case 'w':
+                case 'W':
+                    snake2.setDir(0, -1);
+                    break;
+                case 's':
+                case 'S':
+                    snake2.setDir(0, 1);
+                    break;
+                case 'a':
+                case 'A':
+                    snake2.setDir(-1, 0);
+                    break;
+                case 'd':
+                case 'D':
+                    snake2.setDir(1, 0);
+                    break;
+            }
+        });
+
+        // タッチ入力
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchPlayer = null;
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+
+            touchStartX = x;
+            touchStartY = y;
+            touchPlayer = x < rect.width / 2 ? 1 : 2;
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+
+            if (touchPlayer) {
+                const dx = x - touchStartX;
+                const dy = y - touchStartY;
+
+                if (Math.abs(dx) > 30 || Math.abs(dy) > 30) {
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        if (dx > 0) {
+                            touchPlayer === 1 ? snake1.setDir(1, 0) : snake2.setDir(1, 0);
+                        } else {
+                            touchPlayer === 1 ? snake1.setDir(-1, 0) : snake2.setDir(-1, 0);
+                        }
+                    } else {
+                        if (dy > 0) {
+                            touchPlayer === 1 ? snake1.setDir(0, 1) : snake2.setDir(0, 1);
+                        } else {
+                            touchPlayer === 1 ? snake1.setDir(0, -1) : snake2.setDir(0, -1);
+                        }
+                    }
+                    touchStartX = x;
+                    touchStartY = y;
+                }
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            touchPlayer = null;
+        });
+
+        // モード切り替え
+        function setMode(mode) {
+            gameMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            resetGame();
+        }
+
+        // リセット
+        function resetGame() {
+            snake1.reset(5, 10, { x: 1, y: 0 });
+            snake2.reset(15, 10, { x: -1, y: 0 });
+            foods = [];
+            for (let i = 0; i < 3; i++) {
+                spawnFood();
+            }
+            updateScores();
+        }
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 開始
+        gameLoop(0);
+    </script>
+</body>
+</html>
