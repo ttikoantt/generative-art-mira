@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Fractal Tree - フラクタルツリー</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+            color: #fff;
+        }
+
+        canvas {
+            display: block;
+            cursor: pointer;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            max-width: 280px;
+        }
+
+        .controls h1 {
+            font-size: 1.2rem;
+            margin-bottom: 12px;
+            color: #4ecdc4;
+            text-shadow: 0 0 10px rgba(78, 205, 196, 0.5);
+        }
+
+        .control-group {
+            margin-bottom: 12px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 0.85rem;
+            margin-bottom: 5px;
+            color: #aaa;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #4ecdc4;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(78, 205, 196, 0.5);
+        }
+
+        .buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 8px 14px;
+            background: rgba(78, 205, 196, 0.2);
+            border: 1px solid rgba(78, 205, 196, 0.4);
+            border-radius: 8px;
+            color: #4ecdc4;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: rgba(78, 205, 196, 0.3);
+            box-shadow: 0 0 15px rgba(78, 205, 196, 0.3);
+        }
+
+        .btn.active {
+            background: rgba(78, 205, 196, 0.4);
+            box-shadow: 0 0 20px rgba(78, 205, 196, 0.5);
+        }
+
+        .fullscreen {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 16px;
+            background: rgba(78, 205, 196, 0.2);
+            border: 1px solid rgba(78, 205, 196, 0.4);
+            border-radius: 8px;
+            color: #4ecdc4;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .fullscreen:hover {
+            background: rgba(78, 205, 196, 0.3);
+            box-shadow: 0 0 15px rgba(78, 205, 196, 0.3);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <h1>🌳 Fractal Tree</h1>
+        
+        <div class="control-group">
+            <label>分岐角度: <span id="angleValue">25°</span></label>
+            <input type="range" id="angle" min="5" max="45" value="25">
+        </div>
+
+        <div class="control-group">
+            <label>再帰回数: <span id="depthValue">10</span></label>
+            <input type="range" id="depth" min="5" max="12" value="10">
+        </div>
+
+        <div class="control-group">
+            <label>枝の長さ: <span id="lengthValue">120</span></label>
+            <input type="range" id="length" min="80" max="150" value="120">
+        </div>
+
+        <div class="control-group">
+            <label>季節</label>
+            <div class="buttons">
+                <button class="btn active" data-season="spring">春</button>
+                <button class="btn" data-season="summer">夏</button>
+                <button class="btn" data-season="autumn">秋</button>
+                <button class="btn" data-season="winter">冬</button>
+            </div>
+        </div>
+    </div>
+
+    <button class="fullscreen" id="fullscreen">全画面</button>
+
+    <div class="info">クリックで新しい木を生成</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let angle = 25;
+        let depth = 10;
+        let branchLength = 120;
+        let season = 'spring';
+        let animationFrame;
+        let growth = 0;
+
+        // 季節のカラーパレット
+        const seasons = {
+            spring: {
+                trunk: '#8B4513',
+                leaf: ['#FFB7C5', '#FF69B4', '#FFC0CB', '#FF1493'],
+                leafCount: 0.6
+            },
+            summer: {
+                trunk: '#8B4513',
+                leaf: ['#228B22', '#32CD32', '#006400', '#90EE90'],
+                leafCount: 0.8
+            },
+            autumn: {
+                trunk: '#8B4513',
+                leaf: ['#FF4500', '#FF6347', '#FFD700', '#FF8C00'],
+                leafCount: 0.7
+            },
+            winter: {
+                trunk: '#654321',
+                leaf: ['#FFFFFF', '#F0F0F0', '#E0E0E0', '#D0D0D0'],
+                leafCount: 0.3
+            }
+        };
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function drawBranch(x, y, len, angle, currentDepth) {
+            if (currentDepth === 0) {
+                // 葉を描く（最後の枝）
+                const palette = seasons[season];
+                if (Math.random() < palette.leafCount) {
+                    ctx.beginPath();
+                    const leafSize = 3 + Math.random() * 4;
+                    ctx.arc(x, y, leafSize, 0, Math.PI * 2);
+                    ctx.fillStyle = palette.leaf[Math.floor(Math.random() * palette.leaf.length)];
+                    ctx.fill();
+                }
+                return;
+            }
+
+            const endX = x + len * Math.cos(angle * Math.PI / 180);
+            const endY = y - len * Math.sin(angle * Math.PI / 180);
+
+            // 枝を描く
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(endX, endY);
+            const lineWidth = currentDepth * 1.2;
+            ctx.lineWidth = lineWidth;
+            ctx.strokeStyle = seasons[season].trunk;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            // 成長アニメーション
+            const growthFactor = Math.min(growth / 20, 1);
+            const newLen = len * 0.75 * growthFactor;
+
+            // 再帰的に枝を描く
+            setTimeout(() => {
+                if (growth > currentDepth * 2) {
+                    drawBranch(endX, endY, newLen, angle - angle, currentDepth - 1);
+                    drawBranch(endX, endY, newLen, angle + angle, currentDepth - 1);
+                }
+            }, 16);
+        }
+
+        function draw() {
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, width, height);
+
+            growth = 0;
+            const startX = width / 2;
+            const startY = height - 50;
+            
+            // 成長アニメーション
+            const animate = () => {
+                growth++;
+                ctx.fillStyle = '#0a0a0a';
+                ctx.fillRect(0, 0, width, height);
+                drawBranch(startX, startY, branchLength, 90, depth);
+                
+                if (growth < depth * 2 + 10) {
+                    animationFrame = requestAnimationFrame(animate);
+                }
+            };
+            animate();
+        }
+
+        function generateNewTree() {
+            if (animationFrame) {
+                cancelAnimationFrame(animationFrame);
+            }
+            draw();
+        }
+
+        // イベントリスナー
+        document.getElementById('angle').addEventListener('input', (e) => {
+            angle = parseInt(e.target.value);
+            document.getElementById('angleValue').textContent = angle + '°';
+            generateNewTree();
+        });
+
+        document.getElementById('depth').addEventListener('input', (e) => {
+            depth = parseInt(e.target.value);
+            document.getElementById('depthValue').textContent = depth;
+            generateNewTree();
+        });
+
+        document.getElementById('length').addEventListener('input', (e) => {
+            branchLength = parseInt(e.target.value);
+            document.getElementById('lengthValue').textContent = branchLength;
+            generateNewTree();
+        });
+
+        document.querySelectorAll('[data-season]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('[data-season]').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                season = e.target.dataset.season;
+                generateNewTree();
+            });
+        });
+
+        canvas.addEventListener('click', generateNewTree);
+
+        document.getElementById('fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        window.addEventListener('resize', generateNewTree);
+
+        // 初期化
+        resize();
+        generateNewTree();
+    </script>
+</body>
+</html>
