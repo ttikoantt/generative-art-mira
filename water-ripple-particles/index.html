@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Water Ripple Particles | Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px 25px;
+            border-radius: 25px;
+            color: white;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .info h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .info p {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 768px) {
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 15px;
+                font-size: 12px;
+            }
+
+            .info {
+                bottom: 10px;
+                padding: 12px 20px;
+            }
+
+            .info h1 {
+                font-size: 18px;
+            }
+
+            .info p {
+                font-size: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="info">
+        <h1>Water Ripple Particles</h1>
+        <p>クリックまたはタップで波紋を作成 | Click or tap to create ripples</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let ripples = [];
+        let mouse = { x: 0, y: 0 };
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor(x, y, ripple) {
+                this.x = x;
+                this.y = y;
+                this.originX = x;
+                this.originY = y;
+                this.ripple = ripple;
+                this.angle = Math.atan2(y - ripple.y, x - ripple.x);
+                this.distance = Math.sqrt((x - ripple.x) ** 2 + (y - ripple.y) ** 2);
+                this.amplitude = 0;
+                this.phase = 0;
+                this.decay = 0.995;
+            }
+
+            update() {
+                // 波紋の進行
+                const rippleDistance = this.ripple.radius;
+                const diff = this.distance - rippleDistance;
+
+                if (Math.abs(diff) < 100) {
+                    this.amplitude = this.ripple.strength * (1 - Math.abs(diff) / 100) * 0.5;
+                }
+
+                this.amplitude *= this.decay;
+                this.phase += 0.1;
+
+                const offset = Math.sin(this.phase - this.distance * 0.02) * this.amplitude;
+                this.x = this.originX + Math.cos(this.angle) * offset;
+                this.y = this.originY + Math.sin(this.angle) * offset;
+            }
+
+            draw() {
+                const brightness = 50 + this.amplitude * 200;
+                const size = 2 + this.amplitude * 3;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${200 + this.amplitude * 60}, 80%, ${brightness}%, ${0.3 + this.amplitude})`;
+                ctx.fill();
+            }
+        }
+
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.strength = 1;
+                this.maxRadius = Math.max(width, height) * 0.6;
+                this.speed = 5;
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.strength = 1 - this.radius / this.maxRadius;
+            }
+
+            isDead() {
+                return this.radius > this.maxRadius;
+            }
+        }
+
+        function init() {
+            particles = [];
+
+            const spacing = 20;
+            for (let x = 0; x < width; x += spacing) {
+                for (let y = 0; y < height; y += spacing) {
+                    particles.push({
+                        x: x,
+                        y: y,
+                        originX: x,
+                        originY: y,
+                        angle: 0,
+                        amplitude: 0,
+                        phase: Math.random() * Math.PI * 2
+                    });
+                }
+            }
+        }
+
+        function createRipple(x, y) {
+            ripples.push(new Ripple(x, y));
+
+            // パーティクルに影響を与える
+            particles.forEach(p => {
+                const dx = p.x - x;
+                const dy = p.y - y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 200) {
+                    p.angle = Math.atan2(dy, dx);
+                    p.amplitude = (1 - dist / 200) * 20;
+                }
+            });
+
+            // 古い波紋を削除
+            if (ripples.length > 5) {
+                ripples.shift();
+            }
+        }
+
+        function animate() {
+            // 淡い残像効果
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 波紋を更新
+            ripples = ripples.filter(r => !r.isDead());
+            ripples.forEach(r => r.update());
+
+            // パーティクルを更新・描画
+            particles.forEach(p => {
+                p.amplitude *= 0.98;
+                p.phase += 0.05;
+
+                // 複数の波紋の影響を計算
+                let totalOffset = 0;
+                ripples.forEach(r => {
+                    const dx = p.originX - r.x;
+                    const dy = p.originY - r.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const diff = dist - r.radius;
+
+                    if (Math.abs(diff) < 100) {
+                        totalOffset += Math.sin(dist * 0.05 - r.radius * 0.05) *
+                                      r.strength *
+                                      (1 - Math.abs(diff) / 100) * 15;
+                    }
+                });
+
+                p.x = p.originX;
+                p.y = p.originY + totalOffset;
+
+                const brightness = 50 + Math.abs(totalOffset) * 10;
+                const hue = 200 + Math.sin(totalOffset * 0.1) * 40;
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 1.5 + Math.abs(totalOffset) * 0.1, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${hue}, 70%, ${brightness}%, ${0.4 + Math.abs(totalOffset) * 0.05})`;
+                ctx.fill();
+            });
+
+            // 波紋の描画
+            ripples.forEach(r => {
+                ctx.beginPath();
+                ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(0, 212, 255, ${r.strength * 0.3})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', () => {
+            resize();
+            init();
+        });
+
+        canvas.addEventListener('click', (e) => {
+            createRipple(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            createRipple(touch.clientX, touch.clientY);
+        });
+
+        // 自動的に波紋を作成
+        setInterval(() => {
+            if (Math.random() < 0.3) {
+                createRipple(
+                    Math.random() * width,
+                    Math.random() * height
+                );
+            }
+        }, 3000);
+
+        // 初期化
+        resize();
+        init();
+        animate();
+    </script>
+</body>
+</html>
