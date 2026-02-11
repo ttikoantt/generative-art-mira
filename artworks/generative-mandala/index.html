@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generative Mandala - 幾何学的マンダラ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+        }
+        
+        h1 {
+            color: #fff;
+            font-size: 1.5rem;
+            text-shadow: 0 0 20px rgba(255, 100, 200, 0.8);
+            letter-spacing: 3px;
+        }
+        
+        canvas {
+            border-radius: 50%;
+            box-shadow: 
+                0 0 50px rgba(255, 100, 200, 0.4),
+                0 0 100px rgba(100, 200, 255, 0.3),
+                inset 0 0 50px rgba(255, 255, 255, 0.1);
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            max-width: 600px;
+        }
+        
+        button {
+            background: linear-gradient(135deg, rgba(255, 100, 200, 0.3), rgba(100, 200, 255, 0.3));
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+        
+        button:hover {
+            background: linear-gradient(135deg, rgba(255, 100, 200, 0.5), rgba(100, 200, 255, 0.5));
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 100, 200, 0.5);
+        }
+        
+        button.active {
+            background: linear-gradient(135deg, rgba(255, 100, 200, 0.7), rgba(100, 200, 255, 0.7));
+            box-shadow: 0 0 30px rgba(255, 100, 200, 0.8);
+        }
+        
+        .info {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.8rem;
+            text-align: center;
+            margin-top: 10px;
+        }
+        
+        .fullscreen-btn {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ 全画面</button>
+    
+    <div class="container">
+        <h1>✨ Generative Mandala ✨</h1>
+        <canvas id="mandala" width="500" height="500"></canvas>
+        
+        <div class="controls">
+            <button onclick="changePattern()">🎨 新しいパターン</button>
+            <button onclick="changePalette()">🌈 カラーパレット</button>
+            <button onclick="toggleAnimation()" id="animBtn">⏸ 一時停止</button>
+            <button onclick="toggleSymmetry()">🔄 対称性変更</button>
+            <button onclick="changeSpeed()">⚡ 速度調整</button>
+        </div>
+        
+        <div class="info">
+            クリックで新しいマンダラを生成 | マウスドラッグで回転
+        </div>
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('mandala');
+        const ctx = canvas.getContext('2d');
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const maxRadius = Math.min(centerX, centerY) - 20;
+        
+        let time = 0;
+        let isAnimating = true;
+        let symmetry = 8;
+        let speed = 0.01;
+        let paletteIndex = 0;
+        let patternSeed = Math.random() * 1000;
+        let isDragging = false;
+        let dragAngle = 0;
+        let manualRotation = 0;
+        
+        const palettes = [
+            // Cosmic
+            ['#ff6b9d', '#c44cff', '#6b5bff', '#00d4ff', '#00ffcc', '#ffcc00'],
+            // Fire
+            ['#ff0000', '#ff4400', '#ff8800', '#ffcc00', '#ffff00', '#ff6600'],
+            // Ocean
+            ['#003366', '#0066cc', '#0099ff', '#00ccff', '#66ffff', '#00ffcc'],
+            // Forest
+            ['#003300', '#006633', '#009966', '#00cc66', '#33ff66', '#ccff00'],
+            // Aurora
+            ['#00ff88', '#00ffcc', '#00ccff', '#6666ff', '#cc66ff', '#ff66cc'],
+            // Neon
+            ['#ff00ff', '#ff00aa', '#aa00ff', '#6600ff', '#0066ff', '#00ffff']
+        ];
+        
+        // Perlin noise approximation
+        function noise(x, y, seed) {
+            const n = Math.sin(x * 12.9898 + y * 78.233 + seed) * 43758.5453;
+            return n - Math.floor(n);
+        }
+        
+        function getColor(index, total) {
+            const palette = palettes[paletteIndex];
+            const i = Math.floor(index * palette.length / total);
+            return palette[i % palette.length];
+        }
+        
+        function drawPetal(cx, cy, angle, radius, width, color, alpha) {
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(angle);
+            
+            const gradient = ctx.createLinearGradient(0, 0, radius, 0);
+            gradient.addColorStop(0, 'transparent');
+            gradient.addColorStop(0.3, color + Math.floor(alpha * 255).toString(16).padStart(2, '0'));
+            gradient.addColorStop(0.7, color + Math.floor(alpha * 255).toString(16).padStart(2, '0'));
+            gradient.addColorStop(1, 'transparent');
+            
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(
+                radius * 0.3, -width,
+                radius, 0
+            );
+            ctx.quadraticCurveTo(
+                radius * 0.3, width,
+                0, 0
+            );
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            ctx.restore();
+        }
+        
+        function drawLayer(layerIndex, totalLayers) {
+            const layerRadius = maxRadius * (layerIndex + 1) / totalLayers;
+            const innerRadius = maxRadius * layerIndex / totalLayers;
+            const numPetals = symmetry * (layerIndex + 1);
+            
+            for (let i = 0; i < numPetals; i++) {
+                const angle = (i / numPetals) * Math.PI * 2;
+                const timeOffset = noise(layerIndex, i, patternSeed) * Math.PI * 2;
+                const animatedAngle = angle + time + timeOffset + manualRotation;
+                
+                const pulseRadius = layerRadius * (0.8 + 0.2 * Math.sin(time * 2 + layerIndex + i * 0.1));
+                const width = (layerRadius - innerRadius) * 0.4 * (0.5 + 0.5 * Math.cos(time + i + layerIndex));
+                
+                const colorIndex = (i + layerIndex * symmetry) % 16;
+                const color = getColor(colorIndex, 16);
+                const alpha = 0.3 + 0.4 * Math.sin(time * 0.5 + layerIndex * 0.3);
+                
+                drawPetal(
+                    centerX,
+                    centerY,
+                    animatedAngle,
+                    pulseRadius - innerRadius,
+                    width,
+                    color,
+                    alpha
+                );
+            }
+            
+            // Draw circles at layer boundaries
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, layerRadius * 0.95, 0, Math.PI * 2);
+            const circleColor = getColor(layerIndex, totalLayers);
+            ctx.strokeStyle = circleColor + '40';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+        
+        function drawCenter() {
+            // Glowing center
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, maxRadius * 0.15
+            );
+            gradient.addColorStop(0, '#ffffff');
+            gradient.addColorStop(0.3, getColor(0, 6));
+            gradient.addColorStop(1, 'transparent');
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, maxRadius * 0.15, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            // Rotating inner pattern
+            for (let i = 0; i < 6; i++) {
+                const angle = (i / 6) * Math.PI * 2 + time * 2;
+                const x = centerX + Math.cos(angle) * maxRadius * 0.05;
+                const y = centerY + Math.sin(angle) * maxRadius * 0.05;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = getColor(i, 6);
+                ctx.fill();
+            }
+        }
+        
+        function drawMandala() {
+            // Clear with fade effect
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw layers from outside to inside
+            for (let i = 3; i >= 0; i--) {
+                drawLayer(i, 4);
+            }
+            
+            drawCenter();
+        }
+        
+        function clearCanvas() {
+            ctx.fillStyle = 'rgba(10, 10, 26, 1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        function animate() {
+            if (isAnimating) {
+                time += speed;
+            }
+            drawMandala();
+            requestAnimationFrame(animate);
+        }
+        
+        function changePattern() {
+            patternSeed = Math.random() * 1000;
+            clearCanvas();
+        }
+        
+        function changePalette() {
+            paletteIndex = (paletteIndex + 1) % palettes.length;
+        }
+        
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+            const btn = document.getElementById('animBtn');
+            btn.textContent = isAnimating ? '⏸ 一時停止' : '▶ 再生';
+            btn.classList.toggle('active', !isAnimating);
+        }
+        
+        function toggleSymmetry() {
+            symmetry = symmetry === 8 ? 12 : symmetry === 12 ? 6 : 8;
+            clearCanvas();
+        }
+        
+        function changeSpeed() {
+            if (speed === 0.01) speed = 0.02;
+            else if (speed === 0.02) speed = 0.005;
+            else speed = 0.01;
+        }
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // Mouse interaction
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left - centerX;
+            const y = e.clientY - rect.top - centerY;
+            dragAngle = Math.atan2(y, x);
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left - centerX;
+                const y = e.clientY - rect.top - centerY;
+                const newAngle = Math.atan2(y, x);
+                manualRotation += newAngle - dragAngle;
+                dragAngle = newAngle;
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+        
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left - centerX;
+            const y = touch.clientY - rect.top - centerY;
+            dragAngle = Math.atan2(y, x);
+            isDragging = true;
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isDragging) {
+                const touch = e.touches[0];
+                const rect = canvas.getBoundingClientRect();
+                const x = touch.clientX - rect.left - centerX;
+                const y = touch.clientY - rect.top - centerY;
+                const newAngle = Math.atan2(y, x);
+                manualRotation += newAngle - dragAngle;
+                dragAngle = newAngle;
+            }
+        });
+        
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+        
+        // Click to generate new pattern
+        canvas.addEventListener('dblclick', changePattern);
+        
+        // Initialize
+        clearCanvas();
+        animate();
+    </script>
+</body>
+</html>
