@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wave Interference Pattern - 音波の干渉パターン</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px 25px;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.7);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        input[type="range"] {
+            width: 120px;
+            height: 4px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #0ff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px #0ff;
+        }
+
+        button {
+            background: linear-gradient(135deg, #0ff, #08f);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            color: #000;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #0ff;
+            padding: 10px 15px;
+            border-radius: 10px;
+            cursor: pointer;
+            z-index: 100;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.2);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+        }
+
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .info {
+            position: fixed;
+            top: 50px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 11px;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                bottom: 10px;
+                padding: 10px 15px;
+                gap: 15px;
+            }
+
+            input[type="range"] {
+                width: 100px;
+            }
+
+            .title {
+                font-size: 11px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="title">Wave Interference Pattern</div>
+    <div class="info">音源をドラッグして移動</div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>波の数: <span id="sourceCountValue">3</span></label>
+            <input type="range" id="sourceCount" min="2" max="5" value="3">
+        </div>
+
+        <div class="control-group">
+            <label>周波数: <span id="frequencyValue">5</span></label>
+            <input type="range" id="frequency" min="1" max="10" value="5">
+        </div>
+
+        <div class="control-group">
+            <label>減衰: <span id="decayValue">0.5</span></label>
+            <input type="range" id="decay" min="0.1" max="1" step="0.1" value="0.5">
+        </div>
+
+        <div class="control-group">
+            <label>カラー</label>
+            <input type="range" id="colorShift" min="0" max="360" value="180">
+        </div>
+
+        <button onclick="resetSources()">リセット</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let sources = [];
+        let time = 0;
+        let draggingSource = null;
+
+        // パラメータ
+        let params = {
+            sourceCount: 3,
+            frequency: 5,
+            decay: 0.5,
+            colorShift: 180
+        };
+
+        // リサイズ処理
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            if (sources.length === 0) {
+                resetSources();
+            }
+        }
+
+        // 音源をリセット
+        function resetSources() {
+            sources = [];
+            const count = params.sourceCount;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const radius = Math.min(width, height) * 0.25;
+
+            for (let i = 0; i < count; i++) {
+                const angle = (2 * Math.PI * i) / count;
+                sources.push({
+                    x: centerX + Math.cos(angle) * radius,
+                    y: centerY + Math.sin(angle) * radius,
+                    phase: Math.random() * Math.PI * 2
+                });
+            }
+        }
+
+        // 干渉パターンを計算
+        function calculateInterference(x, y) {
+            let totalAmplitude = 0;
+
+            for (const source of sources) {
+                const dx = x - source.x;
+                const dy = y - source.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                // 波の振幅を計算（距離に応じて減衰）
+                const wave = Math.sin(distance * params.frequency * 0.02 - time * 3 + source.phase);
+                const attenuation = Math.pow(distance + 1, -params.decay);
+                totalAmplitude += wave * attenuation;
+            }
+
+            return totalAmplitude;
+        }
+
+        // 色を取得
+        function getColor(amplitude) {
+            // 振幅を -2～2 の範囲から 0～1 に正規化
+            const normalized = (amplitude + 2) / 4;
+            const clamped = Math.max(0, Math.min(1, normalized));
+
+            // カラーパレット: シアン～マゼンタ～イエロー
+            const hue = (params.colorShift + clamped * 120) % 360;
+            const saturation = 80 + clamped * 20;
+            const lightness = 30 + clamped * 50;
+
+            return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+        }
+
+        // 描画
+        function draw() {
+            // 低解像度で計算（パフォーマンスのため）
+            const resolution = 4;
+            const cols = Math.ceil(width / resolution);
+            const rows = Math.ceil(height / resolution);
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const screenX = x * resolution;
+                    const screenY = y * resolution;
+
+                    const amplitude = calculateInterference(screenX, screenY);
+                    ctx.fillStyle = getColor(amplitude);
+                    ctx.fillRect(screenX, screenY, resolution, resolution);
+                }
+            }
+
+            // 音源を描画
+            for (const source of sources) {
+                // グロー効果
+                const gradient = ctx.createRadialGradient(
+                    source.x, source.y, 0,
+                    source.x, source.y, 30
+                );
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+                gradient.addColorStop(0.3, 'rgba(0, 255, 255, 0.8)');
+                gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(source.x, source.y, 30, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 中心
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(source.x, source.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // アニメーションループ
+        function animate() {
+            time += 0.016;
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // 近くの音源を探す
+            for (const source of sources) {
+                const dx = x - source.x;
+                const dy = y - source.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < 30) {
+                    draggingSource = source;
+                    break;
+                }
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (draggingSource) {
+                const rect = canvas.getBoundingClientRect();
+                draggingSource.x = e.clientX - rect.left;
+                draggingSource.y = e.clientY - rect.top;
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            draggingSource = null;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            draggingSource = null;
+        });
+
+        // タッチイベント
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+
+            for (const source of sources) {
+                const dx = x - source.x;
+                const dy = y - source.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < 50) {
+                    draggingSource = source;
+                    break;
+                }
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (draggingSource) {
+                const touch = e.touches[0];
+                const rect = canvas.getBoundingClientRect();
+                draggingSource.x = touch.clientX - rect.left;
+                draggingSource.y = touch.clientY - rect.top;
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            draggingSource = null;
+        });
+
+        // パラメータコントロール
+        document.getElementById('sourceCount').addEventListener('input', (e) => {
+            params.sourceCount = parseInt(e.target.value);
+            document.getElementById('sourceCountValue').textContent = params.sourceCount;
+            resetSources();
+        });
+
+        document.getElementById('frequency').addEventListener('input', (e) => {
+            params.frequency = parseInt(e.target.value);
+            document.getElementById('frequencyValue').textContent = params.frequency;
+        });
+
+        document.getElementById('decay').addEventListener('input', (e) => {
+            params.decay = parseFloat(e.target.value);
+            document.getElementById('decayValue').textContent = params.decay;
+        });
+
+        document.getElementById('colorShift').addEventListener('input', (e) => {
+            params.colorShift = parseInt(e.target.value);
+        });
+
+        // 全画面トグル
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        window.addEventListener('resize', resize);
+        resize();
+        animate();
+    </script>
+</body>
+</html>
