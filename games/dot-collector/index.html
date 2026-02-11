@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Dot Collector - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        #gameContainer {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .score {
+            color: white;
+            font-size: 1.5rem;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            z-index: 10;
+        }
+
+        .high-score {
+            color: #ffd700;
+            font-size: 0.9rem;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            z-index: 10;
+        }
+
+        #gameCanvas {
+            background: rgba(255, 255, 255, 0.1);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            max-width: 95vw;
+            max-height: 60vh;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        button {
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+            box-shadow: 0 4px 15px rgba(240, 147, 251, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(240, 147, 251, 0.5);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(240, 147, 251, 0.9);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            z-index: 100;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            color: white;
+            display: none;
+            z-index: 50;
+        }
+
+        .game-over h2 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            color: #f5576c;
+        }
+
+        .game-over p {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+        }
+
+        .info {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.8rem;
+            text-align: center;
+            margin-bottom: 10px;
+            z-index: 10;
+        }
+
+        @media (max-width: 768px) {
+            .score {
+                font-size: 1.2rem;
+            }
+
+            .high-score {
+                font-size: 0.8rem;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 0.8rem;
+            }
+
+            #gameCanvas {
+                max-height: 50vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div id="gameContainer">
+        <div class="score">スコア: <span id="score">0</span></div>
+        <div class="high-score">🏆 ハイスコア: <span id="highScore">0</span></div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div class="info">緑のドットを集めて | 赤は避けて！</div>
+
+        <div class="controls">
+            <button onclick="startGame()">スタート</button>
+            <button onclick="togglePause()">一時停止</button>
+        </div>
+
+        <div class="game-over" id="gameOver">
+            <h2>ゲームオーバー！</h2>
+            <p>スコア: <span id="finalScore">0</span></p>
+            <button onclick="startGame()">もう一度</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas size
+        function resizeCanvas() {
+            const width = Math.min(window.innerWidth * 0.9, 500);
+            const height = Math.min(window.innerHeight * 0.5, 400);
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Game state
+        let score = 0;
+        let highScore = localStorage.getItem('dotCollectorHighScore') || 0;
+        let player = { x: 0, y: 0, size: 20, speed: 5 };
+        let dots = [];
+        let enemies = [];
+        let particles = [];
+        let gameRunning = false;
+        let gamePaused = false;
+        let animationId = null;
+        let keys = {};
+
+        // Update high score display
+        document.getElementById('highScore').textContent = highScore;
+
+        // Player movement
+        function movePlayer() {
+            if (keys['ArrowLeft'] || keys['a']) player.x -= player.speed;
+            if (keys['ArrowRight'] || keys['d']) player.x += player.speed;
+            if (keys['ArrowUp'] || keys['w']) player.y -= player.speed;
+            if (keys['ArrowDown'] || keys['s']) player.y += player.speed;
+
+            // Keep player in bounds
+            player.x = Math.max(player.size, Math.min(canvas.width - player.size, player.x));
+            player.y = Math.max(player.size, Math.min(canvas.height - player.size, player.y));
+        }
+
+        // Spawn collectible dot
+        function spawnDot() {
+            dots.push({
+                x: Math.random() * (canvas.width - 40) + 20,
+                y: Math.random() * (canvas.height - 40) + 20,
+                size: 10,
+                pulse: 0
+            });
+        }
+
+        // Spawn enemy
+        function spawnEnemy() {
+            const side = Math.floor(Math.random() * 4);
+            let x, y, vx, vy;
+
+            switch (side) {
+                case 0: // Top
+                    x = Math.random() * canvas.width;
+                    y = -20;
+                    vx = (Math.random() - 0.5) * 3;
+                    vy = Math.random() * 2 + 1;
+                    break;
+                case 1: // Right
+                    x = canvas.width + 20;
+                    y = Math.random() * canvas.height;
+                    vx = -(Math.random() * 2 + 1);
+                    vy = (Math.random() - 0.5) * 3;
+                    break;
+                case 2: // Bottom
+                    x = Math.random() * canvas.width;
+                    y = canvas.height + 20;
+                    vx = (Math.random() - 0.5) * 3;
+                    vy = -(Math.random() * 2 + 1);
+                    break;
+                case 3: // Left
+                    x = -20;
+                    y = Math.random() * canvas.height;
+                    vx = Math.random() * 2 + 1;
+                    vy = (Math.random() - 0.5) * 3;
+                    break;
+            }
+
+            enemies.push({ x, y, vx, vy, size: 15 });
+        }
+
+        // Create particle effect
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x,
+                    y,
+                    vx: (Math.random() - 0.5) * 5,
+                    vy: (Math.random() - 0.5) * 5,
+                    life: 1,
+                    color
+                });
+            }
+        }
+
+        // Update game state
+        function update() {
+            if (!gameRunning || gamePaused) return;
+
+            movePlayer();
+
+            // Update dots
+            dots.forEach(dot => {
+                dot.pulse = (dot.pulse + 0.1) % (Math.PI * 2);
+            });
+
+            // Update enemies
+            enemies.forEach((enemy, index) => {
+                enemy.x += enemy.vx;
+                enemy.y += enemy.vy;
+
+                // Remove off-screen enemies
+                if (enemy.x < -50 || enemy.x > canvas.width + 50 ||
+                    enemy.y < -50 || enemy.y > canvas.height + 50) {
+                    enemies.splice(index, 1);
+                }
+
+                // Check collision with player
+                const dx = player.x - enemy.x;
+                const dy = player.y - enemy.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < player.size + enemy.size) {
+                    gameOver();
+                }
+            });
+
+            // Update particles
+            particles.forEach((particle, index) => {
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.life -= 0.02;
+
+                if (particle.life <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+
+            // Check dot collection
+            dots.forEach((dot, index) => {
+                const dx = player.x - dot.x;
+                const dy = player.y - dot.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < player.size + dot.size) {
+                    dots.splice(index, 1);
+                    score += 10;
+                    document.getElementById('score').textContent = score;
+                    createParticles(dot.x, dot.y, '#4ade80');
+
+                    // Increase difficulty
+                    if (score % 50 === 0) {
+                        player.speed += 0.2;
+                    }
+                }
+            });
+
+            // Spawn dots and enemies
+            if (dots.length < 3 && Math.random() > 0.98) {
+                spawnDot();
+            }
+
+            if (Math.random() > 0.995 - score * 0.0001) {
+                spawnEnemy();
+            }
+        }
+
+        // Draw game
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw dots
+            dots.forEach(dot => {
+                const pulseSize = dot.size + Math.sin(dot.pulse) * 2;
+                ctx.beginPath();
+                ctx.arc(dot.x, dot.y, pulseSize, 0, Math.PI * 2);
+                ctx.fillStyle = '#4ade80';
+                ctx.fill();
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#4ade80';
+            });
+
+            // Draw enemies
+            enemies.forEach(enemy => {
+                ctx.beginPath();
+                ctx.arc(enemy.x, enemy.y, enemy.size, 0, Math.PI * 2);
+                ctx.fillStyle = '#ef4444';
+                ctx.fill();
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#ef4444';
+            });
+
+            // Draw particles
+            particles.forEach(particle => {
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = particle.color;
+                ctx.globalAlpha = particle.life;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            });
+
+            // Draw player
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+            const gradient = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, player.size);
+            gradient.addColorStop(0, '#fbbf24');
+            gradient.addColorStop(1, '#f59e0b');
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#fbbf24';
+
+            ctx.shadowBlur = 0;
+        }
+
+        // Game loop
+        function gameLoop() {
+            update();
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // Start game
+        function startGame() {
+            score = 0;
+            player = { x: canvas.width / 2, y: canvas.height / 2, size: 20, speed: 5 };
+            dots = [];
+            enemies = [];
+            particles = [];
+            gameRunning = true;
+            gamePaused = false;
+
+            document.getElementById('score').textContent = '0';
+            document.getElementById('gameOver').style.display = 'none';
+
+            // Spawn initial dots
+            for (let i = 0; i < 3; i++) {
+                spawnDot();
+            }
+
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            gameLoop();
+        }
+
+        // Toggle pause
+        function togglePause() {
+            if (!gameRunning) return;
+            gamePaused = !gamePaused;
+        }
+
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').style.display = 'block';
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('dotCollectorHighScore', highScore);
+                document.getElementById('highScore').textContent = highScore;
+            }
+        }
+
+        // Fullscreen toggle
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === ' ' && !gameRunning) {
+                startGame();
+            }
+            if (e.key === 'p' || e.key === 'P') {
+                togglePause();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // Touch controls
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+
+            if (!gameRunning) {
+                startGame();
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!gameRunning || gamePaused) return;
+
+            const touchX = e.touches[0].clientX;
+            const touchY = e.touches[0].clientY;
+
+            const dx = touchX - touchStartX;
+            const dy = touchY - touchStartY;
+
+            player.x += dx * 0.5;
+            player.y += dy * 0.5;
+
+            // Keep player in bounds
+            player.x = Math.max(player.size, Math.min(canvas.width - player.size, player.x));
+            player.y = Math.max(player.size, Math.min(canvas.height - player.size, player.y));
+
+            touchStartX = touchX;
+            touchStartY = touchY;
+        });
+    </script>
+</body>
+</html>
