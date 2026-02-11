@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Text Art - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #0f0f23 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(100, 100, 255, 0.3);
+        }
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            z-index: 10;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">マウスを動かすとパーティクルが反応します</div>
+    <canvas id="canvas"></canvas>
+    <div class="controls">
+        <button data-text="MIRA">MIRA</button>
+        <button data-text="Art">Art</button>
+        <button data-text="Dream">Dream</button>
+        <button data-text="Create">Create</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let particles = [];
+        let mouse = { x: null, y: null, radius: 100 };
+
+        // キャンバスサイズ設定
+        function resizeCanvas() {
+            const maxWidth = Math.min(800, window.innerWidth - 40);
+            const maxHeight = Math.min(500, window.innerHeight - 200);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // マウスイベント
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        // タッチイベント
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.touches[0].clientX - rect.left;
+            mouse.y = e.touches[0].clientY - rect.top;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y) {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.targetX = x;
+                this.targetY = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.radius = Math.random() * 2 + 1;
+                this.color = this.getColor();
+                this.friction = 0.95;
+                this.ease = 0.05 + Math.random() * 0.05;
+            }
+
+            getColor() {
+                const colors = [
+                    '#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3',
+                    '#54a0ff', '#5f27cd', '#00d2d3', '#ff9f43',
+                    '#ee5a24', '#0abde3', '#10ac84', '#f368e0'
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update() {
+                // ターゲット位置への移動
+                const dx = this.targetX - this.x;
+                const dy = this.targetY - this.y;
+                this.vx += dx * this.ease;
+                this.vy += dy * this.ease;
+
+                // マウス反応
+                if (mouse.x !== null && mouse.y !== null) {
+                    const dxMouse = mouse.x - this.x;
+                    const dyMouse = mouse.y - this.y;
+                    const distance = Math.sqrt(dxMouse * dxMouse + dyMouse * dyMouse);
+
+                    if (distance < mouse.radius) {
+                        const force = (mouse.radius - distance) / mouse.radius;
+                        const angle = Math.atan2(dyMouse, dxMouse);
+                        this.vx -= Math.cos(angle) * force * 5;
+                        this.vy -= Math.sin(angle) * force * 5;
+                    }
+                }
+
+                // 摩擦
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+
+                // 位置更新
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+            }
+        }
+
+        // テキストからパーティクル生成
+        function createParticlesFromText(text) {
+            particles = [];
+
+            // 一時的なキャンバスにテキストを描画
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+
+            // テキスト設定
+            const fontSize = Math.min(120, canvas.width / text.length * 1.5);
+            tempCtx.font = `bold ${fontSize}px Arial`;
+            tempCtx.fillStyle = 'white';
+            tempCtx.textAlign = 'center';
+            tempCtx.textBaseline = 'middle';
+            tempCtx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+            // ピクセルデータを取得
+            const imageData = tempCtx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+
+            // ピクセルをスキャンしてパーティクル生成
+            const gap = 6; // サンプリング間隔
+            for (let y = 0; y < canvas.height; y += gap) {
+                for (let x = 0; x < canvas.width; x += gap) {
+                    const index = (y * canvas.width + x) * 4;
+                    const alpha = data[index + 3];
+
+                    if (alpha > 128) {
+                        particles.push(new Particle(x, y));
+                    }
+                }
+            }
+        }
+
+        // アニメーション
+        function animate() {
+            ctx.fillStyle = 'rgba(15, 15, 35, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // ボタンイベント
+        document.querySelectorAll('button').forEach(button => {
+            button.addEventListener('click', () => {
+                const text = button.getAttribute('data-text');
+                createParticlesFromText(text);
+            });
+        });
+
+        // 初期化
+        createParticlesFromText('MIRA');
+        animate();
+    </script>
+</body>
+</html>
