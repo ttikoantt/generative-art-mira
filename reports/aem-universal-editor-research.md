@@ -1,8 +1,8 @@
 # AEM Universal Editor Research Report
 
-**Last Updated:** February 13, 2026 12:35 JST
+**Last Updated:** February 13, 2026 15:38 JST
 **Research Period:** February 13, 2026
-**Status:** Ongoing Investigation
+**Status:** Phase 3 Complete - Documentation Verification
 
 ---
 
@@ -415,15 +415,21 @@ The seamless integration between AEM as a Cloud Service, Universal Editor, and E
 
 ### Official Documentation
 - [Universal Editor Introduction](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/introduction)
+- [Universal Editor Authoring Guide](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/universal-editor/authoring)
 - [Use Cases and Learning Paths](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/use-cases)
 - [Extending Universal Editor](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/extending)
+- [Universal Editor Architecture](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/architecture)
+- [Attributes and Types](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/attributes-types)
+- [Universal Editor Authentication](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/authentication)
 
 ### AEM Resources
-- [AEM Developer Tutorial](https://www.aem.live/developer/tutorial)
+- [AEM Developer Documentation](https://www.aem.live/docs)
+- [AEM Developer Home](https://www.aem.live/developer)
 - [AEM Authoring with Edge Delivery Services](https://www.aem.live/docs/aem-authoring)
 - [Repoless Authoring - Reusing Code Across Sites](https://www.aem.live/developer/repoless-authoring)
 - [Multi Site Management with AEM Authoring](https://www.aem.live/developer/repoless-multisite-manager)
 - [Configuration Templates](https://www.aem.live/docs/configuration-templates)
+- [Keeping it 100 (Core Web Vitals)](https://www.aem.live/developer/keeping-it-100)
 
 ---
 
@@ -436,5 +442,71 @@ The seamless integration between AEM as a Cloud Service, Universal Editor, and E
 
 ---
 
-**Research Status:** ✅ Phase 2 Complete - Advanced Implementation Analysis
+## Latest Updates (February 13, 2026 - 15:38 JST)
+
+### Documentation URL Verification
+
+**Issue Found:** Original URL `https://www.aem.live/docs/edge-delivery` returns 404
+
+**Correct URLs Identified:**
+- AEM Documentation Hub: https://www.aem.live/docs
+- AEM Developer Portal: https://www.aem.live/developer
+- AEM Authoring with EDS: https://www.aem.live/docs/aem-authoring
+
+**Universal Editor Official Documentation (Experience League):**
+- Authoring Guide: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/universal-editor/authoring
+- Architecture: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/architecture
+- Authentication: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/authentication
+
+### Detailed Authoring Experience (Latest Documentation)
+
+**Enhanced Rich Text Editor Features:**
+- Paragraph formatting (h1, h2, h3, etc.)
+- Bold, Italics, Underline
+- Superscript, Subscript
+- Bulleted/Numbered lists with Tab/Shift+Tab for indent
+- Link insertion/removal
+- Image insertion
+- Remove All Formatting
+- Existing table editing (new table creation not supported)
+
+**Comprehensive Hotkey System:**
+- `a` - Add component to selected container
+- `e` - Open Content Fragment editor
+- `Command-C` / `Command-V` - Copy/Paste components
+- `Command-Z` / `Shift-Command-Z` - Undo/Redo
+- `Command-U` / `Shift-Command-U` - Move up/Move to top
+- `Command-J` / `Shift-Command-J` - Move down/Move to bottom
+- `Shift+Backspace` - Delete selected component
+
+**Container Operations:**
+- Add, Duplicate, Delete, Move, Reorder, Copy/Paste
+- Content tree mode for hierarchical navigation
+- Drag & drop between containers (subject to filter constraints)
+- Component filter controls which components can be added/moved
+
+**Inheritance Management (MSM):**
+- Automatic inheritance break on content modification
+- Optional MSM Extension for explicit inheritance control
+- Visual indicators: Inheritance Installed vs. Inheritance Broken icons
+
+**Toolbar Extensions (Optional):**
+- Inheritance Management (MSM)
+- Page Properties
+- Sites Console
+- Page Locking
+- Workflows
+- Developer Login (local AEM SDK)
+
+**Properties Panel Extensions (Optional):**
+- Generate Variations (Generative AI)
+
+**Preview Mode:**
+- Toggle between Edit and Preview modes
+- Link navigation in Preview mode
+- Published state rendering
+
+---
+
+**Research Status:** ✅ Phase 3 Complete - Documentation Verification
 **Next Steps:** Real-world case studies and performance testing
