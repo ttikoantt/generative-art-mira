@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Floating Orbs Music Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0a0a1a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 25px;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+        
+        button:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.05);
+        }
+        
+        button:active {
+            transform: scale(0.95);
+        }
+        
+        #fullscreen {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+        }
+        
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            color: white;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 250px;
+        }
+        
+        .info h1 {
+            font-size: 20px;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #ff6b9d, #ffa500);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="info">
+        <h1>Floating Orbs</h1>
+        <p>🎵 音楽に反応する浮遊オーブ</p>
+        <p>🖱️ マウス/タップでインタラクティブ</p>
+    </div>
+    
+    <button id="fullscreen">全画面</button>
+    
+    <div class="controls">
+        <button id="start">🎵 マイク開始</button>
+        <button id="demo">🎧 デモ音楽</button>
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('start');
+        const demoBtn = document.getElementById('demo');
+        const fullscreenBtn = document.getElementById('fullscreen');
+        
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+        let audioContext, analyser, dataArray;
+        let orbs = [];
+        let mouseX = width / 2;
+        let mouseY = height / 2;
+        let isAudioInit = false;
+        let demoOscillator = null;
+        let audioGain = null;
+        
+        // Orbクラス
+        class Orb {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.baseRadius = 20 + Math.random() * 40;
+                this.radius = this.baseRadius;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.hue = Math.random() * 360;
+                this.alpha = 0.3 + Math.random() * 0.4;
+                this.pulseSpeed = 0.02 + Math.random() * 0.03;
+                this.pulseOffset = Math.random() * Math.PI * 2;
+            }
+            
+            update(audioValue) {
+                // 音声に反応してサイズ変化
+                this.radius = this.baseRadius + (audioValue * 50);
+                
+                // マウスに反応
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 150) {
+                    this.vx -= dx * 0.001;
+                    this.vy -= dy * 0.001;
+                }
+                
+                // 移動
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 速度減衰
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+                
+                // 最低速度維持
+                if (Math.abs(this.vx) < 0.2) this.vx += (Math.random() - 0.5) * 0.1;
+                if (Math.abs(this.vy) < 0.2) this.vy += (Math.random() - 0.5) * 0.1;
+                
+                // 境界判定
+                if (this.x < -50) this.x = width + 50;
+                if (this.x > width + 50) this.x = -50;
+                if (this.y < -50) this.y = height + 50;
+                if (this.y > height + 50) this.y = -50;
+                
+                // 色変化
+                this.hue = (this.hue + 0.2 + audioValue * 2) % 360;
+            }
+            
+            draw() {
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius
+                );
+                
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${this.alpha})`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 80%, 50%, ${this.alpha * 0.5})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 60%, 30%, 0)`);
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+        
+        // オーブ生成
+        function createOrbs() {
+            orbs = [];
+            const orbCount = Math.floor((width * height) / 80000);
+            for (let i = 0; i < orbCount; i++) {
+                orbs.push(new Orb());
+            }
+        }
+        
+        // オーディオ初期化
+        async function initAudio() {
+            if (isAudioInit) return;
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                const source = audioContext.createMediaStreamSource(stream);
+                
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                isAudioInit = true;
+                startBtn.textContent = '✅ マイクON';
+                startBtn.disabled = true;
+            } catch (err) {
+                console.error('Microphone access denied:', err);
+                alert('マイクへのアクセスが許可されませんでした');
+            }
+        }
+        
+        // デモ音楽生成
+        function startDemo() {
+            if (demoOscillator) return;
+            
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+            
+            audioGain = audioContext.createGain();
+            audioGain.gain.value = 0.3;
+            audioGain.connect(audioContext.destination);
+            audioGain.connect(analyser);
+            
+            // 複数のオシレーターで音楽生成
+            const freqs = [261.63, 329.63, 392.00, 523.25];
+            demoOscillator = freqs.map((freq, i) => {
+                const osc = audioContext.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                
+                const lfo = audioContext.createOscillator();
+                lfo.type = 'sine';
+                lfo.frequency.value = 0.5 + i * 0.2;
+                
+                const lfoGain = audioContext.createGain();
+                lfoGain.gain.value = 50;
+                
+                lfo.connect(lfoGain);
+                lfoGain.connect(osc.frequency);
+                
+                osc.connect(audioGain);
+                osc.start();
+                lfo.start();
+                
+                return { osc, lfo };
+            });
+            
+            demoBtn.textContent = '✅ デモON';
+            demoBtn.disabled = true;
+            isAudioInit = true;
+        }
+        
+        // アニメーション
+        function animate() {
+            // 背景（残像効果）
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            let audioValue = 0;
+            if (isAudioInit && analyser) {
+                analyser.getByteFrequencyData(dataArray);
+                audioValue = dataArray.reduce((a, b) => a + b, 0) / dataArray.length / 255;
+            }
+            
+            // オーブ更新・描画
+            orbs.forEach(orb => {
+                orb.update(audioValue);
+                orb.draw();
+            });
+            
+            // 接続線
+            orbs.forEach((orb1, i) => {
+                orbs.slice(i + 1).forEach(orb2 => {
+                    const dx = orb1.x - orb2.x;
+                    const dy = orb1.y - orb2.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < 150) {
+                        const alpha = (1 - dist / 150) * 0.3 * (1 + audioValue);
+                        ctx.beginPath();
+                        ctx.moveTo(orb1.x, orb1.y);
+                        ctx.lineTo(orb2.x, orb2.y);
+                        ctx.strokeStyle = `hsla(${(orb1.hue + orb2.hue) / 2}, 70%, 60%, ${alpha})`;
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+                });
+            });
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // マウス/タッチイベント
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+        
+        canvas.addEventListener('click', () => {
+            // クリックで新しいオーブ追加
+            orbs.push(new Orb());
+        });
+        
+        // 全画面
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+        
+        // ボタンイベント
+        startBtn.addEventListener('click', initAudio);
+        demoBtn.addEventListener('click', startDemo);
+        
+        // リサイズ
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            createOrbs();
+        });
+        
+        // 初期化
+        createOrbs();
+        animate();
+    </script>
+</body>
+</html>
