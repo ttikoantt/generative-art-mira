@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bioluminescent Ocean - 生物発光オーシャン</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(180deg, #000814 0%, #001028 50%, #000d1f 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 1200px;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: clamp(24px, 5vw, 48px);
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #00ffff 0%, #0080ff 50%, #00ff80 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes glow {
+            from {
+                filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.5));
+            }
+            to {
+                filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.8));
+            }
+        }
+
+        .description {
+            font-size: clamp(12px, 2.5vw, 16px);
+            color: #00ffff;
+            margin-bottom: 20px;
+            opacity: 0.9;
+        }
+
+        #oceanCanvas {
+            border: 2px solid rgba(0, 255, 255, 0.3);
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.2),
+                        inset 0 0 50px rgba(0, 100, 150, 0.3);
+            background: radial-gradient(ellipse at center, #001028 0%, #000814 100%);
+            cursor: crosshair;
+            max-width: 100%;
+            height: auto;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: clamp(12px, 2vw, 14px);
+        }
+
+        .control label {
+            color: #00ffff;
+            min-width: 80px;
+        }
+
+        input[type="range"] {
+            width: 120px;
+            height: 6px;
+            -webkit-appearance: none;
+            background: linear-gradient(90deg, #00ffff 0%, #00ff80 100%);
+            border-radius: 3px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #00ffff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: clamp(12px, 2vw, 14px);
+            background: linear-gradient(135deg, #00ffff 0%, #0080ff 100%);
+            border: none;
+            border-radius: 5px;
+            color: #000814;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.6);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .fullscreen {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 15px;
+            font-size: 16px;
+            z-index: 1000;
+            background: rgba(0, 255, 255, 0.2);
+            color: #00ffff;
+            border: 1px solid rgba(0, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen" onclick="toggleFullscreen()">🔲 全画面</button>
+    
+    <div class="container">
+        <h1>🌊 Bioluminescent Ocean</h1>
+        <p class="description">深海の生物発光現象 - マウス/タッチで生物が反応</p>
+        
+        <canvas id="oceanCanvas"></canvas>
+        
+        <div class="controls">
+            <div class="control">
+                <label>生物数</label>
+                <input type="range" id="creatureCount" min="20" max="150" value="80">
+            </div>
+            <div class="control">
+                <label>光の強さ</label>
+                <input type="range" id="glowIntensity" min="5" max="30" value="15">
+            </div>
+            <div class="control">
+                <label>流速</label>
+                <input type="range" id="flowSpeed" min="1" max="10" value="3">
+            </div>
+            <button onclick="regenerateOcean()">🔄 再生成</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('oceanCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvasサイズ設定
+        function resizeCanvas() {
+            const container = document.querySelector('.container');
+            const maxWidth = Math.min(window.innerWidth - 40, 900);
+            const maxHeight = Math.min(window.innerHeight - 300, 600);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 設定
+        let creatureCount = 80;
+        let glowIntensity = 15;
+        let flowSpeed = 3;
+
+        // 生物の種類
+        const creatureTypes = [
+            { type: 'jellyfish', color: '#00ffff', sizeRange: [15, 35], speed: 0.5 },
+            { type: 'plankton', color: '#00ff80', sizeRange: [3, 8], speed: 1.5 },
+            { type: 'fish', color: '#0080ff', sizeRange: [8, 20], speed: 1.2 },
+            { type: 'squid', color: '#ff00ff', sizeRange: [10, 25], speed: 0.8 }
+        ];
+
+        // 生物クラス
+        class Creature {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                const type = creatureTypes[Math.floor(Math.random() * creatureTypes.length)];
+                this.type = type.type;
+                this.baseColor = type.color;
+                this.size = type.sizeRange[0] + Math.random() * (type.sizeRange[1] - type.sizeRange[0]);
+                this.baseSpeed = type.speed;
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+                this.pulseSpeed = 0.02 + Math.random() * 0.03;
+                this.hue = Math.random() * 60 - 30; // 色相変化
+                this.tentaclePhase = Math.random() * Math.PI * 2;
+                this.scared = false;
+                this.scareTimer = 0;
+            }
+
+            update(mouseX, mouseY) {
+                // パルス効果
+                this.pulsePhase += this.pulseSpeed;
+
+                // 流れに沿って移動
+                this.x += this.vx * this.baseSpeed * (flowSpeed / 3);
+                this.y += this.vy * this.baseSpeed * (flowSpeed / 3);
+
+                // 画面外に出たら反対側から
+                if (this.x < -50) this.x = canvas.width + 50;
+                if (this.x > canvas.width + 50) this.x = -50;
+                if (this.y < -50) this.y = canvas.height + 50;
+                if (this.y > canvas.height + 50) this.y = -50;
+
+                // マウスに反応
+                const dx = this.x - mouseX;
+                const dy = this.y - mouseY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 100) {
+                    this.scared = true;
+                    this.scareTimer = 30;
+                    // マウスから逃げる
+                    const force = (100 - dist) / 100;
+                    this.vx += (dx / dist) * force * 2;
+                    this.vy += (dy / dist) * force * 2;
+                }
+
+                // 驚き状態から戻る
+                if (this.scareTimer > 0) {
+                    this.scareTimer--;
+                    if (this.scareTimer <= 0) {
+                        this.scared = false;
+                    }
+                }
+
+                // 速度を制限
+                const maxSpeed = 3;
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > maxSpeed) {
+                    this.vx = (this.vx / speed) * maxSpeed;
+                    this.vy = (this.vy / speed) * maxSpeed;
+                }
+
+                this.tentaclePhase += 0.1;
+            }
+
+            draw() {
+                const pulse = Math.sin(this.pulsePhase) * 0.3 + 0.7;
+                const size = this.size * pulse;
+                const alpha = this.scared ? 1 : 0.6 + pulse * 0.4;
+                const hueShift = this.scared ? 60 : 0;
+
+                ctx.save();
+
+                // グロー効果
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, size * 2
+                );
+                gradient.addColorStop(0, `hsla(${this.hue + hueShift}, 100%, 70%, ${alpha})`);
+                gradient.addColorStop(0.5, `hsla(${this.hue + hueShift}, 100%, 50%, ${alpha * 0.3})`);
+                gradient.addColorStop(1, `hsla(${this.hue + hueShift}, 100%, 30%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, size * 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 生物の形を描画
+                ctx.translate(this.x, this.y);
+
+                if (this.type === 'jellyfish') {
+                    this.drawJellyfish(size, hueShift);
+                } else if (this.type === 'plankton') {
+                    this.drawPlankton(size, hueShift);
+                } else if (this.type === 'fish') {
+                    this.drawFish(size, hueShift);
+                } else if (this.type === 'squid') {
+                    this.drawSquid(size, hueShift);
+                }
+
+                ctx.restore();
+            }
+
+            drawJellyfish(size, hueShift) {
+                // 傘
+                const umbrellaGradient = ctx.createRadialGradient(0, -size * 0.2, 0, 0, -size * 0.2, size);
+                umbrellaGradient.addColorStop(0, `hsla(${this.hue + hueShift}, 100%, 80%, 0.9)`);
+                umbrellaGradient.addColorStop(0.7, `hsla(${this.hue + hueShift}, 100%, 60%, 0.7)`);
+                umbrellaGradient.addColorStop(1, `hsla(${this.hue + hueShift}, 100%, 40%, 0.3)`);
+
+                ctx.fillStyle = umbrellaGradient;
+                ctx.beginPath();
+                ctx.ellipse(0, -size * 0.2, size, size * 0.6, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 触手
+                const tentacleCount = 6;
+                for (let i = 0; i < tentacleCount; i++) {
+                    const angle = (i / tentacleCount) * Math.PI - Math.PI / 2;
+                    const phase = this.tentaclePhase + i * 0.5;
+                    
+                    ctx.strokeStyle = `hsla(${this.hue + hueShift}, 100%, 70%, 0.5)`;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(0, size * 0.3);
+                    
+                    for (let j = 1; j <= 8; j++) {
+                        const waveX = Math.sin(phase + j * 0.3) * size * 0.2;
+                        const waveY = size * 0.3 + j * size * 0.15;
+                        ctx.quadraticCurveTo(
+                            waveX + Math.sin(angle) * j * size * 0.1,
+                            waveY - size * 0.1,
+                            Math.sin(angle) * j * size * 0.15,
+                            waveY
+                        );
+                    }
+                    ctx.stroke();
+                }
+            }
+
+            drawPlankton(size, hueShift) {
+                // 小さな発光粒子
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
+                gradient.addColorStop(0, `hsla(${this.hue + hueShift}, 100%, 90%, 1)`);
+                gradient.addColorStop(0.5, `hsla(${this.hue + hueShift}, 100%, 70%, 0.5)`);
+                gradient.addColorStop(1, `hsla(${this.hue + hueShift}, 100%, 50%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            drawFish(size, hueShift) {
+                // 魚の体
+                const direction = this.vx >= 0 ? 1 : -1;
+                ctx.scale(direction, 1);
+
+                // 体
+                const bodyGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
+                bodyGradient.addColorStop(0, `hsla(${this.hue + hueShift}, 100%, 80%, 0.8)`);
+                bodyGradient.addColorStop(0.7, `hsla(${this.hue + hueShift}, 100%, 60%, 0.5)`);
+                bodyGradient.addColorStop(1, `hsla(${this.hue + hueShift}, 100%, 40%, 0.2)`);
+
+                ctx.fillStyle = bodyGradient;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, size, size * 0.4, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 尾びれ
+                ctx.fillStyle = `hsla(${this.hue + hueShift}, 100%, 60%, 0.4)`;
+                ctx.beginPath();
+                ctx.moveTo(-size * 0.8, 0);
+                ctx.lineTo(-size * 1.5, -size * 0.3);
+                ctx.lineTo(-size * 1.5, size * 0.3);
+                ctx.closePath();
+                ctx.fill();
+
+                // 背びれ
+                ctx.beginPath();
+                ctx.moveTo(0, -size * 0.4);
+                ctx.lineTo(-size * 0.2, -size * 0.8);
+                ctx.lineTo(size * 0.2, -size * 0.4);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            drawSquid(size, hueShift) {
+                // 頭
+                const headGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
+                headGradient.addColorStop(0, `hsla(${this.hue + hueShift}, 100%, 80%, 0.9)`);
+                headGradient.addColorStop(0.7, `hsla(${this.hue + hueShift}, 100%, 60%, 0.6)`);
+                headGradient.addColorStop(1, `hsla(${this.hue + hueShift}, 100%, 40%, 0.3)`);
+
+                ctx.fillStyle = headGradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, size * 0.7, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 腕
+                const armCount = 8;
+                for (let i = 0; i < armCount; i++) {
+                    const angle = (i / armCount) * Math.PI * 2;
+                    const phase = this.tentaclePhase + i * 0.3;
+                    
+                    ctx.strokeStyle = `hsla(${this.hue + hueShift}, 100%, 70%, 0.6)`;
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(angle) * size * 0.5, Math.sin(angle) * size * 0.5);
+                    
+                    for (let j = 1; j <= 6; j++) {
+                        const waveX = Math.cos(angle) * size * 0.5 + Math.sin(phase + j * 0.4) * size * 0.15;
+                        const waveY = Math.sin(angle) * size * 0.5 + j * size * 0.2;
+                        ctx.quadraticCurveTo(
+                            waveX + Math.sin(angle) * j * size * 0.05,
+                            waveY - size * 0.05,
+                            Math.cos(angle) * size * 0.5 + Math.sin(angle) * j * size * 0.1,
+                            waveY
+                        );
+                    }
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // 泡クラス
+        class Bubble {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = canvas.height + 10;
+                this.size = 2 + Math.random() * 6;
+                this.speed = 0.5 + Math.random() * 1.5;
+                this.wobble = Math.random() * Math.PI * 2;
+                this.wobbleSpeed = 0.02 + Math.random() * 0.02;
+                this.alpha = 0.2 + Math.random() * 0.3;
+            }
+
+            update() {
+                this.y -= this.speed * (flowSpeed / 2);
+                this.wobble += this.wobbleSpeed;
+                this.x += Math.sin(this.wobble) * 0.5;
+
+                if (this.y < -10) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const gradient = ctx.createRadialGradient(
+                    this.x - this.size * 0.3, this.y - this.size * 0.3, 0,
+                    this.x, this.y, this.size
+                );
+                gradient.addColorStop(0, `rgba(200, 255, 255, ${this.alpha})`);
+                gradient.addColorStop(0.5, `rgba(100, 200, 255, ${this.alpha * 0.5})`);
+                gradient.addColorStop(1, `rgba(50, 100, 150, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // 生物と泡の配列
+        let creatures = [];
+        let bubbles = [];
+
+        // 初期化
+        function init() {
+            creatures = [];
+            bubbles = [];
+
+            for (let i = 0; i < creatureCount; i++) {
+                creatures.push(new Creature());
+            }
+
+            for (let i = 0; i < 50; i++) {
+                bubbles.push(new Bubble());
+            }
+        }
+
+        // マウス位置
+        let mouseX = -1000;
+        let mouseY = -1000;
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.touches[0].clientX - rect.left;
+            mouseY = e.touches[0].clientY - rect.top;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        // 背景の描画
+        function drawBackground() {
+            // 深海グラデーション
+            const bgGradient = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, 0,
+                canvas.width / 2, canvas.height / 2, canvas.width
+            );
+            bgGradient.addColorStop(0, '#001028');
+            bgGradient.addColorStop(0.5, '#000814');
+            bgGradient.addColorStop(1, '#00030a');
+
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 遠くの光の粒子
+            for (let i = 0; i < 30; i++) {
+                const x = (Math.sin(i * 123.456) * 0.5 + 0.5) * canvas.width;
+                const y = (Math.cos(i * 789.012) * 0.5 + 0.5) * canvas.height;
+                const size = 1 + Math.sin(Date.now() * 0.001 + i) * 0.5;
+                const alpha = 0.1 + Math.sin(Date.now() * 0.002 + i * 2) * 0.05;
+
+                ctx.fillStyle = `rgba(100, 200, 255, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // アニメーション
+        function animate() {
+            drawBackground();
+
+            // 泡を描画
+            bubbles.forEach(bubble => {
+                bubble.update();
+                bubble.draw();
+            });
+
+            // 生物を描画
+            creatures.forEach(creature => {
+                creature.update(mouseX, mouseY);
+                creature.draw();
+            });
+
+            // グロー効果を強めるために上からレイヤー
+            ctx.globalCompositeOperation = 'lighter';
+            creatures.forEach(creature => {
+                if (creature.scared) {
+                    const gradient = ctx.createRadialGradient(
+                        creature.x, creature.y, 0,
+                        creature.x, creature.y, creature.size * 3
+                    );
+                    gradient.addColorStop(0, `hsla(${creature.hue + 60}, 100%, 70%, 0.3)`);
+                    gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(creature.x, creature.y, creature.size * 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+            ctx.globalCompositeOperation = 'source-over';
+
+            requestAnimationFrame(animate);
+        }
+
+        // 再生成
+        function regenerateOcean() {
+            creatureCount = parseInt(document.getElementById('creatureCount').value);
+            glowIntensity = parseInt(document.getElementById('glowIntensity').value);
+            flowSpeed = parseInt(document.getElementById('flowSpeed').value);
+            init();
+        }
+
+        // スライダーイベント
+        document.getElementById('creatureCount').addEventListener('input', () => {
+            const newCount = parseInt(document.getElementById('creatureCount').value);
+            if (newCount > creatures.length) {
+                for (let i = creatures.length; i < newCount; i++) {
+                    creatures.push(new Creature());
+                }
+            } else {
+                creatures = creatures.slice(0, newCount);
+            }
+        });
+
+        document.getElementById('glowIntensity').addEventListener('input', () => {
+            glowIntensity = parseInt(document.getElementById('glowIntensity').value);
+        });
+
+        document.getElementById('flowSpeed').addEventListener('input', () => {
+            flowSpeed = parseInt(document.getElementById('flowSpeed').value);
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 開始
+        init();
+        animate();
+    </script>
+</body>
+</html>
