@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Cosmic Particle Flow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        .controls button {
+            padding: 10px 20px;
+            font-size: 14px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            backdrop-filter: blur(10px);
+        }
+        .controls button:hover {
+            background: rgba(255,255,255,0.2);
+            transform: scale(1.05);
+        }
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            z-index: 100;
+            font-size: 20px;
+        }
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.6);
+            font-size: 12px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="info">Cosmic Particle Flow - タップ/ドラッグで干渉</div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+    <div class="controls">
+        <button onclick="resetParticles()">リセット</button>
+        <button onclick="toggleTrails()">トレイル切替</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let particles = [];
+        const particleCount = 300;
+        let mouseX = width / 2;
+        let mouseY = height / 2;
+        let mouseInfluence = 0;
+        let trailsEnabled = true;
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 2 + 1;
+                this.baseRadius = this.radius;
+                this.hue = Math.random() * 60 + 200; // 青〜紫系
+                this.life = 1;
+                this.decay = 0.001 + Math.random() * 0.002;
+            }
+
+            update() {
+                // マウスの影響
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < 150 && mouseInfluence > 0) {
+                    const force = (150 - dist) / 150;
+                    this.vx -= (dx / dist) * force * 0.5 * mouseInfluence;
+                    this.vy -= (dy / dist) * force * 0.5 * mouseInfluence;
+                    this.radius = this.baseRadius + force * 3;
+                } else {
+                    this.radius += (this.baseRadius - this.radius) * 0.1;
+                }
+
+                // 自然な流れ
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 色の変化
+                this.hue += 0.5;
+                if (this.hue > 320) this.hue = 200;
+
+                // 速度制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 4) {
+                    this.vx *= 0.95;
+                    this.vy *= 0.95;
+                }
+
+                // 画面外でリセット
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = 0.6 + Math.sin(Date.now() * 0.003 + this.x) * 0.3;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha})`;
+                ctx.fill();
+
+                // グロー
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha * 0.2})`;
+                ctx.fill();
+            }
+        }
+
+        // パーティクル初期化
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function resetParticles() {
+            initParticles();
+        }
+
+        function toggleTrails() {
+            trailsEnabled = !trailsEnabled;
+        }
+
+        // アニメーション
+        function animate() {
+            if (trailsEnabled) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            } else {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            }
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            // パーティクル同士のライン（近いものだけ）
+            particles.forEach((p1, i) => {
+                particles.slice(i + 1).forEach(p2 => {
+                    const dx = p1.x - p2.x;
+                    const dy = p1.y - p2.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < 80) {
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        const alpha = (1 - dist / 80) * 0.3;
+                        ctx.strokeStyle = `hsla(${p1.hue}, 70%, 50%, ${alpha})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                });
+            });
+
+            mouseInfluence *= 0.95;
+            requestAnimationFrame(animate);
+        }
+
+        // イベント
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            mouseInfluence = 1;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+            mouseInfluence = 1;
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', (e) => {
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+            mouseInfluence = 1;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            mouseInfluence = 2;
+            
+            // クリックで爆発
+            particles.forEach(p => {
+                const dx = p.x - mouseX;
+                const dy = p.y - mouseY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 200) {
+                    p.vx += (dx / dist) * 5;
+                    p.vy += (dy / dist) * 5;
+                }
+            });
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // 開始
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>
