@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Audio Visualizer - Mira's Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: #000;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            background: radial-gradient(ellipse at center, #1a1a2e 0%, #000 100%);
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10;
+            transition: opacity 0.5s;
+        }
+
+        #overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: clamp(24px, 5vw, 48px);
+            margin-bottom: 20px;
+            text-align: center;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        #startButton {
+            padding: 20px 40px;
+            font-size: clamp(16px, 3vw, 24px);
+            background: linear-gradient(135deg, #00f5ff, #0099ff);
+            border: none;
+            border-radius: 50px;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 30px rgba(0, 245, 255, 0.5);
+        }
+
+        #startButton:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 50px rgba(0, 245, 255, 0.8);
+        }
+
+        #fullscreenButton {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            font-size: 14px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(0, 245, 255, 0.5);
+            border-radius: 25px;
+            color: #00f5ff;
+            cursor: pointer;
+            z-index: 5;
+            transition: all 0.3s;
+        }
+
+        #fullscreenButton:hover {
+            background: rgba(0, 245, 255, 0.2);
+        }
+
+        #info {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            z-index: 5;
+        }
+
+        @media (max-width: 768px) {
+            #fullscreenButton {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+
+            #info {
+                bottom: 10px;
+                font-size: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div id="overlay">
+        <h1>🎵 Audio Visualizer</h1>
+        <button id="startButton">開始</button>
+    </div>
+
+    <button id="fullscreenButton">全画面</button>
+    <div id="info">音楽を再生して、音に合わせて光るパーティクルを楽しもう！</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const overlay = document.getElementById('overlay');
+        const startButton = document.getElementById('startButton');
+        const fullscreenButton = document.getElementById('fullscreenButton');
+
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let particles = [];
+        let animationId;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        class Particle {
+            constructor(frequency, amplitude) {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.baseSize = Math.random() * 3 + 1;
+                this.frequency = frequency;
+                this.amplitude = amplitude;
+
+                // 色は周波数に応じて変化
+                const hue = (frequency / 255) * 360;
+                this.hue = hue;
+                this.saturation = 100;
+                this.lightness = 50 + (amplitude / 255) * 50;
+
+                // 速度
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+
+                // ライフ
+                this.life = 1;
+                this.decay = Math.random() * 0.01 + 0.005;
+            }
+
+            update(frequencyAmplitude) {
+                // 周波数の振幅に応じてサイズを変化
+                this.size = this.baseSize + (frequencyAmplitude / 255) * 10;
+
+                // 動き
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // ライフ減少
+                this.life -= this.decay;
+
+                // 境界チェック
+                if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+
+                const alpha = this.life * 0.8;
+                ctx.fillStyle = `hsla(${this.hue}, ${this.saturation}%, ${this.lightness}%, ${alpha})`;
+
+                // グロー効果
+                ctx.shadowBlur = this.size * 2;
+                ctx.shadowColor = `hsla(${this.hue}, ${this.saturation}%, ${this.lightness}%, ${alpha})`;
+
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+
+        function createParticles(frequencyData) {
+            // 重要な周波数帯（低音から高音）からパーティクルを生成
+            const bands = [
+                { start: 0, end: 10, count: 3 },    // 低音（バス）
+                { start: 10, end: 50, count: 5 },   // 中低音
+                { start: 50, end: 100, count: 4 },  // 中音
+                { start: 100, end: 200, count: 3 } // 高音
+            ];
+
+            bands.forEach(band => {
+                let avgAmplitude = 0;
+                for (let i = band.start; i < band.end && i < frequencyData.length; i++) {
+                    avgAmplitude += frequencyData[i];
+                }
+                avgAmplitude /= (band.end - band.start);
+
+                // 振幅が大きいほど多くのパーティクルを生成
+                if (avgAmplitude > 50) {
+                    const count = Math.floor((avgAmplitude / 255) * band.count);
+                    for (let i = 0; i < count; i++) {
+                        const frequency = band.start + Math.random() * (band.end - band.start);
+                        particles.push(new Particle(frequency, avgAmplitude));
+                    }
+                }
+            });
+        }
+
+        function animate() {
+            // 背景をフェード
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 周波数データを取得
+            analyser.getByteFrequencyData(dataArray);
+
+            // パーティクルを生成
+            createParticles(dataArray);
+
+            // パーティクルを更新・描画
+            particles = particles.filter(p => !p.isDead());
+            particles.forEach(particle => {
+                const freqIndex = Math.floor(particle.frequency) % dataArray.length;
+                particle.update(dataArray[freqIndex]);
+                particle.draw();
+            });
+
+            // 中心の円形ビジュアライザー
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) * 0.15;
+
+            for (let i = 0; i < 360; i += 3) {
+                const freqIndex = Math.floor((i / 360) * dataArray.length);
+                const amplitude = dataArray[freqIndex];
+                const barHeight = (amplitude / 255) * radius * 1.5;
+
+                const angle = (i * Math.PI) / 180;
+                const x1 = centerX + Math.cos(angle) * radius;
+                const y1 = centerY + Math.sin(angle) * radius;
+                const x2 = centerX + Math.cos(angle) * (radius + barHeight);
+                const y2 = centerY + Math.sin(angle) * (radius + barHeight);
+
+                const hue = (i / 360) * 360;
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = `hsla(${hue}, 100%, 50%, 0.6)`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        async function startAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+
+                // マイクから音声を取得
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+
+                // 解析設定
+                analyser.fftSize = 512;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                // オーバーレイを非表示
+                overlay.classList.add('hidden');
+
+                // アニメーション開始
+                animate();
+            } catch (error) {
+                console.error('Audio init error:', error);
+                alert('マイクへのアクセスができませんでした。ブラウザの設定を確認してください。');
+            }
+        }
+
+        startButton.addEventListener('click', startAudio);
+
+        fullscreenButton.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // 初期アニメーション（オーディオ開始前）
+        function initAnimation() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // デモパーティクル
+            if (Math.random() > 0.5) {
+                particles.push(new Particle(Math.random() * 255, Math.random() * 100));
+            }
+
+            particles = particles.filter(p => !p.isDead());
+            particles.forEach(particle => {
+                particle.update(50);
+                particle.draw();
+            });
+
+            requestAnimationFrame(initAnimation);
+        }
+
+        initAnimation();
+    </script>
+</body>
+</html>
