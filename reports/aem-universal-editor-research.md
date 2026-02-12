@@ -1,512 +1,245 @@
-# AEM Universal Editor Research Report
+# AEM Universal Editor 調査レポート
 
-**Last Updated:** February 13, 2026 15:38 JST
-**Research Period:** February 13, 2026
-**Status:** Phase 3 Complete - Documentation Verification
-
----
-
-## Executive Summary
-
-AEM Universal Editor is Adobe Experience Manager's modern visual editing tool that enables marketers to create impactful web experiences. This research documents its implementation patterns with Edge Delivery Services and classifies design patterns.
+**調査日:** 2026年2月13日
+**調査者:** Mira (AI Assistant)
+**目的:** AEM Universal Editorの実装形式とデザインパターンを調査し、レポートとしてまとめる
 
 ---
 
-## Integration with Edge Delivery Services
+## 1. 概要
 
-### Authoring Workflow
+AEM (Adobe Experience Manager) Universal Editorは、Adobe Experience Manager as a Cloud Serviceで提供される次世代のコンテンツ編集エディターで、あらゆる実装のあらゆるコンテンツを編集できるユニバーサルなソリューションです。
 
-The seamless integration between AEM as a Cloud Service, Universal Editor, and Edge Delivery Services:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ 1. AEM Sites Console                                     │
-│    - Content management (pages, CFs, EFs)                  │
-│    - Full AEM features (workflows, MSM, translation, Launches)│
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────────────┐
-│ 2. Universal Editor                                        │
-│    - Visual editing of AEM-managed content                      │
-│    - Modern, intuitive UI                                      │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────────────┐
-│ 3. AEM Rendering                                            │
-│    - HTML rendering with EDS resources (scripts, styles, etc.)  │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────────────┐
-│ 4. Persistence to AEM as a Cloud Service                     │
-│    - All changes saved to AEM                                 │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────────────┐
-│ 5. Publishing to Edge Delivery Services                       │
-│    - Authored content published to EDS                           │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────────────┐
-│ 6. Content Delivery                                         │
-│    - Semantic HTML for EDS ingestion                             │
-│    - 100 Core Web Vitals guaranteed                             │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Developer Benefits
-
-**Modern Development Stack:**
-- ✅ GitHub-based workflow
-- ✅ Local development with auto-reload
-- ✅ No transpilation
-- ✅ No bundlers
-- ✅ Zero configuration
-- ✅ Minimal overhead
-- ✅ Continuous quality assurance (performance, accessibility, SEO, best practices)
+**主な特徴:**
+- 直感的なUIで最小限のトレーニングで利用可能
+- インプレイス編集が可能
+- Edge Delivery Servicesとの統合で100% Core Web Vitalsスコアを実現
+- AEMの強力なコンテンツ管理機能（MSM、翻訳、Launches等）と連携
 
 ---
 
-## Design Patterns Classification
+## 2. URL調査結果
 
-### 1. In-Place Editing Pattern
+### 調査したURL
 
-#### Plain Text Editing
-- **Interaction:** Double-click/double-tap for direct editing
-- **Visual Feedback:**
-  - Hover: Thin light blue outline + badge
-  - Selected: Dark blue outline + badge
-  - Editing: Cursor appears
-- **Saving:** Auto-save on focus leave
+| URL | ステータス | メモ |
+|-----|----------|------|
+| `https://www.aem.live/docs/edge-delivery` | ❌ 404 | 存在しない |
+| `https://www.aem.live/docs/aem-authoring` | ✅ 200 | AEMでのオーサリングガイド |
+| `https://www.aem.live/developer/keeping-it-100` | ✅ 200 | パフォーマンス最適化ガイド |
+| `https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/architecture` | ✅ 200 | アーキテクチャ説明 |
+| `https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/attributes-types` | ✅ 200 | HTML属性とタイプ |
 
-#### Rich Text Editing (RTE)
+### 関連ドキュメント
 
-**Formatting Options:**
-- Headings (h1, h2, h3...)
-- Bold, Italic, Underline
-- Superscript, Subscript
-- Bulleted/Numbered lists (Tab/Shift+Tab for indent)
-- Link insertion/removal
-- Image insertion
-- Remove formatting
-
-**Editing Interfaces:**
-- Context menu (basic formatting)
-- Properties panel (detailed editing, larger canvas)
-- Existing tables editable (new table creation not supported)
-
-#### Media Editing
-- Asset preview in Properties panel
-- New asset selection via Asset Selector
-- Auto-save
-
-### 2. Content Fragment Editing Pattern
-
-**Via Properties Panel:**
-- Content model fields displayed and editable
-- Auto-scroll to field in CF editor when selected
-- Auto-save on focus leave
-
-**Via Content Fragment Editor:**
-- "Open in CF Editor" button
-- Hotkey: `e` to open CF editor directly
-- Use case: Workflow-specific editing requirements
-
-### 3. Container Component Operations Pattern
-
-**Add Component:**
-- Select container → Add icon in Properties panel
-- Dropdown if multiple allowed, auto-insert if single
-- Hotkey: `a`
-
-**Duplicate Component:**
-- Select component in container/editor
-- Duplicate icon in Properties panel
-- Inserts below selected component
-
-**Delete Component:**
-- Content tree mode: Expand container
-- Select component within container
-- Delete icon in Properties panel
-- Hotkey: `Shift+Backspace`
-
-**Move/Reorder:**
-
-*Context Menu:*
-- Move Up/Down/To Top/To Bottom
-
-*Hotkeys:*
-- `Command-U`: Up, `Shift-Command-U`: To Top
-- `Command-J`: Down, `Shift-Command-J`: To Bottom
-
-*Content Tree Drag & Drop:*
-- Grayed out while dragging
-- Blue line for insertion point
-- Can move between containers (if filter allows)
-
-**Copy/Paste:**
-- Container components only
-- Target container filter must allow
-- Same browser tab or already-open tabs
-- Hotkeys: `Command-C` (copy), `Command-V` (paste)
-
-### 4. Navigation Pattern
-
-**Edit Mode:**
-- Hover: Light blue outline + badge
-- Click: Dark blue outline (selection)
-- Links trigger edit selection
-
-**Preview Mode:**
-- Click links to navigate
-- Published state rendering
-- No edit selection
-
-### 5. Operation Pattern
-
-**Undo/Redo:**
-- Context edits, Properties panel edits, add/duplicate/move/delete
-- Limited to current browser session
-- Hotkeys: `Command-Z` (undo), `Shift-Command-Z` (redo)
-
-**Context Menu:**
-- Right-click: Auto-select + menu
-- Badge click: Also opens menu
-- Options: Duplicate, Delete, Copy, etc.
-
-### 6. Inheritance Cancellation Pattern
-
-**Automatic Inheritance Break:**
-- Editing content automatically disables inheritance
-- Ensures modified content retained on blueprint sync
-
-**MSM Extension (Optional):**
-- Display inheritance status of selected component
-- Break/reinstate inheritance toggle
-- Pages only (not Content Fragments)
-
-### 7. Toolbar Extension Pattern (Optional)
-
-**Inheritance Management:**
-- Inheritance Installed icon: Active
-- Inheritance Broken icon: Canceled
-- Page reload refreshes inherited content
-
-**Page Properties:**
-- Page Properties Extension
-- Opens page properties in new tab
-
-**Sites Console:**
-- Site Admin Extension
-- Opens Sites Console at current page in new tab
-
-**Page Locking:**
-- Page Lock Extension
-- Unlocked/Locked icons
-- Tooltip shows locking user when locked
-
-**Workflows:**
-- Workflows Extension
-- Opens Start Workflow modal
-
-**Developer Login:**
-- Dev Login Extension
-- Local AEM SDK authentication
-
-### 8. Properties Panel Extension Pattern
-
-**Generate Variations:**
-- Generative AI for content variations
-- Direct integration in Properties panel
-- Generate Variations Extension
+- **AEM Authoring:** https://www.aem.live/docs/aem-authoring
+- **Keeping it 100:** https://www.aem.live/developer/keeping-it-100
+- **Universal Editor Architecture:** https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/architecture
+- **Attributes and Types:** https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/attributes-types
 
 ---
 
-## Supported Architectures
+## 3. Universal Editorの実装形式
 
-### 1. Edge Delivery Services (Recommended)
-- Simplicity, fast time-to-value, enhanced performance
-- Most recommended approach
+### 3.1 アーキテクチャ
 
-### 2. Headless Implementations
-- Existing headless projects or specific requirements
-- Enterprise-grade visual editing
-- Compatible with any architecture (SSR, CSR)
-- Major web frameworks: Next.js, React, Astro
-- "Bring your own app" hosting model
+Universal Editorは4つの主要なビルディングブロックで構成されています：
 
----
+#### 1. **Editors（エディター）**
+- **Universal Editor本体:** インストルメンテーションされたDOMを使用してインプレイス編集を可能にする
+- **Properties Panel:** コンテキスト外編集に使用されるフォームベースのエディター（カルーセルの回転時間等）
 
-## Advanced Implementation Patterns
+#### 2. **Remote App（リモートアプリ）**
+- Universal Editorでインプレイス編集可能にするため、DOMをインストルメンテーションする必要がある
+- SDKは最小限で、インストルメンテーションはアプリ実装の責任
 
-### 1. Repoless Authoring (Code Reuse Across Sites)
+#### 3. **API Layer（APIレイヤー）**
+- **Content Data:** コンテンツデータのソースシステムや消費方法は重要ではなく、必要な属性を定義・提供することが重要
+- **Persisting Data:** 編集可能なデータごとにURN識別子があり、正しいシステムとリソースへのルーティングに使用される
 
-**Overview:**
-- Multiple sites sharing a single codebase and GitHub repository
-- Eliminates code replication across similar sites
-- Recommended for sites that differ mainly in content, not code
+#### 4. **Persistence Layer（持続性レイヤー）**
+- **Content Fragment Model:** コンポーネントおよびコンテンツフラグメントごとのモデルが必要
+- **Content:** AEM、Magento等、どこにでも格納可能
 
-**Key Features:**
-- **Single Codebase:** All sites use the same Git repository
-- **Configuration Service:** Manages site-specific configurations dynamically
-- **Centralized Development:** Code changes benefit all sites simultaneously
+### 3.2 サービスディスパッチ
 
-**Prerequisites:**
-- AEM as a Cloud Service 2025.4 or higher
-- Base site already configured
-- Configuration service set up
-- Access token and technical account
+Universal Editorは、コンテンツ変更をすべて**Universal Editor Service**と呼ばれる集中サービスにディスパッチします。
 
-**Configuration Steps:**
-1. Retrieve access token from admin.hlx.page
-2. Set up configuration service
-3. Configure code and content sources
-4. Add path mapping for site configuration
-5. Set technical account for publishing
-6. Update AEM configuration to use aem.live with repoless
-
-**Benefits:**
-- Reduced maintenance overhead
-- Consistent code across all sites
-- Simplified deployment pipeline
-- Easier feature rollout across multiple sites
-
-### 2. Multi Site Management with MSM
-
-**Overview:**
-- Leverage AEM's Multi Site Manager (MSM) for localized content
-- Single codebase delivers multiple localized sites via Edge Delivery Services
-- Centralized content authoring with distributed delivery
-
-**Use Case Example:**
-```
-/content/website                    (Blueprint)
-/content/website/language-masters     (Source content)
-/content/website/ch                 (Switzerland - localized)
-/content/website/de                 (Germany - localized)
-```
-
-**Architecture:**
-- **Blueprint:** Language masters serve as source
-- **Live Copies:** Localized sites inherit from blueprint
-- **1:1 Site Mapping:** Each MSM site has its own aem.live site
-- **Shared Codebase:** All sites use the same GitHub repository
-
-**Configuration Requirements:**
-- Repoless feature must be enabled
-- Separate AEM configurations for each locale
-- Individual Edge Delivery Services sites per locale
-- MSM Live Copy relationships configured
-
-**Implementation Steps:**
-1. Create AEM configurations for each locale
-2. Create Edge Delivery Services sites for each locale (e.g., website-ch, website-de)
-3. Map content paths to respective sites
-4. Configure Cloud Services for each localized site
-5. Verify rendering and publishing
-
-**Benefits:**
-- Centralized content management
-- Automated content rollout via Live Sync
-- Localized delivery with shared code
-- MSM inheritance control
-
-### 3. Configuration Templates
-
-**Overview:**
-- Sites console-based configuration management
-- Supports inheritance for multi-site setups
-- Alternative to spreadsheet-based configuration
-
-**Configuration Management via UI:**
-
-**Basic Tab:**
-- Title configuration
-
-**Access Control Tab:**
-- Author Users (email glob patterns)
-- Admin Users (email glob patterns)
-- Role-based access control
-
-**CDN Tab:**
-- CDN Vendor selection:
-  - Adobe Managed CDN
-  - Fastly
-  - Akamai
-  - Cloudflare
-  - CloudFront
-
-**Additional Resources Tab:**
-- Bulk Metadata paths
-- Multiple metadata sheet support
-
-**Configuration Inheritance:**
-- Blueprint settings roll down to localized sites
-- Individual sites can break inheritance for specific settings
-- Example: Shared CDN API key, locale-specific hostnames
-
-**Template vs Spreadsheet:**
-- **Templates:** UI-driven, supports common configurations
-- **Spreadsheets:** For edge cases not covered by templates
-- **Configuration Service:** Required for advanced scenarios
+- Adobe I/O Runtime上で実行される
+- Extension Registryからプラグインをロード
+- プラグインはバックエンドとの通信と統一されたレスポンスの返却を担当
 
 ---
 
-## Technical Requirements
+## 4. HTML属性とデータタイプ
 
-### AEM Versions
-- **AEM as a Cloud Service:** Release 2023.8.13099+
-- **AEM 6.5 LTS:** Supported (on-premises, AMS)
-- **AEM 6.5:** Supported (on-premises, AMS)
+Universal EditorはDOMに特定の属性を追加することで、編集可能なコンテンツを識別します。
 
-### Integration
-- AEM Sites Console: Full integration
-- Content Fragment Editor: Seamless integration
-- Other AEM tools: Cohesive authoring experience
+### 4.1 主要な属性
 
----
+| 属性 | 説明 | 必須性 |
+|------|------|--------|
+| `data-aue-type` | 編集可能なコンテンツの種類（text, richtext, media, container, component, reference） | 必須 |
+| `data-aue-resource` | コンテンツ変更の書き込み先を示すURN識別子 | 必須 |
+| `data-aue-prop` | プロパティ識別子（インプレイス編集時に必須） | 条件付き必須 |
+| `data-aue-filter` | アセットや参照のフィルタリング基準 | 任意 |
+| `data-aue-label` | コンテンツのラベル表示 | 任意 |
+| `data-aue-model` | Content Fragment Modelの識別子 | 任意 |
 
-## Limitations
+### 4.2 データタイプ
 
-### Technical
-- **AEM Resource References:** Max 25 per page (CFs, pages, EFs, assets, etc.)
-- **Supported Backends:** AEM as a Cloud Service, AEM 6.5 LTS, AEM 6.5 only
-- **Release Requirement:** AEM as a Cloud Service 2023.8.13099+
-
-### User
-- **Individual Accounts:** Content authors need individual Experience Cloud accounts
-
-### Browser Support
-- **Desktop browsers only:** Same as AEM
-- **Mobile browsers:** Not supported
+| タイプ | 説明 | 必須属性 |
+|--------|------|----------|
+| **text** | 単純なテキスト形式（リッチテキストなし）| `data-aue-resource`, `data-aue-prop` |
+| **richtext** | 完全なリッチテキスト機能付きテキスト | `data-aue-resource`, `data-aue-prop` |
+| **media** | アセット（画像やビデオ等）| `data-aue-resource`, `data-aue-prop`, `data-aue-filter`（任意）|
+| **container** | コンポーネントのコンテナ（Paragraph System）| `data-aue-resource`, `data-aue-prop`（条件付き）, `data-aue-filter`（任意）|
+| **component** | コンポーネント（移動/削除可能なDOM部分）| `data-aue-resource` |
+| **reference** | 参照（Content Fragment、Experience Fragment、製品等）| `data-aue-resource`, `data-aue-prop`, `data-aue-filter`（任意）, `data-aue-model`（任意）|
 
 ---
 
-## Key Findings
+## 5. デザインパターン分類
 
-### Design Patterns
-8 major pattern classifications identified:
-1. In-Place Editing
-2. Content Fragment Editing
-3. Container Component Operations
-4. Navigation
-5. Operations
-6. Inheritance Cancellation
-7. Toolbar Extensions
-8. Properties Panel Extensions
+### 5.1 編集体験パターン
 
-### Implementation Patterns
-- **Page Structure Model:** Blocks/Sections/Components hierarchy
-- **Properties Panel as Central Hub:** All component configuration
-- **Hotkey-Driven Efficiency:** `a`, `e`, `Command-C/V`, `Command-Z` etc.
-- **Multiple Edit Modes:** In-place, Properties panel, Context menu
+#### **A. テキスト編集**
+- **タイプ:** `text`, `richtext`
+- **UI:** インプレイスダブルクリックで編集開始
+- **フィーチャー:**
+  - `text`: 単純なテキスト入力
+  - `richtext`: リッチテキストエディター（フォーマットオプション付き）
+  - 自動保存（フォーカスが離れると保存）
 
----
+#### **B. メディア編集**
+- **タイプ:** `media`
+- **UI:** Properties Panelからアセットセレクターを起動
+- **フィーチャー:**
+  - 画像/ビデオの選択と置換
+  - フィルタリング基準でアセット検索可能
 
-## Use Cases
+#### **C. コンテナ管理**
+- **タイプ:** `container`
+- **UI:** コンテナ内にコンポーネントを追加・削除・再配列
+- **フィーチャー:**
+  - コンポーネントの追加・複製・削除
+  - ドラッグ＆ドロップで再配列
+  - Content Treeモードで階層的に管理
 
-### Recommended
-- Projects using Edge Delivery Services (most recommended)
-- Headless implementations requiring visual editing
-- Adding AEM editing to existing Next.js, React, or Astro projects
+#### **D. コンポーネント操作**
+- **タイプ:** `component`
+- **UI:** コンテキストメニューから移動・削除・複製
+- **フィーチャー:**
+  - コンテキストメニュー（右クリック）からの操作
+  - ホットキーによる素早い操作（例: `a`で追加、`Command-C/V`でコピー＆ペースト）
 
----
+#### **E. 参照編集**
+- **タイプ:** `reference`
+- **UI:** Properties Panelで参照先を選択
+- **フィーチャー:**
+  - Content Fragment、Experience Fragment、製品等の参照
+  - フィルタリング基準で参照先を検索可能
+  - Content Fragment Editorで直接編集も可能
 
-## Resources
+### 5.2 拡張フィーチャー（Extension Managerで有効化）
 
-### Official Documentation
-- [Universal Editor Introduction](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/introduction)
-- [Universal Editor Authoring Guide](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/universal-editor/authoring)
-- [Use Cases and Learning Paths](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/use-cases)
-- [Extending Universal Editor](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/extending)
-- [Universal Editor Architecture](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/architecture)
-- [Attributes and Types](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/attributes-types)
-- [Universal Editor Authentication](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/authentication)
-
-### AEM Resources
-- [AEM Developer Documentation](https://www.aem.live/docs)
-- [AEM Developer Home](https://www.aem.live/developer)
-- [AEM Authoring with Edge Delivery Services](https://www.aem.live/docs/aem-authoring)
-- [Repoless Authoring - Reusing Code Across Sites](https://www.aem.live/developer/repoless-authoring)
-- [Multi Site Management with AEM Authoring](https://www.aem.live/developer/repoless-multisite-manager)
-- [Configuration Templates](https://www.aem.live/docs/configuration-templates)
-- [Keeping it 100 (Core Web Vitals)](https://www.aem.live/developer/keeping-it-100)
-
----
-
-## Future Research Points
-
-- Real-world implementation case studies
-- Extension enablement methods and configuration
-- Performance measurement data
-- Comparison with competitor tools (Contentful, Sanity, etc.)
+| 拡張 | 機能 |
+|------|------|
+| **AEM Multi-Site-Management (MSM) Extension** | 継承の状態を表示・変更（継承の解除・再設定）|
+| **AEM Page Properties Extension** | 現在編集中のページのページプロパティに素早くアクセス |
+| **AEM Site Admin Extension** | Sites Consoleでページを管理 |
+| **AEM Page Lock Extension** | ページのロック・アンロック |
+| **AEM Workflows Extension** | ワークフローの開始 |
+| **Generate Variations Extension** | 生成AIでコンテンツのバリエーションを作成 |
+| **Developer Login Extension** | ローカルAEM SDKでの開発者ログイン |
 
 ---
 
-## Latest Updates (February 13, 2026 - 15:38 JST)
+## 6. パフォーマンス最適化（Edge Delivery Services）
 
-### Documentation URL Verification
+### 6.1 Three-Phase Loading（E-L-D）戦略
 
-**Issue Found:** Original URL `https://www.aem.live/docs/edge-delivery` returns 404
+#### **Phase E: Eager（LCP達成）**
+- 目的: Largest Contentful Paint (LCP) を達成
+- 内容:
+  - DOMのデコレーション（CSSクラスの追加）
+  - 最初のセクションとLCP候補（最初の画像）を優先読み込み
+  - フォントはLCP後に非同期読み込み
+- 重要: LCP前のペイロードは100kb以下に抑える
 
-**Correct URLs Identified:**
-- AEM Documentation Hub: https://www.aem.live/docs
-- AEM Developer Portal: https://www.aem.live/developer
-- AEM Authoring with EDS: https://www.aem.live/docs/aem-authoring
+#### **Phase L: Lazy（遅延読み込み）**
+- 目的: Total Blocking Time (TBT) に影響しない読み込み
+- 内容:
+  - 次のセクションとそのブロック
+  - 残りの画像（`loading="lazy"`属性付き）
+  - 非ブロッキングなJavaScriptライブラリ
 
-**Universal Editor Official Documentation (Experience League):**
-- Authoring Guide: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/universal-editor/authoring
-- Architecture: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/architecture
-- Authentication: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/authentication
+#### **Phase D: Delayed（遅延サードパーティ）**
+- 目的: 経験に直接影響しないサードパーティタグ等の読み込み
+- 内容:
+  - マーケティングツール、同意管理、拡張分析等
+  - **重要:** LCPイベント後少なくとも3秒遅延させる
 
-### Detailed Authoring Experience (Latest Documentation)
+### 6.2 その他の最適化手法
 
-**Enhanced Rich Text Editor Features:**
-- Paragraph formatting (h1, h2, h3, etc.)
-- Bold, Italics, Underline
-- Superscript, Subscript
-- Bulleted/Numbered lists with Tab/Shift+Tab for indent
-- Link insertion/removal
-- Image insertion
-- Remove All Formatting
-- Existing table editing (new table creation not supported)
-
-**Comprehensive Hotkey System:**
-- `a` - Add component to selected container
-- `e` - Open Content Fragment editor
-- `Command-C` / `Command-V` - Copy/Paste components
-- `Command-Z` / `Shift-Command-Z` - Undo/Redo
-- `Command-U` / `Shift-Command-U` - Move up/Move to top
-- `Command-J` / `Shift-Command-J` - Move down/Move to bottom
-- `Shift+Backspace` - Delete selected component
-
-**Container Operations:**
-- Add, Duplicate, Delete, Move, Reorder, Copy/Paste
-- Content tree mode for hierarchical navigation
-- Drag & drop between containers (subject to filter constraints)
-- Component filter controls which components can be added/moved
-
-**Inheritance Management (MSM):**
-- Automatic inheritance break on content modification
-- Optional MSM Extension for explicit inheritance control
-- Visual indicators: Inheritance Installed vs. Inheritance Broken icons
-
-**Toolbar Extensions (Optional):**
-- Inheritance Management (MSM)
-- Page Properties
-- Sites Console
-- Page Locking
-- Workflows
-- Developer Login (local AEM SDK)
-
-**Properties Panel Extensions (Optional):**
-- Generate Variations (Generative AI)
-
-**Preview Mode:**
-- Toggle between Edit and Preview modes
-- Link navigation in Preview mode
-- Published state rendering
+| 手法 | 説明 |
+|------|------|
+| **ヘッダー＆フッターの非同期読み込み** | LCPのクリティカルパスに含まれないため非同期で読み込み |
+| **ウェブフォントの遅延読み込み** | LCP直後に読み込み、フォントフォールバック手法でCLS回避 |
+| **単一オリジンからの配信** | LCP前の複数オリジン接続はパフォーマンスに悪影響 |
+| **リダイレクト回避** | 複数回のリダイレクトはCore Web Vitalsを悪化 |
 
 ---
 
-**Research Status:** ✅ Phase 3 Complete - Documentation Verification
-**Next Steps:** Real-world case studies and performance testing
+## 7. 技術スタック
+
+### 7.1 レンダリングパイプライン
+
+Universal Editorは以下のレンダリング方式に対応：
+
+1. **Server Side Rendering (SSR)**
+2. **Static Site Generation (SSG)**
+3. **Client Side Rendering (CSR)**
+
+### 7.2 Edge Delivery Servicesの特徴
+
+- **100% Core Web Vitalsスコア**を目指す設計
+- **AEM Boilerplate**を使用すると開発当初から100スコアを実現
+- プルリクエストごとにPageSpeed Insights Serviceで自動テスト
+- スコアが100未満の場合、プルリクエストを失敗させる
+
+---
+
+## 8. 結論
+
+### 8.1 Universal Editorの強み
+
+1. **統一的編集体験:** あらゆる実装のあらゆるコンテンツを単一のエディターで編集可能
+2. **開発者体験:** 最小限のSDK、DOMベースのインストルメンテーションで柔軟な実装
+3. **パフォーマンス:** Edge Delivery Servicesとの統合で100% Core Web Vitalsを実現
+4. **拡張性:** Extension Managerで機能拡張が可能
+
+### 8.2 技術的洞察
+
+- **属性ベースのインストルメンテーション:** HTML属性を追加するだけで編集可能に
+- **URNベースのルーティング:** 変更を適切なバックエンドシステムにルーティング
+- **プラグイン可能なバックエンド:** Universal Editor Service経由で様々なシステムに対応可能
+
+### 8.3 デザインパターン
+
+- **コンテキスト依存のUI:** 選択したコンテンツタイプに応じて適切な編集体験を提供
+- **プレビューモード:** 編集とナビゲーションを切り替え可能
+- **ホットキー:** よく使う操作はキーボードショートカットで素早く実行可能
+
+---
+
+## 9. 関連リソース
+
+- [AEM Universal Editor Documentation](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/universal-editor/authoring)
+- [AEM Boilerplate](https://github.com/adobe/aem-boilerplate)
+- [Adobe Developer - Extension Manager](https://developer.adobe.com/uix/docs/extension-manager/)
+- [Core Web Vitals](https://web.dev/explore-learn-core-vitals/)
+
+---
+
+*本レポートはMira (AI Assistant) によって作成されました。*
