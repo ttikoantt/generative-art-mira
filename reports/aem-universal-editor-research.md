@@ -1,6 +1,6 @@
 # AEM Universal Editor Research Report
 
-**Last Updated:** February 13, 2026
+**Last Updated:** February 13, 2026 12:35 JST
 **Research Period:** February 13, 2026
 **Status:** Ongoing Investigation
 
@@ -236,6 +236,121 @@ The seamless integration between AEM as a Cloud Service, Universal Editor, and E
 
 ---
 
+## Advanced Implementation Patterns
+
+### 1. Repoless Authoring (Code Reuse Across Sites)
+
+**Overview:**
+- Multiple sites sharing a single codebase and GitHub repository
+- Eliminates code replication across similar sites
+- Recommended for sites that differ mainly in content, not code
+
+**Key Features:**
+- **Single Codebase:** All sites use the same Git repository
+- **Configuration Service:** Manages site-specific configurations dynamically
+- **Centralized Development:** Code changes benefit all sites simultaneously
+
+**Prerequisites:**
+- AEM as a Cloud Service 2025.4 or higher
+- Base site already configured
+- Configuration service set up
+- Access token and technical account
+
+**Configuration Steps:**
+1. Retrieve access token from admin.hlx.page
+2. Set up configuration service
+3. Configure code and content sources
+4. Add path mapping for site configuration
+5. Set technical account for publishing
+6. Update AEM configuration to use aem.live with repoless
+
+**Benefits:**
+- Reduced maintenance overhead
+- Consistent code across all sites
+- Simplified deployment pipeline
+- Easier feature rollout across multiple sites
+
+### 2. Multi Site Management with MSM
+
+**Overview:**
+- Leverage AEM's Multi Site Manager (MSM) for localized content
+- Single codebase delivers multiple localized sites via Edge Delivery Services
+- Centralized content authoring with distributed delivery
+
+**Use Case Example:**
+```
+/content/website                    (Blueprint)
+/content/website/language-masters     (Source content)
+/content/website/ch                 (Switzerland - localized)
+/content/website/de                 (Germany - localized)
+```
+
+**Architecture:**
+- **Blueprint:** Language masters serve as source
+- **Live Copies:** Localized sites inherit from blueprint
+- **1:1 Site Mapping:** Each MSM site has its own aem.live site
+- **Shared Codebase:** All sites use the same GitHub repository
+
+**Configuration Requirements:**
+- Repoless feature must be enabled
+- Separate AEM configurations for each locale
+- Individual Edge Delivery Services sites per locale
+- MSM Live Copy relationships configured
+
+**Implementation Steps:**
+1. Create AEM configurations for each locale
+2. Create Edge Delivery Services sites for each locale (e.g., website-ch, website-de)
+3. Map content paths to respective sites
+4. Configure Cloud Services for each localized site
+5. Verify rendering and publishing
+
+**Benefits:**
+- Centralized content management
+- Automated content rollout via Live Sync
+- Localized delivery with shared code
+- MSM inheritance control
+
+### 3. Configuration Templates
+
+**Overview:**
+- Sites console-based configuration management
+- Supports inheritance for multi-site setups
+- Alternative to spreadsheet-based configuration
+
+**Configuration Management via UI:**
+
+**Basic Tab:**
+- Title configuration
+
+**Access Control Tab:**
+- Author Users (email glob patterns)
+- Admin Users (email glob patterns)
+- Role-based access control
+
+**CDN Tab:**
+- CDN Vendor selection:
+  - Adobe Managed CDN
+  - Fastly
+  - Akamai
+  - Cloudflare
+  - CloudFront
+
+**Additional Resources Tab:**
+- Bulk Metadata paths
+- Multiple metadata sheet support
+
+**Configuration Inheritance:**
+- Blueprint settings roll down to localized sites
+- Individual sites can break inheritance for specific settings
+- Example: Shared CDN API key, locale-specific hostnames
+
+**Template vs Spreadsheet:**
+- **Templates:** UI-driven, supports common configurations
+- **Spreadsheets:** For edge cases not covered by templates
+- **Configuration Service:** Required for advanced scenarios
+
+---
+
 ## Technical Requirements
 
 ### AEM Versions
@@ -306,6 +421,9 @@ The seamless integration between AEM as a Cloud Service, Universal Editor, and E
 ### AEM Resources
 - [AEM Developer Tutorial](https://www.aem.live/developer/tutorial)
 - [AEM Authoring with Edge Delivery Services](https://www.aem.live/docs/aem-authoring)
+- [Repoless Authoring - Reusing Code Across Sites](https://www.aem.live/developer/repoless-authoring)
+- [Multi Site Management with AEM Authoring](https://www.aem.live/developer/repoless-multisite-manager)
+- [Configuration Templates](https://www.aem.live/docs/configuration-templates)
 
 ---
 
@@ -318,5 +436,5 @@ The seamless integration between AEM as a Cloud Service, Universal Editor, and E
 
 ---
 
-**Research Status:** ✅ Phase 1 Complete - Documentation Analysis
-**Next Steps:** Implementation testing and case study research
+**Research Status:** ✅ Phase 2 Complete - Advanced Implementation Analysis
+**Next Steps:** Real-world case studies and performance testing
