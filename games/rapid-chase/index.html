@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Rapid Chase - 追いかけっこゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            touch-action: none;
+        }
+        
+        #gameCanvas {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+        }
+        
+        .score {
+            font-size: 32px;
+            margin-bottom: 5px;
+        }
+        
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+        
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+        
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.98);
+            padding: 40px 60px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            z-index: 200;
+            display: none;
+        }
+        
+        .game-over h2 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+        
+        .game-over p {
+            font-size: 24px;
+            margin-bottom: 30px;
+            color: #333;
+        }
+        
+        .game-over button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .game-over button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <div class="score" id="score">Score: 0</div>
+        <div id="status">Tap to move your dot!</div>
+    </div>
+    
+    <canvas id="gameCanvas"></canvas>
+    
+    <button class="fullscreen-btn" id="fullscreenBtn">🎮 全画面</button>
+    
+    <div class="game-over" id="gameOver">
+        <h2>Game Over!</h2>
+        <p id="finalScore">Score: 0</p>
+        <button id="restartBtn">もう一回</button>
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const scoreEl = document.getElementById('score');
+        const statusEl = document.getElementById('status');
+        const gameOverEl = document.getElementById('gameOver');
+        const finalScoreEl = document.getElementById('finalScore');
+        const restartBtn = document.getElementById('restartBtn');
+        
+        // キャンバスサイズ設定
+        function resizeCanvas() {
+            const maxSize = Math.min(window.innerWidth - 40, window.innerHeight - 200, 500);
+            canvas.width = maxSize;
+            canvas.height = maxSize;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // ゲーム状態
+        let gameState = {
+            score: 0,
+            player: { x: 0, y: 0, radius: 15, color: '#667eea' },
+            target: { x: 0, y: 0, radius: 12, color: '#f093fb' },
+            chaser: { x: 0, y: 0, radius: 18, color: '#ff6b6b', speed: 1.5 },
+            particles: [],
+            gameOver: false
+        };
+        
+        // 初期化
+        function initGame() {
+            const center = canvas.width / 2;
+            gameState.player.x = center;
+            gameState.player.y = center;
+            gameState.target.x = Math.random() * (canvas.width - 60) + 30;
+            gameState.target.y = Math.random() * (canvas.height - 60) + 30;
+            gameState.chaser.x = 50;
+            gameState.chaser.y = 50;
+            gameState.score = 0;
+            gameState.gameOver = false;
+            gameState.particles = [];
+            scoreEl.textContent = 'Score: 0';
+            statusEl.textContent = 'Tap to move your dot!';
+            gameOverEl.style.display = 'none';
+        }
+        
+        // パーティクル生成
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 10; i++) {
+                gameState.particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    radius: Math.random() * 3 + 1,
+                    color: color,
+                    life: 1
+                });
+            }
+        }
+        
+        // タッチ/クリックでプレイヤー移動
+        function handleInput(e) {
+            if (gameState.gameOver) return;
+            
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            let x, y;
+            
+            if (e.touches) {
+                x = e.touches[0].clientX - rect.left;
+                y = e.touches[0].clientY - rect.top;
+            } else {
+                x = e.clientX - rect.left;
+                y = e.clientY - rect.top;
+            }
+            
+            // キャンバス内に収める
+            x = Math.max(gameState.player.radius, Math.min(canvas.width - gameState.player.radius, x));
+            y = Math.max(gameState.player.radius, Math.min(canvas.height - gameState.player.radius, y));
+            
+            gameState.player.x = x;
+            gameState.player.y = y;
+        }
+        
+        // キャンバスイベント
+        canvas.addEventListener('touchstart', handleInput);
+        canvas.addEventListener('mousedown', handleInput);
+        
+        // 更新
+        function update() {
+            if (gameState.gameOver) return;
+            
+            // チェイサーがプレイヤーを追跡
+            const dx = gameState.player.x - gameState.chaser.x;
+            const dy = gameState.player.y - gameState.chaser.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (dist > 0) {
+                gameState.chaser.x += (dx / dist) * gameState.chaser.speed;
+                gameState.chaser.y += (dy / dist) * gameState.chaser.speed;
+            }
+            
+            // ターゲットとの距離チェック
+            const targetDx = gameState.player.x - gameState.target.x;
+            const targetDy = gameState.player.y - gameState.target.y;
+            const targetDist = Math.sqrt(targetDx * targetDx + targetDy * targetDy);
+            
+            if (targetDist < gameState.player.radius + gameState.target.radius) {
+                // スコアアップ
+                gameState.score++;
+                scoreEl.textContent = `Score: ${gameState.score}`;
+                statusEl.textContent = 'Good! Keep going!';
+                
+                // パーティクル
+                createParticles(gameState.target.x, gameState.target.y, gameState.target.color);
+                
+                // 新しいターゲット
+                gameState.target.x = Math.random() * (canvas.width - 60) + 30;
+                gameState.target.y = Math.random() * (canvas.height - 60) + 30;
+                
+                // チェイサーを少しスピードアップ
+                gameState.chaser.speed = Math.min(3, 1.5 + gameState.score * 0.05);
+            }
+            
+            // ゲームオーバーチェック
+            const chaserDist = Math.sqrt(
+                Math.pow(gameState.player.x - gameState.chaser.x, 2) +
+                Math.pow(gameState.player.y - gameState.chaser.y, 2)
+            );
+            
+            if (chaserDist < gameState.player.radius + gameState.chaser.radius - 5) {
+                gameState.gameOver = true;
+                finalScoreEl.textContent = `Score: ${gameState.score}`;
+                gameOverEl.style.display = 'block';
+                statusEl.textContent = 'Game Over!';
+            }
+            
+            // パーティクル更新
+            gameState.particles = gameState.particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                return p.life > 0;
+            });
+        }
+        
+        // 描画
+        function draw() {
+            // 背景
+            ctx.fillStyle = '#f8f9fa';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // グリッド
+            ctx.strokeStyle = '#e9ecef';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < canvas.width; i += 30) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, canvas.height);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(canvas.width, i);
+                ctx.stroke();
+            }
+            
+            // ターゲット
+            ctx.beginPath();
+            ctx.arc(gameState.target.x, gameState.target.y, gameState.target.radius, 0, Math.PI * 2);
+            ctx.fillStyle = gameState.target.color;
+            ctx.fill();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = gameState.target.color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            // チェイサー
+            ctx.beginPath();
+            ctx.arc(gameState.chaser.x, gameState.chaser.y, gameState.chaser.radius, 0, Math.PI * 2);
+            ctx.fillStyle = gameState.chaser.color;
+            ctx.fill();
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = gameState.chaser.color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            // プレイヤー
+            ctx.beginPath();
+            ctx.arc(gameState.player.x, gameState.player.y, gameState.player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = gameState.player.color;
+            ctx.fill();
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = gameState.player.color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            // パーティクル
+            gameState.particles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            });
+        }
+        
+        // ゲームループ
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // 全画面切り替え
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+        
+        // 再スタート
+        restartBtn.addEventListener('click', initGame);
+        
+        // 開始
+        initGame();
+        gameLoop();
+    </script>
+</body>
+</html>
