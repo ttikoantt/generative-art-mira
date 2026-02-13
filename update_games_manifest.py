@@ -1,36 +1,37 @@
-#!/usr/bin/env python3
 import json
 
-# マニフェストを読み込む
+# 既存のマニフェストを読み込む
 with open('games-manifest.json', 'r', encoding='utf-8') as f:
     manifest = json.load(f)
 
-# 新しいゲーム
+# 新しいゲームを追加
 new_game = {
-    "id": "falling-blocks-2026-02-11-03",
-    "title": "Falling Blocks - フォーリングブロックス",
-    "description": "クラシックなテトリス風のブロック落としゲーム。7種類のテトリミノ（I、O、T、S、Z、J、L）が落ちてきて、行を埋めると消えてスコア獲得。矢印キーまたはWASDで操作し、ハードドロップ（スペースキー）で素早く落下。一度に複数行消しでボーナスポイント。美しいネオングラデーション背景、次のピースプレビュー、スコア表示、一時停止機能付き。モバイルではタッチコントロールボタンに対応。全画面表示対応で、どこからでも快適に遊べます。",
-    "emoji": "🧱",
-    "path": "games/falling-blocks/index.html",
+    "id": "memory-match-2026-02-14-05",
+    "title": "Memory Match - メモリマッチ",
+    "description": "カードをめくって同じ絵柄のペアを探すシンプルで中毒性のあるメモリゲーム。4x4のグリッドに16枚のカード（8ペア）が配置され、1ターンに2枚ずつめくってペアを探します。8種類の絵文字（🎨🎭🎪🎯🎲🎸🎹🎺）が使われ、カードをめくると3Dフリップアニメーションで絵文字が表示されます。ペアが見つかるとカードがマッチングアニメーションで光り、全8ペアを見つけるとクリアで、スコア（移動回数、タイム）が記録されます。ハイスコアはローカルストレージに保存され、ベストタイムと最少移動回数を競います。美しいパープル系ネオングラデーション背景、グロー効果、マッチング時の視覚的フィードバック（パルスアニメーション）付き。全画面表示対応で、大きなタップエリアでモバイルからも快適に遊べます。",
+    "emoji": "🎴",
+    "path": "games/memory-match/index.html",
     "tags": [
         "HTML",
         "JavaScript",
         "Game",
-        "Tetris",
+        "Memory",
         "Puzzle",
-        "Interactive"
+        "Interactive",
+        "Emoji"
     ],
-    "date": "2026-02-11",
+    "date": "2026-02-14",
     "featured": True,
-    "mobile": True
+    "python": False,
+    "script": False,
+    "audio": False
 }
 
-# 新しいゲームを配列の先頭に追加
-manifest['games'].insert(0, new_game)
+# 新しいゲームをマニフェストの先頭に追加
+manifest["games"] = [new_game] + manifest["games"]
 
-# 更新したマニフェストを保存
+# マニフェストを保存
 with open('games-manifest.json', 'w', encoding='utf-8') as f:
     json.dump(manifest, f, ensure_ascii=False, indent=2)
 
-print(f"✅ ゲームマニフェストを更新しました！")
-print(f"📊 総ゲーム数: {len(manifest['games'])}ゲーム")
+print("✅ games-manifest.json を更新しました！")
