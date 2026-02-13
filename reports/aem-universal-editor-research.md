@@ -405,4 +405,72 @@ Edge Delivery Servicesは以下の階層構造を採用：
 ---
 
 **レポート作成者:** Mira (AEM Universal Editor Research Cron Job)  
-**最終更新:** 2026年2月13日
+**最終更新:** 2026年2月13日 14:56 (JST)
+
+---
+
+## 更新履歴
+
+### 2026年2月13日 14:56 (JST) - 最新情報の追加
+
+**新規追加情報:**
+
+1. **Block Collectionの最新状態（2026年2月時点）**
+   - **Boilerplate（標準）**: 13ブロック
+     - Default Content: Headings, Text, Images, Lists, Links, Buttons, Code, Sections, Icons, Metadata
+     - Blocks: Hero, Columns, Cards, Header, Footer
+   
+   - **Block Collection（共通）**: 13ブロック
+     - Blocks: Embed, Fragment, Table, Video, Accordion, Carousel, Quote, Search, Tabs, Modal (Autoblock)
+     - Add-ons: Breadcrumbs
+     - Deprecated: Form
+
+2. **Block Party（コミュニティ）**
+   - AEM開発者コミュニティが制作したブロック・コードスニペット・統合のショーケース
+   - 再利用可能なコミュニティリソース
+   - Adobeは保守・更新に責任を負わない
+
+3. **Block Collectionの技術原則**
+   - Intuitive: 直感的でオーサリングが容易
+   - Useable: 依存関係なし、boilerplateと互換
+   - Responsive: 全ブレイクポイントに対応
+   - Context Aware: テキスト・背景色などのCSSコンテキストを継承
+   - Localizable: ハードコードされたコンテンツなし
+   - Fast: パフォーマンスへの悪影響なし
+   - SEO and A11y: SEOフレンドリーでアクセシビリティ対応
+
+4. **AEM AuthoringとEdge Delivery Servicesの統合ワークフロー**
+   - AEM Sites Console: ページ作成、Experience Fragment、Content Fragment管理
+   - Universal Editor: モダンで直感的なオーサリングUI
+   - AEMがHTMLをレンダリング（Edge Delivery Servicesのスクリプト・スタイル・アイコンを含む）
+   - 全変更はAEM as a Cloud Serviceに永続化
+   - 公開されたコンテンツはEdge Delivery Servicesに配信
+   - Edge Delivery Services: 100% Core Web Vitalsスコアを保証
+
+5. **Block Optionsの詳細仕様**
+   - 形式: `Block Name (option)`
+   - 単一オプション: `Columns (wide)` → `<div class="columns wide">`
+   - 複数単語: `Columns (super wide)` → `<div class="columns super-wide">`
+   - カンマ区切り: `Columns (dark, wide)` → `<div class="columns dark wide">`
+
+6. **Auto Blockingの使用例**
+   - ブログ記事のヘッダー（著者、タイトル、画像、公開日）の自動生成
+   - YouTubeリンクを埋め込みブロックに自動変換
+   - テンプレートプロパティを持つページに共通ブロックを自動追加
+   - `scripts.js`の`buildAutoBlocks()`関数で実装
+
+---
+
+## 最新の統計（2026年2月13日時点）
+
+| カテゴリ | ブロック数 |
+|--------|----------|
+| **AEM Boilerplate** | 13 |
+| **Block Collection** | 13 |
+| **合計** | 26 |
+
+**Block Collection内訳:**
+- Blocks: 10
+- Add-ons: 1
+- Autoblocks: 1
+- Deprecated: 1
