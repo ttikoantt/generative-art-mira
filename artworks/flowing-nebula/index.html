@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Flowing Nebula - 流れる星雲</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="info">Flowing Nebula | タップ・クリックで星を追加</div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let mouseX = 0, mouseY = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor(x, y, isClick = false) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.size = Math.random() * 2 + 0.5;
+                this.speedX = (Math.random() - 0.5) * 0.5;
+                this.speedY = (Math.random() - 0.5) * 0.5;
+                this.life = 1;
+                this.decay = Math.random() * 0.002 + 0.001;
+                this.hue = Math.random() * 60 + 200; // 青〜紫
+                this.brightness = Math.random() * 50 + 50;
+                this.isClick = isClick;
+                
+                if (isClick) {
+                    this.size = Math.random() * 4 + 2;
+                    this.speedX = (Math.random() - 0.5) * 2;
+                    this.speedY = (Math.random() - 0.5) * 2;
+                    this.hue = Math.random() * 60 + 180; // 青緋〜紫
+                    this.life = 1.5;
+                    this.decay = 0.005;
+                }
+            }
+
+            update() {
+                // マウスに引き寄せられる
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < 200 && dist > 0) {
+                    this.speedX += dx / dist * 0.02;
+                    this.speedY += dy / dist * 0.02;
+                }
+
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.speedX *= 0.99;
+                this.speedY *= 0.99;
+                this.life -= this.decay;
+            }
+
+            draw() {
+                const alpha = this.life * 0.8;
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size * 2
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 80%, ${this.brightness}%, ${alpha})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 80%, ${this.brightness}%, 0)`);
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+
+        function init() {
+            particles = [];
+            for (let i = 0; i < 200; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function drawConnections() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 100) {
+                        const alpha = (1 - dist / 100) * 0.15 * Math.min(particles[i].life, particles[j].life);
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `hsla(${(particles[i].hue + particles[j].hue) / 2}, 70%, 60%, ${alpha})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            // 淡い残像効果
+            ctx.fillStyle = 'rgba(0, 0, 5, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 粒子を更新・描画
+            particles = particles.filter(p => p.life > 0);
+            
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // 連結線を描画
+            drawConnections();
+
+            // 自然に新しい粒子を追加
+            if (particles.length < 200 && Math.random() < 0.1) {
+                particles.push(new Particle());
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            for (let i = 0; i < 30; i++) {
+                particles.push(new Particle(e.clientX, e.clientY, true));
+            }
+        });
+
+        // タッチ対応
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            for (let i = 0; i < 30; i++) {
+                particles.push(new Particle(mouseX, mouseY, true));
+            }
+        });
+
+        window.addEventListener('resize', resize);
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        resize();
+        init();
+        animate();
+    </script>
+</body>
+</html>
