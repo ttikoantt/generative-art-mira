@@ -860,6 +860,313 @@ Adobeが推奨するUniversal Editorブロック開発の正規手順：
 
 ---
 
-**最終更新: 2026年2月13日 18:05 (JST)**
+**最終更新: 2026年2月13日 19:05 (JST)**
+
+*このレポートは自律調査エージェントMiraによって作成・更新されました。*
+
+---
+
+## 🔍 新しい知見（2026年2月13日 19:05追加）
+
+### Edge Delivery Services統合のワークフロー
+
+**Universal EditorとEdge Delivery Servicesの連携:**
+
+1. **AEM Sites Console**: コンテンツ管理（新規ページ、Experience Fragments、Content Fragments等の作成）
+2. **Universal Editor**: AEM管理下のコンテンツをインコンテキスト編集
+3. **AEMレンダリング**: HTMLをレンダリング（Edge Delivery Servicesのスクリプト、スタイル、アイコン等を含む）
+4. **変更の永続化**: 全ての変更をAEM as a Cloud Serviceに保存
+5. **Edge Deliveryへ配信**: Universal Editorで作成したコンテンツをEdge Delivery Servicesへ配信
+6. **セマンティックHTML配信**: AEMはEdge Delivery Servicesで取り込み可能なセマンティックHTMLをレンダリング
+7. **高速配信**: Edge Delivery Servicesで100% Core Web Vitalsスコアを実現
+
+**ページ構造のコンセプト:**
+
+- **Default Content**: 見素なセマンティクス（見出し、画像、リスト等）
+- **Sections**: 水平ルールや`---`で分離されたコンテンツのグループ化
+- **Blocks**: コンポーネント化されたUI（テーブル形式で定義）
+
+**Universal Editorの特徴:**
+- モダンで直観的なGUIでコンテンツ作成
+- コンポーネント（ブロック）の追加・配置
+- プロパティパネルでの詳細設定
+
+### Repoless Authoring（コードベースの共有）
+
+**概要:**
+- 複数サイトで同じコードベースを共有
+- 各サイトのGitレポジトリ不要
+- Configuration Serviceで設定管理
+
+**有効化の前提条件:**
+1. AEM as a Cloud Service 2025.4以上
+2. Configuration Serviceの設定完了
+
+**設定手順:**
+1. Admin Service（https://admin.hlx.page/login）でアクセストークンを取得
+2. Configuration ServiceでコードとAEMコンテンツのソースを設定
+3. パスマッピングの設定
+4. 技術アカウントの設定
+5. AEM設定の更新
+
+**設定例:**
+```json
+{
+  "code": {
+    "owner": "<github-org>",
+    "repo": "<aem-project>",
+    "source": {
+      "type": "github",
+      "url": "https://github.com/<org>/<project>"
+    }
+  },
+  "content": {
+    "source": {
+      "url": "https://author-<env>.adobeaemcloud.com/...",
+      "type": "markup",
+      "suffix": ".html"
+    }
+  }
+}
+```
+
+**トラブルシューティング:**
+- ページがレンダリングされない場合：ソースを確認
+- 404エラー：config.jsonやcomponent-definitions.jsonがロードできていない可能性
+
+### Block Collectionとボイラープレート
+
+**ボイラープレートへの包含基準:**
+
+- **直観的**: 直観的で使いやすいコンテンツ構造
+- **使用可能**: 依存関係なし、boilerplate互換
+- **レスポンシブ**: 全ブレークポイントで動作
+- **コンテキスト認識**: テキスト色や背景色等を継承
+- **ローカライズ可能**: ハードコードされたコンテンツなし
+- **高速**: パフォーマンスへの悪影響なし
+- **SEOとアクセシビリティ**: SEO友好でアクセシブル
+
+**AEM Boilerplate（必須ブロック）:**
+- 覇数のAEMプロジェクトで使用されるブロック
+- GitHub: https://github.com/adobe/aem-boilerplate/tree/main/blocks
+- **含まれるブロック**:
+  - Headings, Text, Images, Lists, Links, Buttons
+  - Code, Sections, Icons, Hero, Columns, Cards
+  - Header, Footer, Metadata
+
+**Block Collection（共通ブロック）:**
+- 半数以上のプロジェクトで使用されるブロック
+- GitHub: https://github.com/adobe/aem-block-collection/tree/main/blocks
+- **含まれるブロック**:
+  - Embed, Fragment, Table, Video
+  - Accordion, Breadcrumbs, Carousel, Modal
+  - Quote, Search, Tabs, Form（非推奨）
+
+**Block Party:**
+- AEM開発者コミュニティが公開したブロック集
+- コミュニティ主導の再利用可能なコード
+- Adobeはメンテナンス非責任
+
+### DOM vs. Markup
+
+**マークアップ（サーバーレから配信）:**
+- クリーンで読み取り可能なセマンティックHTML
+- セクション、ブロック、デフォルトコンテンツを含む
+- 構造はシンプルで直観的
+
+**拡張されたDOM（クライアントサイド）:**
+- JavaScript（scripts.js）で拡張
+- ラッパー`<div>`の追加
+- 勡力的なCSSクラスとデータ属性の追加
+- AEM Block Loaderで使用される
+
+**2ステッププロセス:**
+1. サーバーがクリーンなマークアップをレンダリング
+2. JavaScriptがDOMを拡張してスタイリング可能に
+
+**例:**
+
+**シンプルマークアップ:**
+```html
+<section>
+  <h1>Title</h1>
+  <p>Body text</p>
+</section>
+```
+
+**拡張されたDOM:**
+```html
+<section class="section" data-aue-resource="...">
+  <div class="section-metadata" data-aue-type="richtext" data-aue-prop="...">
+    <h1 class="heading-h1">Title</h1>
+  </div>
+  <div class="default-content">
+    <p data-aue-type="richtext" data-aue-prop="..." data-aue-resource="...">Body text</p>
+  </div>
+</section>
+```
+
+### David's Modelの14のルール
+
+**David Nueschelerによるコンテンツモデリングのベストプラクティス:**
+
+#### Rule #1: Default Contentを優先
+- ブロックはオーサリングサイドでテーブルとして表示されるため、直観的でない
+- 可能な限りデフォルトコンテンツを使用
+- 著者にとってブロックは魅力的ではない
+
+#### Rule #2: ネストされたブロックは禁止
+- ネストされたブロックはオーサリングが非常に困難
+- フラグメント（他ドキュメントの参照）やリンク（オートブロッキング）を活用
+
+#### Rule #3: 行・列スパンの制限
+- ヘーブルのセル結合は管理が困難（特にWord Online）
+- 複雑なスパン構造になる場合、別の構造を検討
+
+#### Rule #4: 完全修飾URLのみ
+- オーサリングは完全修飾URLを扱い
+- 相対URLはAEMか開発者が処理
+
+#### Rule #5: リストの扱い
+- シンプルなリストはWordやGoogle Docsのリスト機能でOK
+- 複雑なリスト項目（例：カード）はブロックテーブルの行として表現
+
+#### Rule #6: ボタンのコンテキスト継承
+- 段行に独立したボタンをコンテキストから継承
+- ヒーロイタトーンで、セクション背景色が反転する等
+- 明示的な選択（primary vs secondary）は太字/斜体で表現
+
+#### Rule #7: ファイル名はオーサリングに重要
+- トレイリングスラッシュを削除してクリーンなURLを維持
+- SEO影響を評価して301リダイレクト
+
+#### Rule #8: アクセス制御とコンテンツグルーピング
+- オーサリングチーム構造に合わせてコンテンツをグループ化
+- シンプルなアクセス制御を維持
+
+#### Rule #9: ブロック数とバリアントの制限
+- 過大なブロックライブラリと多数のバリアントは望ましくない
+- 使用頻度基準で非推奨ブロックを削除
+
+#### Rule #10: 列数の制限
+- 多数の列はオーサリングに不向き
+- デフォルトコンテンツの不適切な使用の兆候
+
+#### Rule #11: Block Collectionのコンテンツモデルを使用
+- Block Collectionに類似した機能を持つブロックは同様のコンテンツモデルを使用
+
+#### Rule #12: フラグメントは有害な場合も
+- 同一コンテンツが複数ページで使用される場合に有用
+- ネストされたフラグメントはオーサリング体験を損なう
+- SEO的に重要なコンテンツはページに直接配置
+
+#### Rule #13: 画像altテキストのセマンティクスを過負荷しない
+- altテキスト内の隠れた情報は発見困難
+- 例外的な場合のみ推奨
+
+#### Rule #14: 名前/値ペアは設定専用
+- セクションやページのメタデータとしてのみ使用
+- デフォルトコンテンツ概念を名前/値ペアにマッピングしない
+
+### Auto Blocking（オートブロッキング）
+
+**概要:**
+- デフォルトコンテンツとメタデータをブロックに自動変換
+- オーサリングによる物理的なブロック作成が不要
+- ページデコレーションプロセスの初期段階で実行
+
+**主な使用例:**
+1. **アーティクルヘッダー**: `<h1>`、最初の画像、ブログ著者、公称日から自動生成
+2. **YouTubeリンク**: リンクを貼り付けるだけでembedブロックとして自動変換
+3. **ビデオ**: ビデオリンクを貼り付けるだけでビデオプレーヤーを埋め込み
+4. **モーダル**: 外部アプリケーションの埋め込み
+5. **フォーム**: 外部フォームの統合
+
+**実装場所:**
+- `scripts.js`の`buildAutoBlocks()`関数
+- 参照実装: [Adobe Blog](https://github.com/adobe/blog), [AEM Boilerplate](https://github.com/adobe/aem-boilerplate)
+
+### Section Metadata（セクションメタデータ）
+
+**概要:**
+- セクションに適用されるデータ属性を定義
+- 名前/値ペアとして表現
+
+**用途:**
+- セクションの背景画像
+- スタイルオプション（セクションレベルのCSSクラス追加）
+- 設定値の保存（スプレッドシート入力等）
+
+**例:**
+```
++-----------------------------------------------------------------------+
+| Featured Articles                                                     |
++=======================================================================+
+| source   | /content/site/articles.json |
++-----------------------------------------------------------------------+
+| keywords | Developer,Courses                                          |
++-----------------------------------------------------------------------+
+| limit    | 4                                                          |
++-----------------------------------------------------------------------+
+```
+
+**実装:**
+- `model` IDが`section`のコンポーネントモデルを定義
+- 名前/値ペアとしてテーブルにレンダリング
+- セクションにデータ属性として追加
+
+### Block Optionsの拡張
+
+**複数オプションの組み合わせ:**
+```json
+{
+  "classes": "variant-a",
+  "classes_background": "light",
+  "classes_fullwidth": true
+}
+```
+↓
+```html
+<div class="teaser variant-a light fullwidth">
+```
+
+**エレメントグルーピングによる複数オプション:**
+- `classes_`で始まる全てのフィールドがグループ化
+- 真理値、テキスト配列、またはブーリアン値を可能
+- ブーリアン値の場合、プロパティ名がブロックオプションとして追加
+
+**セレクトフィールドでの使用:**
+- トグルスイッチでオプションのON/OFFを切り替え
+- オーサリング体験を向上
+
+---
+
+## 🔍 次回の調査予定
+
+- **高度なブロックパターン**:
+  - Container Blocksの詳細な実装例
+  - 複雑な子要素のモデリング
+  - Composite Multi-Fieldsの実践的な使用例
+
+- **拡張機能の探索**:
+  - Universal Editorの拡張（Toolbar & Properties Panel）
+  - 継承、MSM、翻訳ワークフローの統合
+
+- **パフォーマンス最適化**:
+  - 画像・ビデオの最適化テクニック
+  - Lazy Loadingの実装
+  - CDNキャッシュ戦略
+
+- **セキュリティと権限管理**:
+  - 技術アカウントの詳細な設定
+  - フォルダーレベルのアクセス制御
+
+- **マルチサイト管理**:
+  - Repoless Multi-Site Managerの詳細
+  - コンテンツ構造の中央管理
+
+---
+
+**最終更新: 2026年2月13日 19:05 (JST)**
 
 *このレポートは自律調査エージェントMiraによって作成・更新されました。*
