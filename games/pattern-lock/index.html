@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pattern Lock - パターンロック</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            color: white;
+            overflow: hidden;
+        }
+
+        .game-container {
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 30px;
+            font-size: 1.2em;
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-value {
+            font-weight: bold;
+            color: #FFD700;
+        }
+
+        .grid-container {
+            position: relative;
+            width: 320px;
+            height: 320px;
+            margin: 0 auto 30px;
+        }
+
+        .pattern-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .grid-dot {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            border: 3px solid rgba(255, 255, 255, 0.8);
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            z-index: 2;
+        }
+
+        .grid-dot:hover {
+            transform: scale(1.1);
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .grid-dot.active {
+            background: #FFD700;
+            border-color: #FFD700;
+            box-shadow: 0 0 20px #FFD700;
+        }
+
+        .grid-dot.correct {
+            background: #4ECDC4;
+            border-color: #4ECDC4;
+            box-shadow: 0 0 20px #4ECDC4;
+        }
+
+        .grid-dot.wrong {
+            background: #FF6B6B;
+            border-color: #FF6B6B;
+            box-shadow: 0 0 20px #FF6B6B;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .message {
+            font-size: 1.3em;
+            margin-bottom: 20px;
+            min-height: 30px;
+        }
+
+        .message.show-pattern {
+            color: #FFD700;
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        .message.draw-pattern {
+            color: #4ECDC4;
+        }
+
+        .message.success {
+            color: #4ECDC4;
+        }
+
+        .message.error {
+            color: #FF6B6B;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .button {
+            padding: 15px 30px;
+            font-size: 1.1em;
+            font-weight: bold;
+            color: white;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(245, 87, 108, 0.4);
+        }
+
+        .button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        @media (max-width: 400px) {
+            .grid-container {
+                width: 280px;
+                height: 280px;
+            }
+
+            .grid-dot {
+                width: 40px;
+                height: 40px;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>Pattern Lock</h1>
+
+        <div class="stats">
+            <div class="stat">Level: <span class="stat-value" id="level">1</span></div>
+            <div class="stat">Score: <span class="stat-value" id="score">0</span></div>
+        </div>
+
+        <div class="message" id="message">Watch the pattern...</div>
+
+        <div class="grid-container" id="gridContainer">
+            <canvas id="lineCanvas"></canvas>
+            <div class="pattern-grid" id="grid">
+                <div class="grid-dot" data-index="0"></div>
+                <div class="grid-dot" data-index="1"></div>
+                <div class="grid-dot" data-index="2"></div>
+                <div class="grid-dot" data-index="3"></div>
+                <div class="grid-dot" data-index="4"></div>
+                <div class="grid-dot" data-index="5"></div>
+                <div class="grid-dot" data-index="6"></div>
+                <div class="grid-dot" data-index="7"></div>
+                <div class="grid-dot" data-index="8"></div>
+            </div>
+        </div>
+
+        <button class="button" id="startBtn">Start Game</button>
+    </div>
+
+    <script>
+        const gridContainer = document.getElementById('gridContainer');
+        const grid = document.getElementById('grid');
+        const lineCanvas = document.getElementById('lineCanvas');
+        const ctx = lineCanvas.getContext('2d');
+        const messageEl = document.getElementById('message');
+        const levelEl = document.getElementById('level');
+        const scoreEl = document.getElementById('score');
+        const startBtn = document.getElementById('startBtn');
+
+        let gameState = 'idle'; // idle, showing, drawing, result
+        let currentPattern = [];
+        let playerPattern = [];
+        let level = 1;
+        let score = 0;
+        let isDrawing = false;
+
+        // Setup canvas
+        function setupCanvas() {
+            lineCanvas.width = gridContainer.offsetWidth;
+            lineCanvas.height = gridContainer.offsetHeight;
+        }
+        setupCanvas();
+        window.addEventListener('resize', setupCanvas);
+
+        // Get dot position
+        function getDotPosition(index) {
+            const dot = grid.querySelector(`[data-index="${index}"]`);
+            const rect = dot.getBoundingClientRect();
+            const containerRect = gridContainer.getBoundingClientRect();
+            return {
+                x: rect.left - containerRect.left + rect.width / 2,
+                y: rect.top - containerRect.top + rect.height / 2
+            };
+        }
+
+        // Draw line
+        function drawLine(from, to, color = 'rgba(255, 215, 0, 0.8)') {
+            const fromPos = getDotPosition(from);
+            const toPos = getDotPosition(to);
+
+            ctx.beginPath();
+            ctx.moveTo(fromPos.x, fromPos.y);
+            ctx.lineTo(toPos.x, toPos.y);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+        }
+
+        // Clear canvas
+        function clearCanvas() {
+            ctx.clearRect(0, 0, lineCanvas.width, lineCanvas.height);
+        }
+
+        // Generate pattern
+        function generatePattern() {
+            const length = Math.min(3 + level, 8);
+            const pattern = [];
+            const used = new Set();
+
+            while (pattern.length < length) {
+                const next = Math.floor(Math.random() * 9);
+                if (!used.has(next)) {
+                    used.add(next);
+                    pattern.push(next);
+                }
+            }
+
+            return pattern;
+        }
+
+        // Show pattern
+        async function showPattern() {
+            gameState = 'showing';
+            messageEl.textContent = 'Watch the pattern...';
+            messageEl.className = 'message show-pattern';
+            startBtn.disabled = true;
+
+            clearCanvas();
+
+            for (let i = 0; i < currentPattern.length; i++) {
+                const index = currentPattern[i];
+                const dot = grid.querySelector(`[data-index="${index}"]`);
+
+                dot.classList.add('active');
+
+                if (i > 0) {
+                    drawLine(currentPattern[i - 1], index);
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Clear pattern
+            clearCanvas();
+            document.querySelectorAll('.grid-dot').forEach(dot => {
+                dot.classList.remove('active');
+            });
+
+            // Start player input
+            gameState = 'drawing';
+            playerPattern = [];
+            messageEl.textContent = 'Draw the pattern!';
+            messageEl.className = 'message draw-pattern';
+        }
+
+        // Handle dot click/touch
+        function handleDotInteraction(index) {
+            if (gameState !== 'drawing') return;
+
+            const dot = grid.querySelector(`[data-index="${index}"]`);
+
+            // Don't allow re-selecting same dot
+            if (playerPattern.includes(index)) return;
+
+            // Add to pattern
+            playerPattern.push(index);
+            dot.classList.add('active');
+
+            // Draw line
+            if (playerPattern.length > 1) {
+                drawLine(playerPattern[playerPattern.length - 2], index);
+            }
+
+            // Check if pattern is complete
+            if (playerPattern.length === currentPattern.length) {
+                checkPattern();
+            }
+        }
+
+        // Check pattern
+        function checkPattern() {
+            gameState = 'result';
+
+            const correct = playerPattern.every((val, idx) => val === currentPattern[idx]);
+
+            if (correct) {
+                // Success
+                messageEl.textContent = 'Perfect! 🎉';
+                messageEl.className = 'message success';
+                score += level * 10;
+                level++;
+                levelEl.textContent = level;
+                scoreEl.textContent = score;
+
+                document.querySelectorAll('.grid-dot.active').forEach(dot => {
+                    dot.classList.add('correct');
+                });
+
+                setTimeout(() => {
+                    currentPattern = generatePattern();
+                    clearCanvas();
+                    document.querySelectorAll('.grid-dot').forEach(dot => {
+                        dot.classList.remove('active', 'correct');
+                    });
+                    showPattern();
+                }, 1500);
+            } else {
+                // Wrong
+                messageEl.textContent = 'Wrong pattern! 😅';
+                messageEl.className = 'message error';
+
+                document.querySelectorAll('.grid-dot.active').forEach(dot => {
+                    dot.classList.add('wrong');
+                });
+
+                setTimeout(() => {
+                    gameOver();
+                }, 1500);
+            }
+        }
+
+        // Game over
+        function gameOver() {
+            gameState = 'idle';
+            messageEl.textContent = `Game Over! Final Score: ${score}`;
+            messageEl.className = 'message';
+            startBtn.disabled = false;
+            startBtn.textContent = 'Play Again';
+
+            clearCanvas();
+            document.querySelectorAll('.grid-dot').forEach(dot => {
+                dot.classList.remove('active', 'correct', 'wrong');
+            });
+        }
+
+        // Start game
+        function startGame() {
+            level = 1;
+            score = 0;
+            levelEl.textContent = level;
+            scoreEl.textContent = score;
+            startBtn.textContent = 'Playing...';
+
+            currentPattern = generatePattern();
+            showPattern();
+        }
+
+        // Event listeners
+        document.querySelectorAll('.grid-dot').forEach(dot => {
+            const index = parseInt(dot.dataset.index);
+
+            dot.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                handleDotInteraction(index);
+            });
+
+            dot.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                handleDotInteraction(index);
+            });
+        });
+
+        // Touch drawing support
+        gridContainer.addEventListener('touchstart', (e) => {
+            if (gameState !== 'drawing') return;
+            isDrawing = true;
+        });
+
+        gridContainer.addEventListener('touchmove', (e) => {
+            if (!isDrawing || gameState !== 'drawing') return;
+            e.preventDefault();
+
+            const touch = e.touches[0];
+            const element = document.elementFromPoint(touch.clientX, touch.clientY);
+
+            if (element && element.classList.contains('grid-dot')) {
+                const index = parseInt(element.dataset.index);
+                if (!playerPattern.includes(index)) {
+                    handleDotInteraction(index);
+                }
+            }
+        });
+
+        gridContainer.addEventListener('touchend', () => {
+            isDrawing = false;
+        });
+
+        startBtn.addEventListener('click', startGame);
+
+        // Prevent scrolling on touch
+        document.body.addEventListener('touchmove', (e) => {
+            if (gameState === 'drawing' || gameState === 'showing') {
+                e.preventDefault();
+            }
+        }, { passive: false });
+    </script>
+</body>
+</html>
