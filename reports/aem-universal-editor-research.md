@@ -1,6 +1,6 @@
 # AEM Universal Editor Research Report
 
-**最終更新:** 2026年2月13日 16:59 (JST)
+**最終更新:** 2026年2月13日 18:05 (JST)
 **調査担当:** Mira (Autonomous Research Agent)
 **ジョブID:** 47b3991b-801e-43d0-b83c-726f8f56288e
 
@@ -665,4 +665,201 @@ Adobeが推奨するUniversal Editorブロック開発の正規手順：
 
 ---
 
-*このレポートは自律調査エージェントMiraによって作成されました。*
+## 🔍 新しい知見（2026年2月13日 18:05追加）
+
+### Universal Editorのアーキテクチャ詳細
+
+**4つのビルディングブロック:**
+
+1. **Editors（エディタ）**
+   - Universal Editor: インストルメンテーションされたDOMを使用したインプレイス編集
+   - Properties Panel: フォームベースのエディタ（回転時間、タブ状態等）
+
+2. **Remote App（リモートアプリ）**
+   - DOMをインストルメンテーションしてUniversal Editorで編集可能に
+   - 必要な属性をレンダリング
+   - 最小SDKで実装
+
+3. **API Layer（APIレイヤ）**
+   - Content Data: データソースは問わない（必須な属性定義のみ重要）
+   - Persisting Data: 各編集可能データにURN識別子
+
+4. **Persistence Layer（持続レイヤ）**
+   - Content Fragment Model: コンポーネント・コンテンツフラグメントモデル
+   - Content: AEM、Magento等どこにでも保存可能
+
+**Universal Editor Service:**
+- Adobe I/O Runtime上で動作する集中サービス
+- Extension Registryからプラグインを読み込み
+- URNに基づいて適切なバックエンドにルーティング
+
+### データ属性とタイプの完全リスト
+
+**必須・オプション属性:**
+
+| 属性名 | 説明 | 必須 | 用途 |
+|--------|------|------|------|
+| `data-aue-type` | コンポーネントタイプ | 必須 | 編集可能タイプの特定 |
+| `data-aue-resource` | URN（一意識別子） | 必須 | データ保存先のルーティング |
+| `data-aue-prop` | プロパティ名 | コンテキスト編集で必須 | 編集するフィールド名 |
+| `data-aue-filter` | フィルタ条件 | オプション | アセットセレクタ等 |
+| `data-aue-label` | 表示ラベル | オプション | UI表示用 |
+| `data-aue-model` | モデルID | オプション | コンテンツフラグメント等 |
+
+**タイプ詳細:**
+
+1. **text**: シンプルテキスト（リッチテキストなし）
+2. **richtext**: リッチテキスト（RTE表示）
+3. **media**: アセット（画像・動画）
+4. **container**: コンポーネントコンテナ（段落システム）
+5. **component**: 移動可能・削除可能なDOM要素
+6. **reference**: 参照（コンテンツフラグメント・エクスペリエンス・商品）
+
+### ブロックシステムの階層構造
+
+**ドキュメント構造:**
+1. **Default Content**: 見素なセマンティクス（見出し、画像、リスト等）
+2. **Sections**: コンテンツをグループ化（水平ルールや`---`で分離）
+3. **Blocks**: コンポーネント化されたUI（テーブル形式で定義）
+
+**マークアップ vs DOM:**
+
+**シンプルマークアップ:**
+```html
+<section>
+  <h1>Title</h1>
+  <p>Body text</p>
+</section>
+```
+
+**装飾されたDOM（自動拡張）:**
+```html
+<section class="section" data-aue-resource="...">
+  <div class="section-metadata" data-aue-type="richtext" data-aue-prop="...">
+    <h1 class="heading-h1">Title</h1>
+  </div>
+  <div class="default-content">
+    <p data-aue-type="richtext" data-aue-prop="..." data-aue-resource="...">Body text</p>
+  </div>
+</section>
+```
+
+**Boilerplate vs Block Collection:**
+
+**Boilerplate:**
+- ほとんどのAEMプロジェクトで使用
+- GitHub: `adobe/aem-boilerplate`
+- デフォルトコンテンツタイプを含む
+
+**Block Collection:**
+- 半数以上のプロジェクトで使用されるブロック
+- GitHub: `adobe/aem-block-collection`
+- Hero, Columns, Cards, Accordion等
+
+**Auto Blocking:**
+- デフォルトコンテンツやメタデータを自動的にブロック化
+- 作者が物理的にブロックを作成する必要なし
+- `buildAutoBlocks()`関数で実装
+
+### Repoless Authoring（レポレスオーサリング）
+
+**概要:**
+- 複数サイトで同じコードベースを共有
+- 各サイトのGitレポジトリ不要
+- Configuration Serviceで設定管理
+
+**有効化手順:**
+1. Configuration Serviceのアクセストークン取得
+2. コンテンツ・コードソースの設定
+3. パスマッピングの設定
+4. 技術アカウントの設定
+5. AEM設定の更新
+
+**設定例:**
+```json
+{
+  "code": {
+    "owner": "<github-org>",
+    "repo": "<aem-project>",
+    "source": {
+      "type": "github",
+      "url": "https://github.com/<org>/<project>"
+    }
+  },
+  "content": {
+    "source": {
+      "url": "https://author-<env>.adobeaemcloud.com/...",
+      "type": "markup",
+      "suffix": ".html"
+    }
+  }
+}
+```
+
+### 拡張機能（Extensions）
+
+**ツールバー拡張:**
+- **Inheritance**: MSM継承のステータス表示・解除・再適用
+- **Page Properties**: ページプロパティへのクイックアクセス
+- **Sites Console**: サイトコンソールへの遷移
+- **Page Lock**: ページのロック・アンロック
+- **Workflows**: ワークフローの開始
+- **Developer Login**: ローカルAEM SDKへのログイン
+
+**プロパティパネル拡張:**
+- **Generate Variations**: AIによるコンテンツバリエーション生成
+
+**拡張の有効化:**
+- Extension Managerで管理者が有効化する必要
+- プログラム単位での設定
+
+### Edge Delivery Services統合の詳細
+
+**サポートされるアーキテクチャ:**
+1. **Edge Delivery Services**: 推奨アプローチ（シンプル、高速）
+2. **Headless実装**: 既存ヘッドレスプロジェクト対応
+
+**AEMオーサリングワークフロー:**
+1. AEM Sites Consoleでページ・コンテンツ作成
+2. Universal Editorでインプレイス編集
+3. AEMからEdge Delivery Servicesへ配信
+4. CDNで高速配信
+
+**Universal Editorの役割:**
+- AEMのロバストなCMS機能活用
+- マルチサイト、 MSM、翻訳ワークフロー等
+- Edge Deliveryの並外れないパフォーマンス
+
+### 対応バージョン
+
+- **AEM as a Cloud Service**: Release 2023.8.13099以上
+- **AEM 6.5 LTS**: オンプレミス・AMS対応
+- **AEM 6.5**: オンプレミス・AMS対応
+
+**制限:**
+- 1ページ当たり最大25 AEMリソース参照
+- コンテンツ作成者は個別のExperience Cloudアカウント必要
+- デスクトップブラウザのみサポート（モバイル版非対応）
+
+### 開発者のためのベストプラクティス
+
+**3つの原則:**
+1. **シンプルで直観的**: 作者にとって直観的であること
+2. **ブロックのネスト禁止**: ブロック内にブロックをネストしない
+3. **開発者が複雑さを吸収**: 作者に複雑さを委ねない
+
+**マークアップ原則:**
+- シンプルで読みやすいHTMLをレンダリング
+- JavaScriptでDOMを拡張
+- セマンティクHTMLを維持
+
+**ブロックオプションの実装:**
+- 括弧付きでクラス追加: `Block (wide)` → `<div class="block wide">`
+- 複数オプション: `Block (dark, wide)` → `<div class="block dark wide">`
+- カンマ区切りで複数クラス: `Block (dark, wide)` → `<div class="block dark wide">`
+
+---
+
+**最終更新: 2026年2月13日 18:05 (JST)**
+
+*このレポートは自律調査エージェントMiraによって作成・更新されました。*
