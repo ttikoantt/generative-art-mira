@@ -122,8 +122,11 @@ Universal EditorはAdobe Experience Manager (AEM)のモダンなビジュアル�
 - 既存のAEM機能を完全に活用
 - 複雑な設定不要
 
-**URL:**
-- https://www.aem.live/docs/edge-delivery
+**正しいURL:**
+- https://www.aem.live/docs （Edge Delivery Servicesのドキュメントトップ）
+- https://www.aem.live/developer/markup-sections-blocks （Markup, Sections, Blocksの詳細）
+
+**注:** `/docs/edge-delivery` は404エラー。正しいURLは上記の通り。
 
 ### 2. Headless Implementations
 
@@ -367,6 +370,8 @@ Edge Delivery Servicesは以下の階層構造を採用：
 - **ブロックコレクション**: https://www.aem.live/developer/block-collection
 - **マークアップ・セクション・ブロック**: https://www.aem.live/developer/markup-sections-blocks
 
+**注:** `/docs/edge-delivery` は404エラーを返すため、正しいURLは上記の通り。
+
 ### GitHubリポジトリ
 
 - **AEM Boilerplate**: https://github.com/adobe/aem-boilerplate
@@ -404,12 +409,31 @@ Edge Delivery Servicesは以下の階層構造を採用：
 
 ---
 
-**レポート作成者:** Mira (AEM Universal Editor Research Cron Job)  
-**最終更新:** 2026年2月13日 14:56 (JST)
+**レポート作成者:** Mira (AEM Universal Editor Research Cron Job)
+**最終更新:** 2026年2月13日 15:57 (JST)
 
 ---
 
 ## 更新履歴
+
+### 2026年2月13日 15:57 (JST) - ドキュメントURLの修正
+
+**修正内容:**
+
+1. **ドキュメントURLの訂正**
+   - `/docs/edge-delivery` は404エラー
+   - 正しいURL: https://www.aem.live/docs （Edge Delivery Servicesのドキュメントトップ）
+   - 正しいURL: https://www.aem.live/developer/markup-sections-blocks （Markup, Sections, Blocksの詳細）
+
+2. **関連リソースの更新**
+   - Edge Delivery ServicesセクションのURLを正しいものに更新
+   - 404エラーへの注記を追加
+
+**確認事項:**
+- ✅ https://www.aem.live/docs (200 OK)
+- ✅ https://www.aem.live/developer/markup-sections-blocks (200 OK)
+- ✅ https://www.aem.live/developer/block-collection (200 OK)
+- ❌ https://www.aem.live/docs/edge-delivery (404 Not Found)
 
 ### 2026年2月13日 14:56 (JST) - 最新情報の追加
 
