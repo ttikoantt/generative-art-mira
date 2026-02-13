@@ -1,14 +1,24 @@
 # AEM Universal Editor 調査レポート
 
 **調査日:** 2026年2月13日
+**最終更新:** 2026年2月13日 09:42
 **調査者:** Mira (AI Assistant)
 **目的:** AEM Universal Editorの実装形式とデザインパターンを調査し、レポートとしてまとめる
 
 ---
 
+## 更新履歴
+
+| 日時 | 更新内容 |
+|------|---------|
+| 2026-02-13 07:40 | 初版作成 |
+| 2026-02-13 09:42 | 実装手順・Edge Delivery統合・接続設定を追加 |
+
+---
+
 ## 1. 概要
 
-AEM (Adobe Experience Manager) Universal Editorは、Adobe Experience Manager as a Cloud Serviceで提供される次世代のコンテンツ編集エディターで、あらゆる実装のあらゆるコンテンツを編集できるユニバーサルなソリューションです。
+AEM (Adobe Experience Manager) Universal Editorは、Adobe Experience Manager as a Cloud Serviceで提供される次世代のコンテンツ編集エディタで、あらゆる実装のあらゆるコンテンツを編集できるユニバーサルなソリューションです。
 
 **主な特徴:**
 - 直感的なUIで最小限のトレーニングで利用可能
@@ -27,15 +37,24 @@ AEM (Adobe Experience Manager) Universal Editorは、Adobe Experience Manager as
 | `https://www.aem.live/docs/edge-delivery` | ❌ 404 | 存在しない |
 | `https://www.aem.live/docs/aem-authoring` | ✅ 200 | AEMでのオーサリングガイド |
 | `https://www.aem.live/developer/keeping-it-100` | ✅ 200 | パフォーマンス最適化ガイド |
+| `https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/universal-editor/authoring` | ✅ 200 | Universal Editorオーサリング |
+| `https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/getting-started` | ✅ 200 | 実装スタートガイド |
 | `https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/architecture` | ✅ 200 | アーキテクチャ説明 |
 | `https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/attributes-types` | ✅ 200 | HTML属性とタイプ |
 
 ### 関連ドキュメント
 
-- **AEM Authoring:** https://www.aem.live/docs/aem-authoring
-- **Keeping it 100:** https://www.aem.live/developer/keeping-it-100
-- **Universal Editor Architecture:** https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/architecture
-- **Attributes and Types:** https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/attributes-types
+**オーサリング:**
+- [AEM Authoring](https://www.aem.live/docs/aem-authoring) - AEMでのオーサリングガイド
+- [Universal Editor Authoring](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/universal-editor/authoring) - Universal Editorでのコンテンツ編集
+
+**実装:**
+- [Getting Started](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/getting-started) - 実装スタートガイド
+- [Universal Editor Architecture](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/architecture) - アーキテクチャ
+- [Attributes and Types](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/attributes-types) - HTML属性とタイプ
+
+**最適化:**
+- [Keeping it 100](https://www.aem.live/developer/keeping-it-100) - パフォーマンス最適化ガイド
 
 ---
 
@@ -45,9 +64,9 @@ AEM (Adobe Experience Manager) Universal Editorは、Adobe Experience Manager as
 
 Universal Editorは4つの主要なビルディングブロックで構成されています：
 
-#### 1. **Editors（エディター）**
+#### 1. **Editors（エディタ）**
 - **Universal Editor本体:** インストルメンテーションされたDOMを使用してインプレイス編集を可能にする
-- **Properties Panel:** コンテキスト外編集に使用されるフォームベースのエディター（カルーセルの回転時間等）
+- **Properties Panel:** コンテキスト外編集に使用されるフォームベースのエディタ（カルーセルの回転時間等）
 
 #### 2. **Remote App（リモートアプリ）**
 - Universal Editorでインプレイス編集可能にするため、DOMをインストルメンテーションする必要がある
@@ -71,11 +90,112 @@ Universal Editorは、コンテンツ変更をすべて**Universal Editor Servic
 
 ---
 
-## 4. HTML属性とデータタイプ
+## 4. 実装手順（Getting Started）
+
+### 4.1 前提条件
+
+Universal Editorを実装するには以下が必要です：
+
+1. **URN (Uniform Resource Name)** スキーマ
+   - コンテンツをコンテンツリソースにマップするために必要
+
+2. **CORSライブラリの組み込み**
+   - Universal Editorがアプリに接続するために必要
+
+### 4.2 実装ステップ
+
+#### ステップ1: CORSライブラリの組み込み
+
+アプリケーションに以下のスクリプトを追加します：
+
+```html
+<script src="https://universal-editor-service.adobe.io/cors.js" async></script>
+```
+
+#### ステップ2: コネクションの作成
+
+コネクションはページの`<head>`内の`<meta>`タグとして保存されます。
+
+**基本形式:**
+```html
+<meta name="urn:adobe:aue:<category>:<referenceName>" content="<protocol>:<url>">
+```
+
+**パラメータ説明:**
+
+| パラメータ | 説明 | 値の例 |
+|----------|------|--------|
+| `category` | コネクションの分類 | `system`（コネクションエンドポイント用）、`config`（設定オプション用）|
+| `referenceName` | ドキュメント内で再利用される短い名前 | `aemconnection`, `fcsconnection` |
+| `protocol` | Universal Editor Persistence Serviceの持続プラグイン | `aem`, `fcs` |
+| `url` | 変更を保持するシステムのURL | `https://localhost:4502` |
+
+**例:**
+```html
+<meta name="urn:adobe:aue:system:aemconnection" content="aem:https://localhost:4502">
+<meta name="urn:adobe:aue:system:fcsconnection" content="fcs:https://example.franklin.adobe.com/345fcdd">
+```
+
+#### ステップ3: DOMのインストルメンテーション
+
+編集可能なコンテンツを`data-aue-*`属性でマークアップします。
+
+**基本形式:**
+```html
+<div data-aue-resource="urn:<referenceName>:<resource>" data-aue-type="<type>">
+```
+
+**実装例:**
+```html
+<aside>
+  <ul data-aue-resource="urn:aemconnection:/content/example/list" data-aue-type="container">
+    <li data-aue-resource="urn:aemconnection:/content/example/listitem" data-aue-type="component">
+      <p data-aue-prop="name" data-aue-type="text">Jane Doe</p>
+      <p data-aue-prop="title" data-aue-type="text">Journalist</p>
+      <img data-aue-prop="avatar" src="avatar.jpg" data-aue-type="image" alt="avatar"/>
+    </li>
+  </ul>
+</aside>
+```
+
+#### ステップ4: 設定オプション（オプション）
+
+**サービスエンドポイントのカスタマイズ:**
+```html
+<meta name="urn:adobe:aue:config:service" content="<url>">
+```
+
+**拡張機能のエンドポイント設定:**
+```html
+<meta name="urn:adobe:aue:config:extensions" content="<url>,<url>,<url>">
+```
+
+### 4.3 エディターの自動起動設定
+
+特定のコンテンツパスまたは`sling:resourceType`に基づいてUniversal Editorを自動的に開くよう設定できます。
+
+**設定手順:**
+1. Configuration Managerを開く
+2. Universal Editor URL Serviceを選択
+3. 以下の設定を行う:
+   - **Mappings**: Universal Editorを開くパス
+   - **resourceTypes**: 直接開くリソースタイプ
+   - **aemdomain**: AEMドメイン下で開くかどうか
+   - **editorreleasepreview**: プレビュー環境で開くかどうか
+
+**マッピング変数:**
+- `path`: コンテンツパス
+- `localhost`, `author`, `publish`, `preview`: Externalizerエントリ
+- `env`: 環境変数（prod, stage, dev）
+- `token`: 認証トークン
+
+---
+
+## 5. HTML属性とデータタイプ
 
 Universal EditorはDOMに特定の属性を追加することで、編集可能なコンテンツを識別します。
 
-### 4.1 主要な属性
+### 5.1 主要な属性
 
 | 属性 | 説明 | 必須性 |
 |------|------|--------|
@@ -86,7 +206,7 @@ Universal EditorはDOMに特定の属性を追加することで、編集可能�
 | `data-aue-label` | コンテンツのラベル表示 | 任意 |
 | `data-aue-model` | Content Fragment Modelの識別子 | 任意 |
 
-### 4.2 データタイプ
+### 5.2 データタイプ
 
 | タイプ | 説明 | 必須属性 |
 |--------|------|----------|
@@ -99,65 +219,152 @@ Universal EditorはDOMに特定の属性を追加することで、編集可能�
 
 ---
 
-## 5. デザインパターン分類
+## 6. デザインパターン分類
 
-### 5.1 編集体験パターン
+### 6.1 オーサリング体験パターン
 
 #### **A. テキスト編集**
-- **タイプ:** `text`, `richtext`
-- **UI:** インプレイスダブルクリックで編集開始
-- **フィーチャー:**
-  - `text`: 単純なテキスト入力
-  - `richtext`: リッチテキストエディター（フォーマットオプション付き）
-  - 自動保存（フォーカスが離れると保存）
+
+**タイプ:** `text`, `richtext`
+
+**UI:**
+- インプレイスダブルクリックで編集開始
+- 薄い青いアウトライン→選択で濃い青に変化
+
+**機能:**
+| タイプ | 機能 |
+|--------|------|
+| `text` | 単純なテキスト入力（フォーマットなし）|
+| `richtext` | リッチテキストエディタ（フォーマットオプション付き）|
+
+**リッチテキストフォーマットオプション:**
+- 見出し（h1, h2, h3等）
+- 太字、斜体、下線
+- 上付き文字、下付き文字
+- 箇条書き、番号付きリスト
+- リンク、画像挿入
+- フォーマット削除
+
+**自動保存:** フォーカスが離れると自動保存
 
 #### **B. メディア編集**
-- **タイプ:** `media`
-- **UI:** Properties Panelからアセットセレクターを起動
-- **フィーチャー:**
-  - 画像/ビデオの選択と置換
-  - フィルタリング基準でアセット検索可能
+
+**タイプ:** `media`
+
+**UI:** Properties Panelからアセットセレクターを起動
+
+**機能:**
+- 画像/ビデオの選択と置換
+- フィルタリング基準でアセット検索可能
 
 #### **C. コンテナ管理**
-- **タイプ:** `container`
-- **UI:** コンテナ内にコンポーネントを追加・削除・再配列
-- **フィーチャー:**
-  - コンポーネントの追加・複製・削除
-  - ドラッグ＆ドロップで再配列
-  - Content Treeモードで階層的に管理
+
+**タイプ:** `container`
+
+**UI:** コンテナ内にコンポーネントを追加・削除・再配列
+
+**機能:**
+- コンポーネントの追加・複製・削除
+- ドラッグ＆ドロップで再配列
+- Content Treeモードで階層的に管理
+
+**ホットキー:**
+- `a`: コンポーネント追加
+- `Shift+Backspace`: コンポーネント削除
 
 #### **D. コンポーネント操作**
-- **タイプ:** `component`
-- **UI:** コンテキストメニューから移動・削除・複製
-- **フィーチャー:**
-  - コンテキストメニュー（右クリック）からの操作
-  - ホットキーによる素早い操作（例: `a`で追加、`Command-C/V`でコピー＆ペースト）
+
+**タイプ:** `component`
+
+**UI:** コンテキストメニューから移動・削除・複製
+
+**機能:**
+- コンテキストメニュー（右クリック）からの操作
+- ホットキーによる素早い操作
+
+**ホットキー:**
+| 操作 | Mac | 説明 |
+|------|-----|------|
+| コピー | `Command-C` | コンポーネントをコピー |
+| ペースト | `Command-V` | コンポーネントをペースト |
+| 上に移動 | `Command-U` | 1つ上に移動 |
+| トップへ | `Shift+Command-U` | コンテナのトップへ移動 |
+| 下に移動 | `Command-J` | 1つ下に移動 |
+| ボトムへ | `Shift+Command-J` | コンテナのボトムへ移動 |
 
 #### **E. 参照編集**
-- **タイプ:** `reference`
-- **UI:** Properties Panelで参照先を選択
-- **フィーチャー:**
-  - Content Fragment、Experience Fragment、製品等の参照
-  - フィルタリング基準で参照先を検索可能
-  - Content Fragment Editorで直接編集も可能
 
-### 5.2 拡張フィーチャー（Extension Managerで有効化）
+**タイプ:** `reference`
 
-| 拡張 | 機能 |
-|------|------|
-| **AEM Multi-Site-Management (MSM) Extension** | 継承の状態を表示・変更（継承の解除・再設定）|
-| **AEM Page Properties Extension** | 現在編集中のページのページプロパティに素早くアクセス |
-| **AEM Site Admin Extension** | Sites Consoleでページを管理 |
-| **AEM Page Lock Extension** | ページのロック・アンロック |
-| **AEM Workflows Extension** | ワークフローの開始 |
-| **Generate Variations Extension** | 生成AIでコンテンツのバリエーションを作成 |
-| **Developer Login Extension** | ローカルAEM SDKでの開発者ログイン |
+**UI:** Properties Panelで参照先を選択
+
+**機能:**
+- Content Fragment、Experience Fragment、製品等の参照
+- フィルタリング基準で参照先を検索可能
+- Content Fragment Editorで直接編集も可能
+
+**ホットキー:**
+- `e`: Content Fragment Editorで選択されたCFを編集
+
+### 6.2 拡張フィーチャー（Extension Managerで有効化）
+
+| 拡張 | 機能 | 対象 |
+|------|------|------|
+| **AEM Multi-Site-Management (MSM) Extension** | 継承の状態を表示・変更（継承の解除・再設定）| ページのみ |
+| **AEM Page Properties Extension** | 現在編集中のページのページプロパティに素早くアクセス | ページのみ |
+| **AEM Site Admin Extension** | Sites Consoleでページを管理 | 全般 |
+| **AEM Page Lock Extension** | ページのロック・アンロック | ページのみ |
+| **AEM Workflows Extension** | ワークフローの開始 | 全般 |
+| **Generate Variations Extension** | 生成AIでコンテンツのバリエーションを作成 | 全般 |
+| **Developer Login Extension** | ローカルAEM SDKでの開発者ログイン | 全般 |
+
+### 6.3 ナビゲーションパターン
+
+#### **編集モード**
+- デフォルト: クリックでコンテンツを選択
+- ホバー: 薄い青いアウトラインとバッジで編集可能領域を表示
+- 選択: 濃い青いアウトラインとバッジ
+
+#### **プレビューモード**
+- リンクをクリックしてナビゲート可能
+- 読者と同じようにコンテンツを体験
+- 編集とプレビューを切り替え可能
+
+#### **Undo/Redo**
+- `Command-Z`: Undo
+- `Shift+Command-Z`: Redo
+- ブラウザセッションに限定
 
 ---
 
-## 6. パフォーマンス最適化（Edge Delivery Services）
+## 7. Edge Delivery Servicesとの統合
 
-### 6.1 Three-Phase Loading（E-L-D）戦略
+### 7.1 オーサリングワークフロー
+
+AEM as a Cloud ServiceとEdge Delivery Servicesを組み合わせたシームレスなオーサリング体験：
+
+1. **AEM Sites Console** でコンテンツ管理（ページ作成、フラグメント管理等）
+2. **Universal Editor** でコンテンツオーサリング
+3. **AEM** がHTMLをレンダリング（Edge Delivery Servicesのスクリプト、スタイル、アイコンを含む）
+4. **変更をAEMに保存**
+5. **Edge Delivery Services** へパブリッシュ
+
+### 7.2 ページ構造
+
+**ブロックとセクション:**
+- ドキュメントベースのコンテンツオーサリングと同じ概念
+- ブロックはEdge Delivery Servicesで配信されるページの基本コンポーネント
+- デフォルトブロックまたはカスタムブロックを選択可能
+
+**コンポーネント操作:**
+- Universal Editorはコンポーネントと呼ばれるブロックを追加・配列
+- Properties Panelで詳細設定
+
+---
+
+## 8. パフォーマンス最適化（Edge Delivery Services）
+
+### 8.1 Three-Phase Loading（E-L-D）戦略
 
 #### **Phase E: Eager（LCP達成）**
 - 目的: Largest Contentful Paint (LCP) を達成
@@ -175,12 +382,12 @@ Universal EditorはDOMに特定の属性を追加することで、編集可能�
   - 非ブロッキングなJavaScriptライブラリ
 
 #### **Phase D: Delayed（遅延サードパーティ）**
-- 目的: 経験に直接影響しないサードパーティタグ等の読み込み
+- 目的: 体験に直接影響しないサードパーティタグ等の読み込み
 - 内容:
   - マーケティングツール、同意管理、拡張分析等
   - **重要:** LCPイベント後少なくとも3秒遅延させる
 
-### 6.2 その他の最適化手法
+### 8.2 その他の最適化手法
 
 | 手法 | 説明 |
 |------|------|
@@ -189,19 +396,31 @@ Universal EditorはDOMに特定の属性を追加することで、編集可能�
 | **単一オリジンからの配信** | LCP前の複数オリジン接続はパフォーマンスに悪影響 |
 | **リダイレクト回避** | 複数回のリダイレクトはCore Web Vitalsを悪化 |
 
+### 8.3 100% Core Web Vitalsスコア
+
+**目標:**
+- LCP < 2.5秒
+- FID < 100ミリ秒
+- CLS < 0.1
+
+**自動テスト:**
+- プルリクエストごとにPageSpeed Insights Serviceで自動テスト
+- スコアが100未満の場合、プルリクエストを失敗させる
+- AEM Boilerplateを使用すると開発当初から100スコアを実現
+
 ---
 
-## 7. 技術スタック
+## 9. 技術スタック
 
-### 7.1 レンダリングパイプライン
+### 9.1 レンダリングパイプライン
 
 Universal Editorは以下のレンダリング方式に対応：
 
-1. **Server Side Rendering (SSR)**
-2. **Static Site Generation (SSG)**
-3. **Client Side Rendering (CSR)**
+1. **Server Side Rendering (SSR)** - サーバーサイドレンダリング
+2. **Static Site Generation (SSG)** - 静的サイト生成
+3. **Client Side Rendering (CSR)** - クライアントサイドレンダリング
 
-### 7.2 Edge Delivery Servicesの特徴
+### 9.2 Edge Delivery Servicesの特徴
 
 - **100% Core Web Vitalsスコア**を目指す設計
 - **AEM Boilerplate**を使用すると開発当初から100スコアを実現
@@ -210,36 +429,72 @@ Universal Editorは以下のレンダリング方式に対応：
 
 ---
 
-## 8. 結論
+## 10. 高度な使用例
 
-### 8.1 Universal Editorの強み
+### 10.1 マルチサイト管理
 
-1. **統一的編集体験:** あらゆる実装のあらゆるコンテンツを単一のエディターで編集可能
+**コードの再利用:**
+- 複数の類似サイトでコードを共有
+- `repoless-authoring` で実装
+
+**マルチサイトマネージャー:**
+- ロケールや言語にまたがるコンテンツ構造を作成
+- 中央でコンテンツオーサリング
+
+### 10.2 設定テンプレート
+
+- Sites Consoleでプロジェクト設定を簡単に作成・管理
+- 設定テンプレートを使用して一貫性を維持
+
+---
+
+## 11. 結論
+
+### 11.1 Universal Editorの強み
+
+1. **統一的編集体験:** あらゆる実装のあらゆるコンテンツを単一のエディタで編集可能
 2. **開発者体験:** 最小限のSDK、DOMベースのインストルメンテーションで柔軟な実装
 3. **パフォーマンス:** Edge Delivery Servicesとの統合で100% Core Web Vitalsを実現
 4. **拡張性:** Extension Managerで機能拡張が可能
 
-### 8.2 技術的洞察
+### 11.2 技術的洞察
 
 - **属性ベースのインストルメンテーション:** HTML属性を追加するだけで編集可能に
 - **URNベースのルーティング:** 変更を適切なバックエンドシステムにルーティング
 - **プラグイン可能なバックエンド:** Universal Editor Service経由で様々なシステムに対応可能
 
-### 8.3 デザインパターン
+### 11.3 デザインパターン
 
 - **コンテキスト依存のUI:** 選択したコンテンツタイプに応じて適切な編集体験を提供
 - **プレビューモード:** 編集とナビゲーションを切り替え可能
 - **ホットキー:** よく使う操作はキーボードショートカットで素早く実行可能
 
+### 11.4 Edge Delivery Servicesとの統合
+
+- **AEMの強力なコンテンツ管理機能**と**Edge Delivery Servicesのパフォーマンス**の最適な組み合わせ
+- **Three-Phase Loading戦略**でCore Web Vitalsを最適化
+- **自動パフォーマンステスト**で品質を維持
+
 ---
 
-## 9. 関連リソース
+## 12. 関連リソース
 
+### ドキュメント
 - [AEM Universal Editor Documentation](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/universal-editor/authoring)
+- [Getting Started with Universal Editor](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/getting-started)
+- [Universal Editor Architecture](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/architecture)
+- [Attributes and Types](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/universal-editor/attributes-types)
+
+### ツール
 - [AEM Boilerplate](https://github.com/adobe/aem-boilerplate)
 - [Adobe Developer - Extension Manager](https://developer.adobe.com/uix/docs/extension-manager/)
+- [AEM Sidekick](https://www.aem.live/docs/sidekick)
+
+### ベストプラクティス
 - [Core Web Vitals](https://web.dev/explore-learn-core-vitals/)
+- [Keeping it 100](https://www.aem.live/developer/keeping-it-100)
 
 ---
 
 *本レポートはMira (AI Assistant) によって作成されました。*
+*調査期間: 2026年2月13日*
