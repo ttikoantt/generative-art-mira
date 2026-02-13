@@ -1,49 +1,54 @@
 #!/usr/bin/env python3
 import json
+from pathlib import Path
+from datetime import datetime
 
-# マニフェストを読み込み
-with open('artworks-manifest.json', 'r') as f:
-    manifest = json.load(f)
+# マニフェストファイルのパス
+manifest_path = Path("/Users/naokitomono/Documents/generative-art-by-mira/artworks-manifest.json")
 
-# 新しい作品を追加
+# 現在の日付
+today = datetime.now().strftime("%Y-%m-%d")
+
+# 新しい作品
 new_artworks = [
     {
-        "id": "fractal-garden-2026-02-13-04",
-        "title": "Fractal Garden - フラクタルガーデン",
-        "description": "再帰的な分岐構造で植物のようなフラクタルを生成するインタラクティブアート。3種類の分岐バリエーション（広がり型・対称型・非対称型）が自然な植物の成長を表現し、各植物は独自のカラーパレット（3種類の美しい配色）を持つ。クリック/タッチで種を植えると新しい植物が成長し始め、枝が伸びるアニメーションで生命感を表現。成長が完了すると枝先に花が咲き、グロー効果で幻想的に輝く。Clearボタンで庭をリセットし、Auto Growボタンで自動的に種が植えられる。色相は時間とともに変化し続け、半透明のオーバーレイで美しいトレイル効果を描く。全画面表示対応で、モバイルからも快適に楽しめます。",
-        "emoji": "🌿",
-        "path": "artworks/fractal-garden.html",
+        "id": f"fractal-tree-animation-{today.replace('-', '-')}",
+        "title": "Fractal Tree Animation - フラクタルツリーアニメーション",
+        "description": "クリックするたびに成長するフラクタルツリーのインタラクティブアート。再帰的な枝分かれで自然な木を形成し、成長アニメーションで生命感を表現。各ツリーは独自のカラーパレット（5種類のグラデーション）を持ち、10-13層の深さで再帰的に生成。枝分かれ角度と長さの減衰率はランダムに決まり、毎回異なる木が咲きます。クリック/タッチで新しいツリーを生成でき、Auto Growモードで自動的に木が成長し続けます。各枝の端には葉が描かれ、深度に応じて色と太さが変化。グロー効果で幻想的に輝き、トレイル効果で成長プロセスを美しく表現。全画面表示対応で、モバイルからも快適に楽しめます。",
+        "emoji": "🌳",
+        "path": "fractal-tree/index.html",
         "tags": [
             "HTML Canvas",
             "JavaScript",
             "Fractal",
+            "Trees",
             "Generative Art",
             "Interactive",
-            "Animation",
-            "Plants"
+            "Animation"
         ],
-        "date": "2026-02-13",
+        "date": today,
         "featured": True,
         "python": False,
         "script": False,
         "audio": False
     },
     {
-        "id": "pattern-match-2026-02-13-04",
-        "title": "Pattern Match - パターンマッチ",
-        "description": "一瞬表示されるパターンを記憶して、同じパターンを再現するシンプルな記憶ゲーム。3つの難易度（Easy 3x3 / Normal 4x4 / Hard 5x5）から選択可能。ゲーム開始時にパターンが表示され、その後隠されるので記憶して同じタイルをタップします。レベルが進むにつれてパターンの数が増加（最大2倍グリッドサイズ）。ライフシステム（3つ）で間違えるとライフ減少、0でゲームオーバー。正解でレベルアップとスコア獲得（レベル×100ポイント）。間違えると正解パターンが表示され、次のレベルへ進む。ハイスコアはローカルストレージに保存され、現在のレベル・スコア・ライフをリアルタイム表示。美しいパープル系ネオングラデーション背景、パルスアニメーション、マッチング時のエフェクト付き。全画面表示対応で、モバイルからも快適に遊べます。",
-        "emoji": "🎴",
-        "path": "games/pattern-match/index.html",
+        "id": f"color-match-game-{today.replace('-', '-')}",
+        "title": "Color Match - カラーマッチゲーム",
+        "description": "色の名前と実際の色が一致しているかを判定するシンプルで中毒性のある脳トレゲーム。8種類の色（RED、BLUE、GREEN、YELLOW、PURPLE、ORANGE、PINK、CYAN）が表示され、文字と色が一致しているかを素早く判断します。60秒の制限時間で、正解するとポイント+コンボボーナス、不正解すると-20pt。制限時間が残り10秒を切るとタイマーバーが赤く変化。ハイスコアはローカルストレージに保存され、コンボシステムで連続正解時にボーナスポイントを獲得。美しいパープル系ネオングラデーション背景、グロー効果、正解/不正解時のビジュアルフィードバック付き。全画面表示対応で、キーボード（矢印キー/WASD）とマウス/タッチ両対応でモバイルからも快適に遊べます。",
+        "emoji": "🎨",
+        "path": "games/color-match/index.html",
         "tags": [
             "HTML",
             "JavaScript",
             "Game",
-            "Memory",
-            "Puzzle",
-            "Pattern",
+            "Color",
+            "Reflex",
+            "Brain Training",
+            "Stroop Effect",
             "Interactive"
         ],
-        "date": "2026-02-13",
+        "date": today,
         "featured": True,
         "python": False,
         "script": False,
@@ -51,12 +56,16 @@ new_artworks = [
     }
 ]
 
-# 作品を追加
-manifest['artworks'].extend(new_artworks)
+# マニフェストを読み込む
+with open(manifest_path, 'r', encoding='utf-8') as f:
+    manifest = json.load(f)
+
+# 新しい作品を追加（先頭に追加）
+for artwork in reversed(new_artworks):
+    manifest['artworks'].insert(0, artwork)
 
 # マニフェストを保存
-with open('artworks-manifest.json', 'w') as f:
+with open(manifest_path, 'w', encoding='utf-8') as f:
     json.dump(manifest, f, ensure_ascii=False, indent=2)
 
-print(f"✅ {len(new_artworks)}作品を追加しました！")
-print(f"総作品数: {len(manifest['artworks'])}作品")
+print(f"✅ {len(new_artworks)}個の新しい作品をマニフェストに追加しました！")

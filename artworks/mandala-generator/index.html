@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandala Art Generator - マンダラアートジェネレーター</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .title {
+            color: #fff;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        label {
+            color: #fff;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        input[type="range"] {
+            width: 80px;
+            height: 6px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #00ffff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        button {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            border: none;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 15px rgba(102, 126, 234, 0.4);
+            white-space: nowrap;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 25px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .canvas-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        canvas {
+            border-radius: 10px;
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.3);
+        }
+
+        .info {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">🔮 Mandala Art Generator</div>
+        <div class="controls">
+            <div class="control-group">
+                <label>対称数: <span id="symmetryValue">8</span></label>
+                <input type="range" id="symmetry" min="4" max="16" value="8">
+            </div>
+            <div class="control-group">
+                <label>層数: <span id="layersValue">6</span></label>
+                <input type="range" id="layers" min="3" max="12" value="6">
+            </div>
+            <div class="control-group">
+                <label>複雑さ: <span id="complexityValue">5</span></label>
+                <input type="range" id="complexity" min="3" max="8" value="5">
+            </div>
+            <button id="generate">✨ 新しいマンダラ</button>
+            <button id="fullscreen">⛶ 全画面</button>
+        </div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="mandala"></canvas>
+        <div class="info">クリックで新しいマンダラ</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mandala');
+        const ctx = canvas.getContext('2d');
+
+        // Controls
+        const symmetrySlider = document.getElementById('symmetry');
+        const layersSlider = document.getElementById('layers');
+        const complexitySlider = document.getElementById('complexity');
+        const symmetryValue = document.getElementById('symmetryValue');
+        const layersValue = document.getElementById('layersValue');
+        const complexityValue = document.getElementById('complexityValue');
+        const generateBtn = document.getElementById('generate');
+        const fullscreenBtn = document.getElementById('fullscreen');
+
+        // Parameters
+        let symmetry = parseInt(symmetrySlider.value);
+        let layers = parseInt(layersSlider.value);
+        let complexity = parseInt(complexitySlider.value);
+
+        // Animation
+        let animationFrame;
+        let rotation = 0;
+        let mandalaData = null;
+        let targetRotation = 0;
+
+        // Resize canvas
+        function resizeCanvas() {
+            const container = document.querySelector('.canvas-container');
+            const size = Math.min(container.clientWidth - 40, container.clientHeight - 40, 800);
+            canvas.width = size;
+            canvas.height = size;
+            if (mandalaData) {
+                drawMandala();
+            }
+        }
+
+        // Generate mandala data
+        function generateMandalaData() {
+            const data = {
+                symmetry,
+                layers,
+                complexity,
+                hue: Math.random() * 360,
+                patterns: []
+            };
+
+            // Generate patterns for each layer
+            for (let layer = 0; layer < layers; layer++) {
+                const layerData = {
+                    radius: (canvas.width / 2) * (0.2 + (layer + 1) / layers * 0.75),
+                    width: 3 + Math.random() * 8,
+                    elements: Math.floor(2 + Math.random() * (complexity - 1)),
+                    shape: Math.floor(Math.random() * 5), // 0: circle, 1: triangle, 2: petal, 3: star, 4: diamond
+                    hue: data.hue + (layer * 20),
+                    saturation: 60 + Math.random() * 30,
+                    lightness: 40 + Math.random() * 30,
+                    rotationOffset: Math.random() * Math.PI * 2,
+                    scale: 0.5 + Math.random() * 0.8
+                };
+                data.patterns.push(layerData);
+            }
+
+            mandalaData = data;
+        }
+
+        // Draw mandala
+        function drawMandala() {
+            if (!mandalaData) return;
+
+            ctx.fillStyle = '#0a0a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Draw layers
+            mandalaData.patterns.forEach((pattern, layerIndex) => {
+                ctx.save();
+                ctx.translate(centerX, centerY);
+
+                // Draw symmetry
+                for (let i = 0; i < mandalaData.symmetry; i++) {
+                    ctx.save();
+                    ctx.rotate((i / mandalaData.symmetry) * Math.PI * 2 + rotation + pattern.rotationOffset);
+
+                    // Draw elements
+                    for (let j = 0; j < pattern.elements; j++) {
+                        const elementRadius = pattern.radius * (0.5 + j / pattern.elements * 0.5);
+                        ctx.fillStyle = `hsla(${pattern.hue + j * 10}, ${pattern.saturation}%, ${pattern.lightness}%, 0.6)`;
+                        ctx.shadowColor = `hsla(${pattern.hue}, ${pattern.saturation}%, ${pattern.lightness}%, 0.8)`;
+                        ctx.shadowBlur = 15;
+
+                        drawShape(0, -elementRadius, pattern.width * pattern.scale, pattern.shape);
+                    }
+
+                    ctx.restore();
+                }
+
+                ctx.restore();
+            });
+
+            // Center glow
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 30);
+            gradient.addColorStop(0, `hsla(${mandalaData.hue}, 100%, 70%, 0.8)`);
+            gradient.addColorStop(0.5, `hsla(${mandalaData.hue + 60}, 100%, 50%, 0.3)`);
+            gradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 30, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Draw shape
+        function drawShape(x, y, size, shape) {
+            ctx.beginPath();
+
+            switch (shape) {
+                case 0: // Circle
+                    ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+                    break;
+                case 1: // Triangle
+                    ctx.moveTo(x, y - size / 2);
+                    ctx.lineTo(x - size / 2, y + size / 2);
+                    ctx.lineTo(x + size / 2, y + size / 2);
+                    ctx.closePath();
+                    break;
+                case 2: // Petal
+                    ctx.moveTo(x, y);
+                    ctx.bezierCurveTo(x - size, y - size / 2, x - size, y + size / 2, x, y + size);
+                    ctx.bezierCurveTo(x + size, y + size / 2, x + size, y - size / 2, x, y);
+                    break;
+                case 3: // Star
+                    for (let i = 0; i < 5; i++) {
+                        const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+                        const radius = i % 2 === 0 ? size / 2 : size / 4;
+                        const px = x + Math.cos(angle) * radius;
+                        const py = y + Math.sin(angle) * radius;
+                        if (i === 0) {
+                            ctx.moveTo(px, py);
+                        } else {
+                            ctx.lineTo(px, py);
+                        }
+                    }
+                    ctx.closePath();
+                    break;
+                case 4: // Diamond
+                    ctx.moveTo(x, y - size / 2);
+                    ctx.lineTo(x + size / 2, y);
+                    ctx.lineTo(x, y + size / 2);
+                    ctx.lineTo(x - size / 2, y);
+                    ctx.closePath();
+                    break;
+            }
+
+            ctx.fill();
+        }
+
+        // Animation loop
+        function animate() {
+            rotation += 0.002;
+            drawMandala();
+            animationFrame = requestAnimationFrame(animate);
+        }
+
+        // New mandala
+        function newMandala() {
+            generateMandalaData();
+        }
+
+        // Fullscreen
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Update sliders
+        symmetrySlider.addEventListener('input', (e) => {
+            symmetry = parseInt(e.target.value);
+            symmetryValue.textContent = symmetry;
+        });
+
+        layersSlider.addEventListener('input', (e) => {
+            layers = parseInt(e.target.value);
+            layersValue.textContent = layers;
+        });
+
+        complexitySlider.addEventListener('input', (e) => {
+            complexity = parseInt(e.target.value);
+            complexityValue.textContent = complexity;
+        });
+
+        // Event listeners
+        generateBtn.addEventListener('click', newMandala);
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+        canvas.addEventListener('click', newMandala);
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            newMandala();
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // Initialize
+        resizeCanvas();
+        generateMandalaData();
+        animate();
+    </script>
+</body>
+</html>
