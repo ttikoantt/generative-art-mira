@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow Field Particles - Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 14px;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .info h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .info p {
+            opacity: 0.8;
+            font-size: 12px;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+
+        @media (max-width: 600px) {
+            .info {
+                top: 10px;
+                left: 10px;
+                font-size: 12px;
+            }
+
+            .info h1 {
+                font-size: 18px;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 11px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h1>Flow Field Particles</h1>
+        <p>Click to create burst • Move to influence flow</p>
+    </div>
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶ Fullscreen</button>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let width, height;
+        let particles = [];
+        let flowField = [];
+        let rows, cols;
+        const resolution = 20;
+        const noiseScale = 0.003;
+        let mouseX = 0, mouseY = 0;
+        let hue = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.floor(width / resolution);
+            rows = Math.floor(height / resolution);
+            initFlowField();
+        }
+
+        function initFlowField() {
+            flowField = [];
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const angle = (Math.cos(x * 0.1) + Math.sin(y * 0.1)) * Math.PI;
+                    flowField.push(angle);
+                }
+            }
+        }
+
+        class Particle {
+            constructor(x, y, burst = false) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.ax = 0;
+                this.ay = 0;
+                this.maxSpeed = burst ? 4 : 2;
+                this.maxForce = 0.1;
+                this.size = burst ? 3 : 2;
+                this.life = burst ? 100 : Infinity;
+                this.hue = hue + Math.random() * 60;
+                this.burst = burst;
+            }
+
+            follow() {
+                const x = Math.floor(this.x / resolution);
+                const y = Math.floor(this.y / resolution);
+                const index = x + y * cols;
+
+                if (index >= 0 && index < flowField.length) {
+                    const angle = flowField[index];
+                    this.ax += Math.cos(angle) * 0.5;
+                    this.ay += Math.sin(angle) * 0.5;
+                }
+            }
+
+            update() {
+                // Mouse influence
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 150) {
+                    const force = (150 - dist) / 150;
+                    this.ax += (dx / dist) * force * 0.3;
+                    this.ay += (dy / dist) * force * 0.3;
+                }
+
+                this.vx += this.ax;
+                this.vy += this.ay;
+
+                // Limit speed
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > this.maxSpeed) {
+                    this.vx = (this.vx / speed) * this.maxSpeed;
+                    this.vy = (this.vy / speed) * this.maxSpeed;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+                this.ax = 0;
+                this.ay = 0;
+
+                // Wrap around
+                if (this.x > width) this.x = 0;
+                if (this.x < 0) this.x = width;
+                if (this.y > height) this.y = 0;
+                if (this.y < 0) this.y = height;
+
+                if (this.burst) {
+                    this.life--;
+                    this.size *= 0.98;
+                }
+
+                return this.burst && this.life <= 0;
+            }
+
+            draw() {
+                const alpha = this.burst ? this.life / 100 : 0.6;
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function init() {
+            particles = [];
+            for (let i = 0; i < 500; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function createBurst(x, y) {
+            for (let i = 0; i < 50; i++) {
+                particles.push(new Particle(x, y, true));
+            }
+            hue += 30;
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            particles = particles.filter(p => {
+                const remove = p.update();
+                if (!remove) p.draw();
+                return !remove;
+            });
+
+            // Maintain particle count
+            while (particles.length < 500) {
+                particles.push(new Particle());
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            createBurst(e.clientX, e.clientY);
+        });
+
+        // Touch support
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            createBurst(touch.clientX, touch.clientY);
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        }, { passive: false });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                fullscreenBtn.textContent = '✕ Exit';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = '⛶ Fullscreen';
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                fullscreenBtn.textContent = '⛶ Fullscreen';
+            }
+        });
+
+        // Initialize
+        resize();
+        init();
+        animate();
+
+        // Initial burst
+        createBurst(width / 2, height / 2);
+    </script>
+</body>
+</html>
