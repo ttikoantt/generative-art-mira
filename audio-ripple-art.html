@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Ripple Art - 音の波紋アート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a0a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 0 20px;
+        }
+
+        .controls button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+        }
+
+        .controls button:active {
+            transform: scale(0.95);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            padding: 15px 25px;
+            border-radius: 15px;
+            color: white;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .info h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        .info p {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .status {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 10px;
+            color: white;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <h1>🎵 Audio Ripple Art</h1>
+        <p>音の波紋アート - マイクをオンにして音を入力してください</p>
+    </div>
+
+    <div class="status" id="status">
+        クリックして「マイクを開始」を押してください
+    </div>
+
+    <div class="controls">
+        <button id="startBtn">🎤 マイクを開始</button>
+        <button id="stopBtn">⏹️ 停止</button>
+        <button id="clearBtn">🗑️ クリア</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const status = document.getElementById('status');
+
+        let width, height;
+        let audioContext, analyser, microphone, dataArray;
+        let isRunning = false;
+        let ripples = [];
+        let lastRippleTime = 0;
+        const rippleInterval = 100; // ms
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Ripple {
+            constructor(x, y, volume, frequency) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = volume * 0.5 + 100;
+                this.speed = 2 + volume * 0.01;
+                this.opacity = 1;
+                this.hue = (frequency / 255) * 360;
+                this.lineWidth = 2 + volume * 0.005;
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.opacity -= 0.005;
+            }
+
+            draw() {
+                if (this.opacity <= 0) return;
+
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+                ctx.strokeStyle = `hsl(${this.hue}, 80%, 60%)`;
+                ctx.lineWidth = this.lineWidth;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = `hsl(${this.hue}, 80%, 60%)`;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // 二重円
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 0.7, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsl(${this.hue + 30}, 70%, 50%)`;
+                ctx.lineWidth = this.lineWidth * 0.5;
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.opacity <= 0;
+            }
+        }
+
+        async function startMicrophone() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                microphone = audioContext.createMediaStreamSource(stream);
+
+                analyser.fftSize = 256;
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                microphone.connect(analyser);
+
+                isRunning = true;
+                status.textContent = '🎤 マイクがオンです - 音を入力してください';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+
+                animate();
+            } catch (err) {
+                console.error('マイクアクセスエラー:', err);
+                status.textContent = '❌ マイクアクセスが拒否されました';
+            }
+        }
+
+        function stopMicrophone() {
+            isRunning = false;
+            if (audioContext) {
+                audioContext.close();
+            }
+            status.textContent = '⏹️ 停止中';
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        }
+
+        function createRipple() {
+            if (!isRunning) return;
+
+            analyser.getByteFrequencyData(dataArray);
+
+            // 平均音量を計算
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            const average = sum / dataArray.length;
+
+            // 主要な周波数を取得
+            let maxIndex = 0;
+            let maxValue = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                if (dataArray[i] > maxValue) {
+                    maxValue = dataArray[i];
+                    maxIndex = i;
+                }
+            }
+
+            // 音量が閾値を超えた場合に波紋を生成
+            if (average > 10) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                ripples.push(new Ripple(x, y, average, maxIndex));
+            }
+        }
+
+        function animate() {
+            if (!isRunning) return;
+
+            // トレイル効果
+            ctx.fillStyle = 'rgba(15, 52, 96, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 定期的に波紋を生成
+            const now = Date.now();
+            if (now - lastRippleTime > rippleInterval) {
+                createRipple();
+                lastRippleTime = now;
+            }
+
+            // 波紋を更新・描画
+            ripples = ripples.filter(ripple => {
+                ripple.update();
+                ripple.draw();
+                return !ripple.isDead();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        function clearRipples() {
+            ripples = [];
+            ctx.fillStyle = 'rgba(15, 52, 96, 1)';
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        startBtn.addEventListener('click', startMicrophone);
+        stopBtn.addEventListener('click', stopMicrophone);
+        clearBtn.addEventListener('click', clearRipples);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                fullscreenBtn.textContent = '⛶';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = '⛶';
+            }
+        });
+
+        // 初期背景
+        ctx.fillStyle = 'rgba(15, 52, 96, 1)';
+        ctx.fillRect(0, 0, width, height);
+
+        stopBtn.disabled = true;
+    </script>
+</body>
+</html>
