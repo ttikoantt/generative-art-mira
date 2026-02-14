@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Gravity Orbit Switch - 重力軌道スイッチ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a2e 0%, #1a0a3e 50%, #0f1a4a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            color: white;
+        }
+
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(100, 150, 255, 0.3);
+            max-width: 100%;
+            max-height: 80vh;
+        }
+
+        .hud {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 30px;
+            z-index: 10;
+        }
+
+        .hud-item {
+            text-align: center;
+        }
+
+        .hud-label {
+            font-size: 0.75rem;
+            opacity: 0.6;
+            letter-spacing: 0.1em;
+        }
+
+        .hud-value {
+            font-size: 1.5rem;
+            font-weight: 300;
+            text-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            display: none;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 30px;
+            border-radius: 10px;
+            border: 1px solid rgba(100, 200, 255, 0.3);
+        }
+
+        .game-over h2 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            color: #ff6b6b;
+        }
+
+        .game-over p {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+        }
+
+        .game-over button {
+            background: rgba(100, 200, 255, 0.2);
+            border: 1px solid rgba(100, 200, 255, 0.5);
+            color: white;
+            padding: 12px 30px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .game-over button:hover {
+            background: rgba(100, 200, 255, 0.4);
+            transform: scale(1.05);
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .controls button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            canvas {
+                max-height: 70vh;
+            }
+
+            .hud {
+                gap: 15px;
+            }
+
+            .hud-value {
+                font-size: 1.2rem;
+            }
+
+            .controls button {
+                padding: 8px 16px;
+                font-size: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <canvas id="canvas"></canvas>
+        
+        <div class="hud">
+            <div class="hud-item">
+                <div class="hud-label">SCORE</div>
+                <div class="hud-value" id="score">0</div>
+            </div>
+            <div class="hud-item">
+                <div class="hud-label">BEST</div>
+                <div class="hud-value" id="best">0</div>
+            </div>
+        </div>
+
+        <div class="game-over" id="gameOver">
+            <h2>GAME OVER</h2>
+            <p>Score: <span id="finalScore">0</span></p>
+            <button onclick="restartGame()">Restart</button>
+        </div>
+
+        <div class="controls">
+            <button onclick="toggleFullScreen()">Full Screen</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let gameRunning = true;
+        let score = 0;
+        let bestScore = parseInt(localStorage.getItem('gravityOrbitBest')) || 0;
+        let orbitTrail = [];
+
+        // プレイヤー設定
+        const player = {
+            x: 100,
+            y: 0,
+            radius: 15,
+            velocityY: 0,
+            gravity: 0.5,
+            jumpForce: -8,
+            isJumping: false,
+            color: '#64c8ff'
+        };
+
+        // 障害物配列
+        let obstacles = [];
+        let obstacleTimer = 0;
+        let obstacleInterval = 120;
+
+        // 星の背景
+        let stars = [];
+
+        function resize() {
+            const container = document.querySelector('.container');
+            width = canvas.width = Math.min(800, window.innerWidth - 40);
+            height = canvas.height = Math.min(600, window.innerHeight * 0.7);
+
+            // 初期位置設定
+            if (player.y === 0) {
+                player.y = height / 2;
+            }
+        }
+
+        function initStars() {
+            stars = [];
+            for (let i = 0; i < 100; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    size: Math.random() * 1.5 + 0.5,
+                    speed: Math.random() * 2 + 1,
+                    brightness: Math.random() * 0.5 + 0.5
+                });
+            }
+        }
+
+        function drawStars() {
+            stars.forEach(star => {
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${star.brightness})`;
+                ctx.fill();
+
+                // 星を移動
+                star.x -= star.speed;
+                if (star.x < 0) {
+                    star.x = width;
+                    star.y = Math.random() * height;
+                }
+            });
+        }
+
+        function drawOrbitTrail() {
+            if (orbitTrail.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(orbitTrail[0].x, orbitTrail[0].y);
+                for (let i = 1; i < orbitTrail.length; i++) {
+                    ctx.lineTo(orbitTrail[i].x, orbitTrail[i].y);
+                }
+                ctx.strokeStyle = `rgba(100, 200, 255, 0.3)`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        function drawPlayer() {
+            // 軌道トレイル
+            orbitTrail.push({ x: player.x, y: player.y });
+            if (orbitTrail.length > 30) {
+                orbitTrail.shift();
+            }
+
+            // グロー効果
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius * 1.5, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(100, 200, 255, 0.2)';
+            ctx.fill();
+
+            // 本体
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = player.color;
+            ctx.fill();
+
+            // 内側の光
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius * 0.6, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.fill();
+        }
+
+        function updatePlayer() {
+            // 重力を適用
+            player.velocityY += player.gravity;
+            player.y += player.velocityY;
+
+            // 画面端での反転（重力スイッチ）
+            if (player.y <= player.radius || player.y >= height - player.radius) {
+                if (player.y <= player.radius) {
+                    player.y = player.radius;
+                } else {
+                    player.y = height - player.radius;
+                }
+                player.velocityY *= -0.8; // 反転
+                player.gravity *= -1; // 重力反転
+            }
+
+            // 速度制限
+            if (Math.abs(player.velocityY) > 12) {
+                player.velocityY = player.velocityY > 0 ? 12 : -12;
+            }
+        }
+
+        function spawnObstacle() {
+            const size = Math.random() * 30 + 20;
+            obstacles.push({
+                x: width + size,
+                y: Math.random() * (height - size * 2) + size,
+                size: size,
+                speed: Math.random() * 2 + 2 + score * 0.01,
+                rotation: 0,
+                rotationSpeed: (Math.random() - 0.5) * 0.1,
+                color: `hsl(${Math.random() * 60 + 280}, 70%, 50%)`
+            });
+        }
+
+        function updateObstacles() {
+            obstacleTimer++;
+            if (obstacleTimer >= obstacleInterval) {
+                spawnObstacle();
+                obstacleTimer = 0;
+                obstacleInterval = Math.max(60, 120 - score * 2);
+            }
+
+            obstacles.forEach((obs, index) => {
+                obs.x -= obs.speed;
+                obs.rotation += obs.rotationSpeed;
+
+                // 衝突判定
+                const dx = player.x - obs.x;
+                const dy = player.y - obs.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < player.radius + obs.size * 0.8) {
+                    gameOver();
+                }
+
+                // 画面外に出たら削除＆スコア加算
+                if (obs.x + obs.size < 0) {
+                    obstacles.splice(index, 1);
+                    score++;
+                    updateScore();
+                }
+            });
+        }
+
+        function drawObstacles() {
+            obstacles.forEach(obs => {
+                ctx.save();
+                ctx.translate(obs.x, obs.y);
+                ctx.rotate(obs.rotation);
+
+                // 多角形障害物
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const angle = (i / 6) * Math.PI * 2;
+                    const x = Math.cos(angle) * obs.size;
+                    const y = Math.sin(angle) * obs.size;
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.closePath();
+                ctx.fillStyle = obs.color;
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.restore();
+            });
+        }
+
+        function updateScore() {
+            document.getElementById('score').textContent = score;
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').style.display = 'block';
+
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('gravityOrbitBest', bestScore);
+            }
+            document.getElementById('best').textContent = bestScore;
+        }
+
+        function restartGame() {
+            score = 0;
+            obstacles = [];
+            orbitTrail = [];
+            player.y = height / 2;
+            player.velocityY = 0;
+            player.gravity = 0.5;
+            gameRunning = true;
+            obstacleTimer = 0;
+            obstacleInterval = 120;
+            document.getElementById('gameOver').style.display = 'none';
+            updateScore();
+            document.getElementById('best').textContent = bestScore;
+            animate();
+        }
+
+        function toggleFullScreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        function animate() {
+            if (!gameRunning) return;
+
+            ctx.clearRect(0, 0, width, height);
+
+            drawStars();
+            drawOrbitTrail();
+            updatePlayer();
+            drawPlayer();
+            updateObstacles();
+            drawObstacles();
+
+            requestAnimationFrame(animate);
+        }
+
+        // 入力ハンドリング
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && gameRunning) {
+                e.preventDefault();
+                player.velocityY = player.jumpForce * Math.sign(player.gravity || 1);
+            }
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (gameRunning) {
+                e.preventDefault();
+                player.velocityY = player.jumpForce * Math.sign(player.gravity || 1);
+            }
+        });
+
+        canvas.addEventListener('click', () => {
+            if (gameRunning) {
+                player.velocityY = player.jumpForce * Math.sign(player.gravity || 1);
+            }
+        });
+
+        // 初期化
+        window.addEventListener('resize', () => {
+            resize();
+            initStars();
+        });
+
+        resize();
+        initStars();
+        document.getElementById('best').textContent = bestScore;
+        animate();
+    </script>
+</body>
+</html>
