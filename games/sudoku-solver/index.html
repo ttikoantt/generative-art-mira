@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>数独ソルバー - Sudoku Solver</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            font-family: 'Helvetica', Arial, sans-serif;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        .sudoku-grid {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            gap: 2px;
+            background: #333;
+            border: 3px solid #333;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .cell {
+            aspect-ratio: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: white;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .cell:nth-child(3n):not(:nth-child(9n)) {
+            border-right: 2px solid #333;
+        }
+        .cell:nth-child(n+19):nth-child(-n+27),
+        .cell:nth-child(n+46):nth-child(-n+54) {
+            border-bottom: 2px solid #333;
+        }
+        .cell:hover {
+            background: #f0f0f0;
+        }
+        .cell.selected {
+            background: #667eea;
+            color: white;
+        }
+        .cell.fixed {
+            color: #333;
+            background: #e8e8e8;
+        }
+        .cell.solved {
+            color: #28a745;
+        }
+        .buttons {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .buttons button {
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            background: #667eea;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .buttons button:hover {
+            background: #764ba2;
+            transform: scale(1.05);
+        }
+        .actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .actions button {
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .actions button.primary {
+            background: #28a745;
+            color: white;
+        }
+        .actions button.secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .actions button:hover {
+            transform: scale(1.02);
+        }
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 100;
+        }
+        .info {
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <div class="container">
+        <h1>🎯 数独ソルバー</h1>
+
+        <div class="sudoku-grid" id="grid"></div>
+
+        <div class="buttons" id="numpad"></div>
+
+        <div class="actions">
+            <button class="secondary" onclick="clearBoard()">クリア</button>
+            <button class="primary" onclick="solveSudoku()">解く！</button>
+        </div>
+
+        <div class="info">
+            数字を選んでマスに入力<br>
+            「解く！」で自動解答
+        </div>
+    </div>
+
+    <script>
+        let grid = [];
+        let selectedCell = null;
+
+        function init() {
+            grid = Array(9).fill().map(() => Array(9).fill(0));
+            renderGrid();
+            renderNumpad();
+        }
+
+        function renderGrid() {
+            const gridEl = document.getElementById('grid');
+            gridEl.innerHTML = '';
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = i;
+                    cell.dataset.col = j;
+                    if (grid[i][j] !== 0) {
+                        cell.textContent = grid[i][j];
+                        cell.classList.add('fixed');
+                    }
+                    cell.addEventListener('click', () => selectCell(i, j));
+                    gridEl.appendChild(cell);
+                }
+            }
+        }
+
+        function renderNumpad() {
+            const numpad = document.getElementById('numpad');
+            for (let i = 1; i <= 9; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = i;
+                btn.addEventListener('click', () => enterNumber(i));
+                numpad.appendChild(btn);
+            }
+        }
+
+        function selectCell(row, col) {
+            selectedCell = { row, col };
+            document.querySelectorAll('.cell').forEach(c => c.classList.remove('selected'));
+            const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+            if (cell) cell.classList.add('selected');
+        }
+
+        function enterNumber(num) {
+            if (selectedCell && !isFixed(selectedCell.row, selectedCell.col)) {
+                grid[selectedCell.row][selectedCell.col] = num;
+                renderGrid();
+                selectCell(selectedCell.row, selectedCell.col);
+            }
+        }
+
+        function isFixed(row, col) {
+            return document.querySelector(`[data-row="${row}"][data-col="${col}"]`)?.classList.contains('fixed');
+        }
+
+        function clearBoard() {
+            grid = Array(9).fill().map(() => Array(9).fill(0));
+            selectedCell = null;
+            renderGrid();
+        }
+
+        function isValid(board, row, col, num) {
+            for (let i = 0; i < 9; i++) {
+                if (board[row][i] === num || board[i][col] === num) return false;
+            }
+            const boxRow = Math.floor(row / 3) * 3;
+            const boxCol = Math.floor(col / 3) * 3;
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (board[boxRow + i][boxCol + j] === num) return false;
+                }
+            }
+            return true;
+        }
+
+        function solveHelper(board) {
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    if (board[i][j] === 0) {
+                        for (let num = 1; num <= 9; num++) {
+                            if (isValid(board, i, j, num)) {
+                                board[i][j] = num;
+                                if (solveHelper(board)) return true;
+                                board[i][j] = 0;
+                            }
+                        }
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function solveSudoku() {
+            const tempGrid = grid.map(row => [...row]);
+            if (solveHelper(tempGrid)) {
+                grid = tempGrid;
+                renderGrid();
+                document.querySelectorAll('.cell').forEach(c => {
+                    if (!c.classList.contains('fixed')) {
+                        c.classList.add('solved');
+                    }
+                });
+            } else {
+                alert('解けません 😢');
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
