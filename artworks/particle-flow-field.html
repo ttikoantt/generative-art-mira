@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>パーティクル・フロー・フィールド</title>
+    <title>Particle Flow Field - Generative Art</title>
     <style>
         * {
             margin: 0;
@@ -12,69 +12,101 @@
         }
 
         body {
-            background: #000;
-            overflow: hidden;
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
 
         canvas {
             display: block;
-            position: fixed;
-            top: 0;
-            left: 0;
+            width: 100%;
+            flex: 1;
         }
 
-        .fullscreen-btn {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
+        .controls {
+            background: rgba(10, 10, 15, 0.9);
+            padding: 15px 20px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            border-top: 1px solid #333;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 12px 20px;
-            border-radius: 8px;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
             cursor: pointer;
+            font-family: 'Courier New', monospace;
             font-size: 14px;
-            backdrop-filter: blur(10px);
             transition: all 0.3s ease;
-            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
         }
 
-        .fullscreen-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: scale(1.05);
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        .btn:active {
+            transform: translateY(0);
         }
 
         .info {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            color: rgba(255, 255, 255, 0.5);
+            color: #888;
             font-size: 12px;
-            z-index: 1000;
-            pointer-events: none;
+            padding: 0 15px;
+        }
+
+        .title {
+            color: #fff;
+            font-size: 14px;
+            margin-bottom: 10px;
+            opacity: 0.7;
         }
     </style>
 </head>
 <body>
-    <canvas id="canvas"></canvas>
-
-    <div class="info">
-        パーティクル・フロー・フィールド<br>
-        マウスを動かして干渉
+    <div class="container">
+        <canvas id="canvas"></canvas>
+        <div class="controls">
+            <div class="title">🌊 Particle Flow Field</div>
+            <button class="btn" onclick="reset()">リセット</button>
+            <button class="btn" onclick="togglePause()">一時停止</button>
+            <span class="info">パーティクル数: <span id="count">2000</span></span>
+        </div>
     </div>
-
-    <button class="fullscreen-btn" id="fullscreenBtn">全画面表示</button>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
-        let width = canvas.width = window.innerWidth;
-        let height = canvas.height = window.innerHeight;
+        let width, height;
+        let particles = [];
+        let flowField = [];
+        let scale = 20;
+        let paused = false;
+        let animationId;
 
-        // パーリンノイズの実装
-        class PerlinNoise {
+        // Simplex-like noise (simplified)
+        class SimpleNoise {
             constructor() {
                 this.permutation = [];
                 for (let i = 0; i < 256; i++) {
@@ -90,7 +122,7 @@
                 return t * t * t * (t * (t * 6 - 15) + 10);
             }
 
-            lerp(a, b, t) {
+            lerp(t, a, b) {
                 return a + t * (b - a);
             }
 
@@ -98,7 +130,7 @@
                 const h = hash & 3;
                 const u = h < 2 ? x : y;
                 const v = h < 2 ? y : x;
-                return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+                return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
             }
 
             noise(x, y) {
@@ -114,24 +146,15 @@
                 const A = this.p[X] + Y;
                 const B = this.p[X + 1] + Y;
 
-                return this.lerp(
-                    this.lerp(this.grad(this.p[A], x, y), this.grad(this.p[B], x - 1, y), u),
-                    this.lerp(this.grad(this.p[A + 1], x, y - 1), this.grad(this.p[B + 1], x - 1, y - 1), u),
-                    v
+                return this.lerp(v,
+                    this.lerp(u, this.grad(this.p[A], x, y), this.grad(this.p[B], x - 1, y)),
+                    this.lerp(u, this.grad(this.p[A + 1], x, y - 1), this.grad(this.p[B + 1], x - 1, y - 1))
                 );
-            }
-
-            // 2Dノイズから角度を取得
-            getAngle(x, y, scale = 0.01, timeScale = 0.0001) {
-                const time = Date.now() * timeScale;
-                const value = this.noise(x * scale, y * scale + time);
-                return value * Math.PI * 4; // 角度に変換
             }
         }
 
-        const perlin = new PerlinNoise();
+        const noise = new SimpleNoise();
 
-        // パーティクルクラス
         class Particle {
             constructor() {
                 this.reset();
@@ -140,111 +163,142 @@
             reset() {
                 this.x = Math.random() * width;
                 this.y = Math.random() * height;
-                this.age = 0;
-                this.maxAge = 100 + Math.random() * 200;
-                this.speed = 1 + Math.random() * 2;
-                this.size = 1 + Math.random() * 2;
-                this.hue = Math.random() * 60 + 180; // 青〜紫系
+                this.vx = 0;
+                this.vy = 0;
+                this.ax = 0;
+                this.ay = 0;
+                this.maxSpeed = 2 + Math.random() * 2;
+                this.life = 100 + Math.random() * 200;
+                this.maxLife = this.life;
+
+                // Color based on position
+                const hue = (this.x / width) * 60 + (this.y / height) * 60 + 200;
+                this.color = `hsl(${hue}, 70%, 60%)`;
             }
 
-            update(mouseX, mouseY, mouseActive) {
-                // ノイズから角度を取得
-                const angle = perlin.getAngle(this.x, this.y, 0.005, 0.00005);
+            follow(flowField) {
+                const x = Math.floor(this.x / scale);
+                const y = Math.floor(this.y / scale);
+                const index = x + y * Math.ceil(width / scale);
 
-                // マウスの干渉
-                let dx = Math.cos(angle);
-                let dy = Math.sin(angle);
-
-                if (mouseActive) {
-                    const distToMouse = Math.hypot(this.x - mouseX, this.y - mouseY);
-                    if (distToMouse < 150) {
-                        const force = (150 - distToMouse) / 150;
-                        dx += (this.x - mouseX) / distToMouse * force * 3;
-                        dy += (this.y - mouseY) / distToMouse * force * 3;
-                    }
+                if (flowField[index]) {
+                    this.ax = flowField[index].x * 0.5;
+                    this.ay = flowField[index].y * 0.5;
                 }
 
-                // 移動
-                this.x += dx * this.speed;
-                this.y += dy * this.speed;
+                this.vx += this.ax;
+                this.vy += this.ay;
 
-                // 色の変化
-                this.hue += 0.1;
+                // Limit speed
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > this.maxSpeed) {
+                    this.vx = (this.vx / speed) * this.maxSpeed;
+                    this.vy = (this.vy / speed) * this.maxSpeed;
+                }
 
-                // 年齢を増やす
-                this.age++;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life--;
+            }
 
-                // 画面外または寿命を迎えたらリセット
-                if (this.x < 0 || this.x > width ||
-                    this.y < 0 || this.y > height ||
-                    this.age > this.maxAge) {
+            update() {
+                this.follow(flowField);
+
+                // Wrap around edges
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+
+                // Reset if life ends
+                if (this.life <= 0) {
                     this.reset();
                 }
             }
 
             draw() {
-                const alpha = 1 - (this.age / this.maxAge);
-                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha * 0.8})`;
+                const alpha = (this.life / this.maxLife) * 0.6;
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, 1, 0, Math.PI * 2);
+                ctx.fillStyle = this.color.replace(')', `, ${alpha})`).replace('hsl', 'hsla');
                 ctx.fill();
+
+                // Draw trail
+                ctx.beginPath();
+                ctx.moveTo(this.x - this.vx * 3, this.y - this.vy * 3);
+                ctx.lineTo(this.x, this.y);
+                ctx.strokeStyle = this.color.replace(')', `, ${alpha * 0.5})`).replace('hsl', 'hsla');
+                ctx.lineWidth = 0.5;
+                ctx.stroke();
             }
         }
 
-        // パーティクルの配列
-        const particles = [];
-        const particleCount = 500;
+        function init() {
+            width = canvas.width = canvas.offsetWidth;
+            height = canvas.height = canvas.offsetHeight;
 
-        for (let i = 0; i < particleCount; i++) {
-            particles.push(new Particle());
+            // Create flow field
+            flowField = [];
+            const cols = Math.ceil(width / scale);
+            const rows = Math.ceil(height / scale);
+            const zOff = 0;
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const angle = noise.noise(x * 0.1, y * 0.1) * Math.PI * 4;
+                    flowField.push({
+                        x: Math.cos(angle),
+                        y: Math.sin(angle)
+                    });
+                }
+            }
+
+            // Create particles
+            particles = [];
+            for (let i = 0; i < 2000; i++) {
+                particles.push(new Particle());
+            }
+
+            document.getElementById('count').textContent = particles.length;
         }
 
-        // マウスの位置
-        let mouseX = 0;
-        let mouseY = 0;
-        let mouseActive = false;
-
-        canvas.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-            mouseActive = true;
-        });
-
-        canvas.addEventListener('mouseleave', () => {
-            mouseActive = false;
-        });
-
-        // 全画面表示ボタン
-        const fullscreenBtn = document.getElementById('fullscreenBtn');
-        fullscreenBtn.addEventListener('click', () => {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
-            } else {
-                document.exitFullscreen();
-            }
-        });
-
-        // アニメーションループ
         function animate() {
-            // トレイル効果
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-            ctx.fillRect(0, 0, width, height);
+            if (!paused) {
+                // Semi-transparent black for trail effect
+                ctx.fillStyle = 'rgba(10, 10, 15, 0.05)';
+                ctx.fillRect(0, 0, width, height);
 
-            // パーティクルを更新・描画
-            particles.forEach(particle => {
-                particle.update(mouseX, mouseY, mouseActive);
-                particle.draw();
-            });
+                particles.forEach(particle => {
+                    particle.update();
+                    particle.draw();
+                });
+            }
 
-            requestAnimationFrame(animate);
+            animationId = requestAnimationFrame(animate);
         }
 
-        // ウィンドウサイズの変更
+        function reset() {
+            cancelAnimationFrame(animationId);
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, width, height);
+            init();
+            animate();
+        }
+
+        function togglePause() {
+            paused = !paused;
+        }
+
+        // Handle resize
         window.addEventListener('resize', () => {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
+            width = canvas.width = canvas.offsetWidth;
+            height = canvas.height = canvas.offsetHeight;
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, width, height);
         });
 
+        // Initialize
+        init();
         animate();
     </script>
 </body>
