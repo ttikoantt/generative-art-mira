@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ripple Echoes - インタラクティブ波紋アート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <div>Ripple Echoes</div>
+        <div style="font-size: 12px; margin-top: 5px;">クリックまたはタップで波紋を広げよう</div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let ripples = [];
+        let hue = 0;
+        let autoRippleTimer = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = Math.max(width, height) * 0.6;
+                this.speed = 2 + Math.random() * 2;
+                this.hue = hue;
+                this.opacity = 1;
+                this.lineWidth = 3 + Math.random() * 3;
+                this.harmonics = Math.floor(2 + Math.random() * 3); // 2-4倍音
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.opacity = 1 - (this.radius / this.maxRadius);
+                return this.opacity > 0;
+            }
+
+            draw() {
+                // メインの波紋
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${this.opacity})`;
+                ctx.lineWidth = this.lineWidth * this.opacity;
+                ctx.stroke();
+
+                // 倍音（高調波）
+                for (let i = 1; i <= this.harmonics; i++) {
+                    const harmonicRadius = this.radius * (1 + i * 0.3);
+                    const harmonicOpacity = this.opacity * (1 - i * 0.2);
+
+                    if (harmonicOpacity > 0 && harmonicRadius < this.maxRadius) {
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, harmonicRadius, 0, Math.PI * 2);
+                        ctx.strokeStyle = `hsla(${(this.hue + i * 30) % 360}, 70%, 50%, ${harmonicOpacity})`;
+                        ctx.lineWidth = (this.lineWidth * 0.5) * harmonicOpacity;
+                        ctx.stroke();
+                    }
+                }
+
+                // 内側の光の効果
+                const glowRadius = this.radius * 0.95;
+                if (glowRadius > 0) {
+                    const gradient = ctx.createRadialGradient(
+                        this.x, this.y, glowRadius * 0.8,
+                        this.x, this.y, glowRadius
+                    );
+                    gradient.addColorStop(0, `hsla(${this.hue}, 80%, 70%, 0)`);
+                    gradient.addColorStop(0.5, `hsla(${this.hue}, 80%, 60%, ${this.opacity * 0.3})`);
+                    gradient.addColorStop(1, `hsla(${this.hue}, 80%, 50%, 0)`);
+
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, glowRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+                }
+            }
+        }
+
+        function createRipple(x, y) {
+            ripples.push(new Ripple(x, y));
+            hue = (hue + 15) % 360; // 色を徐々に変化
+        }
+
+        function animate() {
+            // 半透明の黒で残像効果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 自動波紋（一定間隔で）
+            autoRippleTimer++;
+            if (autoRippleTimer > 120 && ripples.length < 3) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                createRipple(x, y);
+                autoRippleTimer = 0;
+            }
+
+            // 波紋を更新・描画
+            ripples = ripples.filter(ripple => {
+                ripple.draw();
+                return ripple.update();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', (e) => {
+            createRipple(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            for (let touch of e.touches) {
+                createRipple(touch.clientX, touch.clientY);
+            }
+        }, { passive: false });
+
+        window.addEventListener('resize', resize);
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        resize();
+        animate();
+
+        // 開始時にデモ波紋
+        setTimeout(() => createRipple(width / 2, height / 2), 500);
+    </script>
+</body>
+</html>
