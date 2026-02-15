@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Color Pop - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: manipulation;
+        }
+
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .ui {
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 500px;
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .score {
+            font-size: 24px;
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .combo {
+            font-size: 18px;
+            color: #ff0;
+            font-weight: bold;
+        }
+
+        .colorButtons {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 10;
+        }
+
+        .colorBtn {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 4px solid #fff;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        .colorBtn:active {
+            transform: scale(0.95);
+        }
+
+        .colorBtn.red { background: #ff4757; box-shadow: 0 0 20px #ff4757; }
+        .colorBtn.blue { background: #3742fa; box-shadow: 0 0 20px #3742fa; }
+        .colorBtn.green { background: #2ed573; box-shadow: 0 0 20px #2ed573; }
+        .colorBtn.yellow { background: #ffa502; box-shadow: 0 0 20px #ffa502; }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: #fff;
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .overlay h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px currentColor;
+        }
+
+        .overlay p {
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+
+        .overlay .finalScore {
+            font-size: 64px;
+            margin: 20px 0;
+            color: #ff0;
+        }
+
+        .startBtn {
+            padding: 15px 50px;
+            font-size: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        .startBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 25px rgba(102, 126, 234, 0.7);
+        }
+
+        .startBtn:active {
+            transform: translateY(0);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(102, 126, 234, 0.3);
+            border: 2px solid #667eea;
+            color: #fff;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            border-radius: 10px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="score">スコア: <span id="score">0</span></div>
+        <div class="combo" id="combo"></div>
+    </div>
+
+    <div class="colorButtons">
+        <button class="colorBtn red" onclick="handleColorClick('red')"></button>
+        <button class="colorBtn blue" onclick="handleColorClick('blue')"></button>
+        <button class="colorBtn green" onclick="handleColorClick('green')"></button>
+        <button class="colorBtn yellow" onclick="handleColorClick('yellow')"></button>
+    </div>
+
+    <div class="overlay" id="startScreen">
+        <h1 style="color: #667eea;">🎯 Color Pop</h1>
+        <p>降ってくるボールと同じ色のボタンを押して消そう！</p>
+        <button class="startBtn" onclick="startGame()">スタート</button>
+    </div>
+
+    <div class="overlay hidden" id="gameOverScreen">
+        <h1 style="color: #ff4757;">ゲームオーバー</h1>
+        <p>最終スコア</p>
+        <div class="finalScore" id="finalScore">0</div>
+        <p>最大コンボ: <span id="maxCombo">0</span></p>
+        <button class="startBtn" onclick="startGame()">もう一度</button>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let balls = [];
+        let particles = [];
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let gameRunning = false;
+        let spawnRate = 1500;
+        let lastSpawn = 0;
+        let difficulty = 1;
+
+        const colors = {
+            red: '#ff4757',
+            blue: '#3742fa',
+            green: '#2ed573',
+            yellow: '#ffa502'
+        };
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Ball {
+            constructor() {
+                const colorKeys = Object.keys(colors);
+                this.colorKey = colorKeys[Math.floor(Math.random() * colorKeys.length)];
+                this.color = colors[this.colorKey];
+                this.radius = 25 + Math.random() * 15;
+                this.x = Math.random() * (width - this.radius * 2) + this.radius;
+                this.y = -this.radius;
+                this.speed = (2 + Math.random() * 2) * difficulty;
+                this.markedForDeletion = false;
+                this.angle = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+            }
+
+            update() {
+                this.y += this.speed;
+                this.angle += this.rotationSpeed;
+
+                if (this.y - this.radius > height) {
+                    this.markedForDeletion = true;
+                    gameOver();
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                // Glow effect
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.color;
+
+                // Main ball
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // Highlight
+                ctx.beginPath();
+                ctx.arc(-this.radius * 0.3, -this.radius * 0.3, this.radius * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.radius = Math.random() * 5 + 2;
+                this.speedX = (Math.random() - 0.5) * 10;
+                this.speedY = (Math.random() - 0.5) * 10;
+                this.alpha = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.alpha -= this.decay;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function spawnBall() {
+            balls.push(new Ball());
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function handleColorClick(colorKey) {
+            if (!gameRunning) return;
+
+            // Find the lowest ball of the clicked color
+            let targetBall = null;
+            let lowestY = -Infinity;
+
+            balls.forEach(ball => {
+                if (ball.colorKey === colorKey && ball.y > lowestY) {
+                    lowestY = ball.y;
+                    targetBall = ball;
+                }
+            });
+
+            if (targetBall) {
+                // Correct color!
+                createParticles(targetBall.x, targetBall.y, targetBall.color);
+                balls = balls.filter(b => b !== targetBall);
+                combo++;
+                if (combo > maxCombo) maxCombo = combo;
+                score += 10 * combo;
+
+                // Increase difficulty
+                if (score % 100 === 0 && spawnRate > 500) {
+                    spawnRate -= 100;
+                    difficulty += 0.1;
+                }
+            } else {
+                // Wrong color!
+                gameOver();
+            }
+
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('combo').textContent = combo > 1 ? `${combo} コンボ!` : '';
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('maxCombo').textContent = maxCombo;
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        function startGame() {
+            balls = [];
+            particles = [];
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            spawnRate = 1500;
+            difficulty = 1;
+            gameRunning = true;
+
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            updateUI();
+
+            lastSpawn = Date.now();
+            gameLoop();
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Spawn balls
+            if (Date.now() - lastSpawn > spawnRate) {
+                spawnBall();
+                lastSpawn = Date.now();
+            }
+
+            // Update and draw balls
+            balls.forEach(ball => {
+                ball.update();
+                ball.draw();
+            });
+
+            // Remove balls marked for deletion
+            balls = balls.filter(ball => !ball.markedForDeletion);
+
+            // Update and draw particles
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            // Remove dead particles
+            particles = particles.filter(p => p.alpha > 0);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Keyboard support
+        document.addEventListener('keydown', (e) => {
+            if (!gameRunning) return;
+
+            const keyMap = {
+                '1': 'red',
+                '2': 'blue',
+                '3': 'green',
+                '4': 'yellow'
+            };
+
+            if (keyMap[e.key]) {
+                handleColorClick(keyMap[e.key]);
+            }
+        });
+    </script>
+</body>
+</html>

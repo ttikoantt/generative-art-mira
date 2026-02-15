@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magic Waves - ジェネレーティブアート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            color: #0ff;
+        }
+
+        canvas {
+            border: 2px solid #0ff;
+            box-shadow: 0 0 20px #0ff;
+            max-width: 100%;
+            max-height: 80vh;
+            cursor: pointer;
+        }
+
+        .info {
+            margin-top: 20px;
+            text-align: center;
+            color: #0ff;
+            text-shadow: 0 0 10px #0ff;
+        }
+
+        .controls {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            background: transparent;
+            color: #0ff;
+            border: 2px solid #0ff;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            background: #0ff;
+            color: #000;
+            box-shadow: 0 0 15px #0ff;
+        }
+
+        .fullscreen-btn {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="info">
+        <h1>✨ Magic Waves ✨</h1>
+        <p>クリックで波を追加 | 波同士が干渉して美しいパターンを生成</p>
+    </div>
+    <div class="controls">
+        <button onclick="clearWaves()">クリア</button>
+        <button onclick="randomWaves()">ランダム生成</button>
+        <button onclick="toggleAuto()">自動生成: <span id="autoStatus">OFF</span></button>
+    </div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let waves = [];
+        let autoGenerate = false;
+        let autoInterval = null;
+        let time = 0;
+
+        // キャンバスサイズ設定
+        function resize() {
+            width = Math.min(800, window.innerWidth - 40);
+            height = Math.min(600, window.innerHeight - 250);
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        // 波のクラス
+        class Wave {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.amplitude = Math.random() * 50 + 30;
+                this.frequency = Math.random() * 0.02 + 0.01;
+                this.phase = Math.random() * Math.PI * 2;
+                this.speed = Math.random() * 0.02 + 0.01;
+                this.hue = Math.random() * 360;
+            }
+
+            getColor(x, y, t) {
+                const distance = Math.sqrt((x - this.x) ** 2 + (y - this.y) ** 2);
+                const wave = Math.sin(distance * this.frequency - t * this.speed + this.phase);
+                const intensity = (wave + 1) / 2; // 0 to 1
+
+                return {
+                    h: this.hue,
+                    s: 100,
+                    l: intensity * 50 + 20,
+                    a: intensity * 0.8 + 0.2
+                };
+            }
+        }
+
+        // 波を追加
+        function addWave(x, y) {
+            if (waves.length < 10) {
+                waves.push(new Wave(x, y));
+            }
+        }
+
+        // 全ての波をクリア
+        function clearWaves() {
+            waves = [];
+        }
+
+        // ランダムに波を生成
+        function randomWaves() {
+            clearWaves();
+            const count = Math.floor(Math.random() * 5) + 3;
+            for (let i = 0; i < count; i++) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                addWave(x, y);
+            }
+        }
+
+        // 自動生成のオン/オフ
+        function toggleAuto() {
+            autoGenerate = !autoGenerate;
+            document.getElementById('autoStatus').textContent = autoGenerate ? 'ON' : 'OFF';
+
+            if (autoGenerate) {
+                autoInterval = setInterval(() => {
+                    if (waves.length < 10) {
+                        const x = Math.random() * width;
+                        const y = Math.random() * height;
+                        addWave(x, y);
+                    }
+                }, 2000);
+            } else {
+                clearInterval(autoInterval);
+            }
+        }
+
+        // 描画
+        function draw() {
+            time++;
+
+            // 各ピクセルの色を計算
+            for (let x = 0; x < width; x += 3) {
+                for (let y = 0; y < height; y += 3) {
+                    let totalHue = 0;
+                    let totalSat = 0;
+                    let totalLight = 0;
+                    let totalAlpha = 0;
+
+                    // 全ての波からの寄せを計算
+                    for (const wave of waves) {
+                        const color = wave.getColor(x, y, time);
+                        totalHue += color.h;
+                        totalSat += color.s;
+                        totalLight += color.l;
+                        totalAlpha += color.a;
+                    }
+
+                    // 平均を計算
+                    if (waves.length > 0) {
+                        const avgHue = totalHue / waves.length;
+                        const avgSat = totalSat / waves.length;
+                        const avgLight = totalLight / waves.length;
+                        const avgAlpha = Math.min(totalAlpha, 1);
+
+                        ctx.fillStyle = `hsla(${avgHue}, ${avgSat}%, ${avgLight}%, ${avgAlpha})`;
+                        ctx.fillRect(x, y, 3, 3);
+                    } else {
+                        ctx.fillStyle = '#000';
+                        ctx.fillRect(x, y, 3, 3);
+                    }
+                }
+            }
+
+            // 波の中心点を表示
+            for (const wave of waves) {
+                ctx.beginPath();
+                ctx.arc(wave.x, wave.y, 5, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${wave.hue}, 100%, 70%)`;
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        // 全画面表示の切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // クリックイベント
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            addWave(x, y);
+        });
+
+        // 初期化
+        window.addEventListener('resize', resize);
+        resize();
+        randomWaves();
+        draw();
+    </script>
+</body>
+</html>
