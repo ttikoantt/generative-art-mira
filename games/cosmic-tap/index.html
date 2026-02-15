@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Cosmic Tap - 宇宙を広げるゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: manipulation;
+        }
+
+        canvas {
+            display: block;
+            cursor: pointer;
+        }
+
+        .ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .score {
+            color: #00ffff;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .scale {
+            color: #ff00ff;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            color: #fff;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .overlay h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .overlay p {
+            font-size: 18px;
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+
+        .overlay button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 18px;
+            margin-top: 20px;
+            transition: transform 0.2s;
+            pointer-events: auto;
+        }
+
+        .overlay button:hover {
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #00ffff;
+            color: #00ffff;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            pointer-events: auto;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .score {
+                font-size: 20px;
+            }
+
+            .scale {
+                font-size: 16px;
+            }
+
+            .overlay h1 {
+                font-size: 32px;
+            }
+
+            .overlay p {
+                font-size: 14px;
+            }
+
+            .overlay button {
+                padding: 12px 30px;
+                font-size: 16px;
+            }
+
+            .fullscreen-btn {
+                bottom: 15px;
+                right: 15px;
+                padding: 10px 20px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game"></canvas>
+
+    <div class="ui">
+        <div class="score">スコア: <span id="score">0</span></div>
+        <div class="scale">宇宙の規模: <span id="scale">1.0</span>x</div>
+    </div>
+
+    <div class="overlay" id="startScreen">
+        <h1>🌌 Cosmic Tap</h1>
+        <p>宇宙をタップして広げよう！</p>
+        <p>スターをタップすると宇宙が拡大</p>
+        <p>制限時間60秒で最も大きな宇宙を作ろう</p>
+        <button onclick="startGame()">スタート</button>
+    </div>
+
+    <div class="overlay hidden" id="gameOverScreen">
+        <h1>🎮 ゲームオーバー</h1>
+        <p>最終スコア: <span id="finalScore">0</span></p>
+        <p>宇宙の規模: <span id="finalScale">1.0</span>x</p>
+        <button onclick="startGame()">もう一度</button>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let stars = [];
+        let score = 0;
+        let universeScale = 1;
+        let gameActive = false;
+        let timeLeft = 60;
+        let gameLoop;
+
+        // 星クラス
+        class Star {
+            constructor() {
+                this.reset();
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.size = 2 + Math.random() * 3;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.speedY = (Math.random() - 0.5) * 2;
+                this.alpha = 0.3 + Math.random() * 0.7;
+                this.twinkleSpeed = 0.01 + Math.random() * 0.02;
+                this.twinkle = 0;
+                this.tapped = false;
+
+                // 色
+                const colors = [
+                    { r: 255, g: 255, b: 255 },  // 白
+                    { r: 200, g: 220, b: 255 },  // 青白
+                    { r: 255, g: 220, b: 180 },  // オレンジ
+                    { r: 180, g: 200, b: 255 },  // 青
+                    { r: 255, g: 200, b: 200 },  // ピンク
+                ];
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update() {
+                // 移動
+                this.x += this.speedX;
+                this.y += this.speedY;
+
+                // 画面外に出たら反対側から
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+
+                // 明滅
+                this.twinkle += this.twinkleSpeed;
+            }
+
+            draw() {
+                const alpha = this.alpha * (0.5 + 0.5 * Math.sin(this.twinkle));
+                const scale = this.tapped ? 3 : 1;
+
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size * scale * 3
+                );
+                gradient.addColorStop(0, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${alpha})`);
+                gradient.addColorStop(0.5, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${alpha * 0.3})`);
+                gradient.addColorStop(1, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, 0)`);
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * scale * 3, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+
+            isTapped(x, y) {
+                const dist = Math.sqrt((x - this.x) ** 2 + (y - this.y) ** 2);
+                return dist < this.size * 5;
+            }
+
+            tap() {
+                if (!this.tapped) {
+                    this.tapped = true;
+                    this.twinkle = Math.PI / 2;
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function initStars() {
+            stars = [];
+            const starCount = Math.floor((width * height) / 5000);
+            for (let i = 0; i < starCount; i++) {
+                stars.push(new Star());
+            }
+        }
+
+        function startGame() {
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+
+            score = 0;
+            universeScale = 1;
+            timeLeft = 60;
+            gameActive = true;
+
+            initStars();
+            updateUI();
+
+            // タイマー開始
+            clearInterval(gameLoop);
+            gameLoop = setInterval(() => {
+                if (gameActive) {
+                    timeLeft--;
+                    if (timeLeft <= 0) {
+                        endGame();
+                    }
+                }
+            }, 1000);
+
+            animate();
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(gameLoop);
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalScale').textContent = universeScale.toFixed(2);
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('scale').textContent = universeScale.toFixed(2);
+        }
+
+        function animate() {
+            if (!gameActive) return;
+
+            // トレイル効果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 背景の銀河効果
+            drawGalaxyBackground();
+
+            // 星を更新・描画
+            stars.forEach(star => {
+                star.update();
+                star.draw();
+            });
+
+            // UI更新
+            updateUI();
+
+            requestAnimationFrame(animate);
+        }
+
+        function drawGalaxyBackground() {
+            // 中心から放射状の光線
+            const gradient = ctx.createRadialGradient(
+                width / 2, height / 2, 0,
+                width / 2, height / 2, Math.max(width, height) / 2
+            );
+
+            const intensity = Math.min(universeScale / 10, 1);
+
+            gradient.addColorStop(0, `rgba(100, 50, 150, ${0.1 * intensity})`);
+            gradient.addColorStop(0.5, `rgba(50, 0, 100, ${0.05 * intensity})`);
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // 渦巻きアーム
+            const arms = 5;
+            for (let arm = 0; arm < arms; arm++) {
+                const armAngle = (arm / arms) * Math.PI * 2 + Date.now() * 0.0001;
+
+                for (let i = 0; i < 100; i++) {
+                    const progress = i / 100;
+                    const distance = progress * Math.max(width, height) * 0.4;
+                    const angle = armAngle + progress * Math.PI * 4;
+
+                    const x = width / 2 + Math.cos(angle) * distance;
+                    const y = height / 2 + Math.sin(angle) * distance * 0.6;
+
+                    const alpha = (1 - progress) * 0.1 * intensity;
+                    const size = (1 - progress) * 3;
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, size, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(150, 100, 255, ${alpha})`;
+                    ctx.fill();
+                }
+            }
+        }
+
+        function handleTap(x, y) {
+            if (!gameActive) return;
+
+            let tapped = false;
+            stars.forEach(star => {
+                if (star.isTapped(x, y)) {
+                    if (star.tap()) {
+                        score += 10;
+                        universeScale += 0.05;
+                        tapped = true;
+                    }
+                }
+            });
+
+            // 星をリスポーン
+            if (tapped) {
+                const newStars = stars.filter(s => !s.tapped);
+                const removedCount = stars.length - newStars.length;
+
+                for (let i = 0; i < removedCount; i++) {
+                    newStars.push(new Star());
+                }
+
+                stars = newStars;
+            }
+
+            updateUI();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', () => {
+            resize();
+            initStars();
+        });
+
+        canvas.addEventListener('click', (e) => {
+            handleTap(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleTap(touch.clientX, touch.clientY);
+        });
+
+        // 初期化
+        resize();
+        initStars();
+    </script>
+</body>
+</html>
