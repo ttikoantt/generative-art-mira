@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ring Darts - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        h1 {
+            color: #fff;
+            margin-bottom: 10px;
+            font-size: 2rem;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+            text-align: center;
+        }
+
+        .score-display {
+            color: #fff;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+        }
+
+        canvas {
+            border-radius: 20px;
+            box-shadow: 0 10px 50px rgba(0, 0, 0, 0.3);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            max-width: 90vw;
+            max-height: 60vh;
+        }
+
+        .info {
+            color: #fff;
+            margin-top: 20px;
+            text-align: center;
+            font-size: 1rem;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .score-display {
+                font-size: 1.2rem;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 15px;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🎯 リング・ダーツ 🎯</h1>
+    <div class="score-display">
+        スコア: <span id="score">0</span> | 残弾: <span id="darts">5</span> | ラウンド: <span id="round">1</span>
+    </div>
+    <canvas id="game"></canvas>
+    <p class="info">🎮 タップ/クリックで矢を投げる！</p>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const dartsEl = document.getElementById('darts');
+        const roundEl = document.getElementById('round');
+
+        // ゲームステート
+        let score = 0;
+        let dartsLeft = 5;
+        let round = 1;
+        let gameOver = false;
+
+        // リングの設定
+        let ringAngle = 0;
+        let ringSpeed = 0.02;
+
+        // 矢の設定
+        const dartLength = 80;
+        const dartSpeed = 15;
+        let dartY = 0;
+        let dartThrown = false;
+        let dartLanded = false;
+
+        // 得点エリア
+        const targetAreas = [
+            { radius: 20, points: 100, color: '#ff6b6b' },   // 中心（100点）
+            { radius: 50, points: 50, color: '#ffd93d' },    // 内側（50点）
+            { radius: 90, points: 20, color: '#6bcb77' },    // 中間（20点）
+            { radius: 130, points: 10, color: '#4d96ff' }    // 外側（10点）
+        ];
+
+        // Canvasサイズ設定
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth * 0.9, 500);
+            const maxHeight = Math.min(window.innerHeight * 0.6, 500);
+            const size = Math.min(maxWidth, maxHeight);
+            canvas.width = size;
+            canvas.height = size;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // リングを描画
+        function drawRing() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 3;
+
+            // リングの回転
+            ringAngle += ringSpeed;
+
+            // 外枠
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 150, 0, Math.PI * 2);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // 得点エリアを描画
+            targetAreas.forEach(area => {
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, area.radius, 0, Math.PI * 2);
+                ctx.fillStyle = area.color;
+                ctx.globalAlpha = 0.6;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+
+            // 中心点
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+
+            // 回転マーカー
+            const markerX = centerX + Math.cos(ringAngle) * 160;
+            const markerY = centerY + Math.sin(ringAngle) * 160;
+            ctx.beginPath();
+            ctx.arc(markerX, markerY, 10, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+        }
+
+        // 矢を描画
+        function drawDart() {
+            const centerX = canvas.width / 2;
+
+            if (dartThrown) {
+                if (!dartLanded) {
+                    dartY -= dartSpeed;
+
+                    // 的に到達したか
+                    if (dartY <= canvas.height / 3 + 10) {
+                        dartLanded = true;
+                        calculateScore();
+                    }
+                }
+            } else {
+                dartY = canvas.height - 50;
+            }
+
+            // 矢の本体
+            ctx.beginPath();
+            ctx.moveTo(centerX, dartY);
+            ctx.lineTo(centerX - 5, dartY + 30);
+            ctx.lineTo(centerX + 5, dartY + 30);
+            ctx.closePath();
+            ctx.fillStyle = '#ff6b6b';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // 矢の先端
+            ctx.beginPath();
+            ctx.moveTo(centerX, dartY);
+            ctx.lineTo(centerX - 8, dartY - 15);
+            ctx.lineTo(centerX + 8, dartY - 15);
+            ctx.closePath();
+            ctx.fillStyle = '#ffd93d';
+            ctx.fill();
+            ctx.stroke();
+
+            // 矢の羽
+            ctx.beginPath();
+            ctx.moveTo(centerX, dartY + 30);
+            ctx.lineTo(centerX - 15, dartY + 50);
+            ctx.lineTo(centerX, dartY + 45);
+            ctx.lineTo(centerX + 15, dartY + 50);
+            ctx.closePath();
+            ctx.fillStyle = '#4d96ff';
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        // 得点計算
+        function calculateScore() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 3;
+            const dartX = centerX + Math.cos(ringAngle) * 160;
+
+            // 的の中心からの距離を計算
+            const distance = Math.sqrt(Math.pow(dartX - centerX, 2) + Math.pow(canvas.height / 3 - centerY, 2));
+
+            // 得点エリアをチェック
+            let points = 0;
+            for (const area of targetAreas) {
+                if (distance <= area.radius) {
+                    points = area.points;
+                    break;
+                }
+            }
+
+            // 的の外
+            if (points === 0) {
+                points = 0;
+            }
+
+            score += points;
+            scoreEl.textContent = score;
+            dartsLeft--;
+            dartsEl.textContent = dartsLeft;
+
+            // フィードバック
+            showFeedback(points);
+
+            // ラウンド終了チェック
+            setTimeout(() => {
+                if (dartsLeft <= 0) {
+                    if (round >= 3) {
+                        endGame();
+                    } else {
+                        nextRound();
+                    }
+                } else {
+                    resetDart();
+                }
+            }, 1000);
+        }
+
+        // フィードバック表示
+        function showFeedback(points) {
+            const feedback = document.createElement('div');
+            feedback.style.position = 'fixed';
+            feedback.style.left = '50%';
+            feedback.style.top = '40%';
+            feedback.style.transform = 'translate(-50%, -50%)';
+            feedback.style.fontSize = '3rem';
+            feedback.style.fontWeight = 'bold';
+            feedback.style.color = points > 0 ? '#ffd93d' : '#ff6b6b';
+            feedback.style.textShadow = '0 0 20px rgba(255, 255, 255, 0.5)';
+            feedback.style.zIndex = '1000';
+            feedback.textContent = points > 0 ? `+${points}` : 'MISS!';
+            document.body.appendChild(feedback);
+
+            setTimeout(() => {
+                feedback.remove();
+            }, 1000);
+        }
+
+        // 次のラウンド
+        function nextRound() {
+            round++;
+            roundEl.textContent = round;
+            dartsLeft = 5;
+            dartsEl.textContent = dartsLeft;
+            ringSpeed = 0.02 + (round - 1) * 0.015; // 難易度アップ
+            resetDart();
+        }
+
+        // 矢をリセット
+        function resetDart() {
+            dartThrown = false;
+            dartLanded = false;
+            dartY = canvas.height - 50;
+        }
+
+        // ゲーム終了
+        function endGame() {
+            gameOver = true;
+
+            const overlay = document.createElement('div');
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+            overlay.style.display = 'flex';
+            overlay.style.flexDirection = 'column';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.zIndex = '1000';
+
+            overlay.innerHTML = `
+                <h1 style="font-size: 3rem; color: #ffd93d; margin-bottom: 20px;">🎯 ゲーム終了！🎯</h1>
+                <p style="font-size: 2rem; color: #fff; margin-bottom: 30px;">最終スコア: ${score}</p>
+                <button onclick="restartGame()" style="padding: 15px 30px; font-size: 1.2rem; border: none; border-radius: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; cursor: pointer;">もう一度プレイ</button>
+            `;
+
+            document.body.appendChild(overlay);
+        }
+
+        // ゲーム再開
+        function restartGame() {
+            score = 0;
+            dartsLeft = 5;
+            round = 1;
+            gameOver = false;
+            ringSpeed = 0.02;
+
+            scoreEl.textContent = score;
+            dartsEl.textContent = dartsLeft;
+            roundEl.textContent = round;
+
+            resetDart();
+
+            const overlay = document.querySelector('div[style*="rgba(0, 0, 0, 0.8)"]');
+            if (overlay) {
+                overlay.remove();
+            }
+        }
+
+        // 全画面表示
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // クリック/タップで矢を投げる
+        canvas.addEventListener('click', () => {
+            if (!dartThrown && !dartLanded && !gameOver) {
+                dartThrown = true;
+            }
+        });
+
+        // メインループ
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawRing();
+            drawDart();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ゲーム開始
+        gameLoop();
+    </script>
+</body>
+</html>
