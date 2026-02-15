@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Reactive Flowers</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px 20px;
+            border-radius: 10px;
+            z-index: 100;
+        }
+
+        .info h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .info p {
+            margin: 5px 0;
+            opacity: 0.8;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .controls button {
+            padding: 15px 30px;
+            font-size: 16px;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            background: linear-gradient(45deg, #ff6b6b, #feca57);
+            color: #000;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .controls button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 30px rgba(255, 107, 107, 0.5);
+        }
+
+        .fullscreen {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            font-size: 14px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                padding: 10px 15px;
+            }
+
+            .info h1 {
+                font-size: 18px;
+            }
+
+            .controls button {
+                padding: 12px 24px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h1>🌸 Audio Reactive Flowers</h1>
+        <p>音楽に合わせて咲く花々</p>
+        <p id="status">クリックして音楽をスタート</p>
+    </div>
+
+    <div class="controls">
+        <button id="startBtn">🎵 音楽スタート</button>
+    </div>
+
+    <button class="fullscreen" id="fullscreenBtn">⛶ 全画面</button>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const statusEl = document.getElementById('status');
+
+        let width, height;
+        let audioContext, analyser, dataArray;
+        let flowers = [];
+        let isPlaying = false;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Flower class
+        class Flower {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.baseSize = Math.random() * 30 + 20;
+                this.size = this.baseSize;
+                this.petals = Math.floor(Math.random() * 5) + 5;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.02;
+                this.hue = Math.random() * 360;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+            }
+
+            update(audioData) {
+                // Get average audio level
+                const avg = audioData.reduce((a, b) => a + b) / audioData.length;
+                const normalized = avg / 255;
+
+                // Size responds to audio
+                this.size = this.baseSize + normalized * 50;
+
+                // Rotate
+                this.rotation += this.rotationSpeed + normalized * 0.05;
+
+                // Color shift
+                this.hue = (this.hue + normalized * 2) % 360;
+
+                // Pulse
+                this.pulsePhase += 0.05;
+            }
+
+            draw(ctx, audioData) {
+                const avg = audioData.reduce((a, b) => a + b) / audioData.length;
+                const normalized = avg / 255;
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // Draw petals
+                for (let i = 0; i < this.petals; i++) {
+                    const angle = (i / this.petals) * Math.PI * 2;
+                    const petalSize = this.size * (1 + Math.sin(this.pulsePhase + i) * 0.2);
+
+                    ctx.save();
+                    ctx.rotate(angle);
+
+                    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, petalSize);
+                    gradient.addColorStop(0, `hsla(${(this.hue + i * 30) % 360}, 80%, 60%, 0.8)`);
+                    gradient.addColorStop(0.5, `hsla(${(this.hue + i * 30) % 360}, 70%, 50%, 0.4)`);
+                    gradient.addColorStop(1, `hsla(${(this.hue + i * 30) % 360}, 60%, 40%, 0)`);
+
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.ellipse(0, petalSize / 2, petalSize / 4, petalSize / 2, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.restore();
+                }
+
+                // Draw center
+                const centerGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size * 0.2);
+                centerGradient.addColorStop(0, `hsla(${this.hue}, 90%, 70%, 0.9)`);
+                centerGradient.addColorStop(1, `hsla(${this.hue}, 80%, 50%, 0.5)`);
+
+                ctx.fillStyle = centerGradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size * 0.15 + normalized * 5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // Create flowers
+        function createFlowers() {
+            flowers = [];
+            const flowerCount = Math.floor((width * height) / 50000);
+
+            for (let i = 0; i < flowerCount; i++) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                flowers.push(new Flower(x, y));
+            }
+        }
+
+        createFlowers();
+        window.addEventListener('resize', createFlowers);
+
+        // Audio setup
+        async function setupAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                isPlaying = true;
+                statusEl.textContent = '🎵 音楽を検出中...';
+                startBtn.style.display = 'none';
+
+                animate();
+            } catch (err) {
+                console.error('Microphone access denied:', err);
+                statusEl.textContent = '❌ マイクアクセスが必要です';
+
+                // Fallback: simulate audio
+                simulateAudio();
+            }
+        }
+
+        // Simulate audio for demo
+        function simulateAudio() {
+            dataArray = new Uint8Array(128);
+            isPlaying = true;
+            statusEl.textContent = '🎵 デモモード（シミュレーション）';
+            startBtn.style.display = 'none';
+
+            animate();
+        }
+
+        // Animation loop
+        function animate() {
+            if (!isPlaying) return;
+
+            // Semi-transparent black for trail effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Get audio data
+            if (analyser) {
+                analyser.getByteFrequencyData(dataArray);
+            } else {
+                // Simulate audio data
+                for (let i = 0; i < dataArray.length; i++) {
+                    dataArray[i] = Math.sin(Date.now() * 0.001 + i * 0.1) * 100 + 150;
+                }
+            }
+
+            // Update and draw flowers
+            flowers.forEach(flower => {
+                flower.update(dataArray);
+                flower.draw(ctx, dataArray);
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Start button
+        startBtn.addEventListener('click', () => {
+            setupAudio();
+        });
+
+        // Fullscreen
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // Initial draw
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, width, height);
+    </script>
+</body>
+</html>
