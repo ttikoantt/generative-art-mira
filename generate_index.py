@@ -1,11 +1,111 @@
 #!/usr/bin/env python3
 """
 Generate index.html from artworks-manifest.json and games-manifest.json
+and manage manifest files
 """
 import json
+import sys
 from datetime import datetime
+from pathlib import Path
+
+def add_artwork(
+    id: str,
+    title: str,
+    description: str,
+    emoji: str,
+    path: str,
+    tags: list,
+    date: str = None,
+    featured: bool = True,
+    python: bool = False,
+    script: bool = False,
+    audio: bool = False
+):
+    """Add a new artwork to artworks-manifest.json"""
+    manifest_path = Path('artworks-manifest.json')
+
+    # Load existing manifest
+    with open(manifest_path, 'r') as f:
+        data = json.load(f)
+
+    # Create new artwork entry
+    if date is None:
+        date = datetime.now().strftime('%Y-%m-%d')
+
+    new_artwork = {
+        'id': id,
+        'title': title,
+        'description': description,
+        'emoji': emoji,
+        'path': path,
+        'tags': tags,
+        'date': date,
+        'featured': featured,
+        'python': python,
+        'script': script,
+        'audio': audio
+    }
+
+    # Add to beginning of array (newest first)
+    data['artworks'].insert(0, new_artwork)
+
+    # Save manifest
+    with open(manifest_path, 'w') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    print(f"✅ Added artwork: {title}")
+    return new_artwork
+
+def add_game(
+    id: str,
+    title: str,
+    description: str,
+    emoji: str,
+    path: str,
+    tags: list,
+    date: str = None,
+    featured: bool = True,
+    python: bool = False,
+    script: bool = False,
+    audio: bool = False
+):
+    """Add a new game to games-manifest.json"""
+    manifest_path = Path('games-manifest.json')
+
+    # Load existing manifest
+    with open(manifest_path, 'r') as f:
+        data = json.load(f)
+
+    # Create new game entry
+    if date is None:
+        date = datetime.now().strftime('%Y-%m-%d')
+
+    new_game = {
+        'id': id,
+        'title': title,
+        'description': description,
+        'emoji': emoji,
+        'path': path,
+        'tags': tags,
+        'date': date,
+        'featured': featured,
+        'python': python,
+        'script': script,
+        'audio': audio
+    }
+
+    # Add to beginning of array (newest first)
+    data['games'].insert(0, new_game)
+
+    # Save manifest
+    with open(manifest_path, 'w') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    print(f"✅ Added game: {title}")
+    return new_game
 
 def generate_index():
+    """Generate index.html from artworks-manifest.json and games-manifest.json"""
     # Load manifests
     with open('artworks-manifest.json', 'r') as f:
         artworks_data = json.load(f)
@@ -270,4 +370,11 @@ def generate_index():
     print(f"   - Total: {len(artworks) + len(games)} items")
 
 if __name__ == '__main__':
+    if len(sys.argv) > 1 and sys.argv[1] == '--help':
+        print("Usage:")
+        print("  python3 update_gallery.py                    # Generate index.html")
+        print("  python3 update_gallery.py --add-artwork ...  # Add artwork (via function call)")
+        print("  python3 update_gallery.py --add-game ...     # Add game (via function call)")
+        sys.exit(0)
+
     generate_index()
