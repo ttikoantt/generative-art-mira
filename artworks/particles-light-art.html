@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>光の粒子アート - Particles Light Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .info h1 {
+            font-size: 18px;
+            margin-bottom: 8px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .info p {
+            margin: 4px 0;
+            opacity: 0.8;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 10px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h1>✨ 光の粒子アート</h1>
+        <p>動かして魔法を体験</p>
+        <p>クリックで爆発</p>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let mouseX = width / 2;
+        let mouseY = height / 2;
+        let isMouseDown = false;
+
+        // 粒子クラス
+        class Particle {
+            constructor(x, y, isExplosion = false) {
+                this.x = x;
+                this.y = y;
+                this.isExplosion = isExplosion;
+
+                if (isExplosion) {
+                    // 爆発粒子
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 8 + 2;
+                    this.vx = Math.cos(angle) * speed;
+                    this.vy = Math.sin(angle) * speed;
+                    this.life = 1;
+                    this.decay = Math.random() * 0.02 + 0.01;
+                    this.size = Math.random() * 4 + 2;
+                    this.hue = Math.random() * 60 + 20; // オレンジ-黄色系
+                } else {
+                    // 追従粒子
+                    this.vx = 0;
+                    this.vy = 0;
+                    this.life = 1;
+                    this.decay = Math.random() * 0.005 + 0.002;
+                    this.size = Math.random() * 3 + 1;
+                    this.hue = Math.random() * 60 + 180; // シアン-青系
+                }
+            }
+
+            update() {
+                if (this.isExplosion) {
+                    // 爆発粒子の物理
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    this.vy += 0.1; // 重力
+                    this.vx *= 0.99; // 空気抵抗
+                    this.vy *= 0.99;
+                } else {
+                    // 追従粒子の物理
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 200) {
+                        const force = (200 - dist) / 200;
+                        this.vx += (dx / dist) * force * 0.5;
+                        this.vy += (dy / dist) * force * 0.5;
+                    }
+
+                    this.vx *= 0.95;
+                    this.vy *= 0.95;
+                    this.x += this.vx;
+                    this.y += this.vy;
+                }
+
+                this.life -= this.decay;
+                this.size *= 0.995;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+
+                // 光の効果
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size * 3
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${this.life})`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 100%, 50%, ${this.life * 0.5})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 50%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 核心
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 90%, ${this.life})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.life <= 0 || this.size < 0.1;
+            }
+        }
+
+        let particles = [];
+        let trails = [];
+
+        // 追従粒子を生成
+        function createTrailParticles() {
+            if (Math.random() < 0.3) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                particles.push(new Particle(x, y));
+            }
+        }
+
+        // 爆発を生成
+        function createExplosion(x, y) {
+            for (let i = 0; i < 50; i++) {
+                particles.push(new Particle(x, y, true));
+            }
+        }
+
+        // マウスイベント
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+
+            // マウスが動くときに粒子を追加
+            for (let i = 0; i < 3; i++) {
+                const offsetX = (Math.random() - 0.5) * 30;
+                const offsetY = (Math.random() - 0.5) * 30;
+                particles.push(new Particle(mouseX + offsetX, mouseY + offsetY));
+            }
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            createExplosion(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        // タッチイベント
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            isMouseDown = true;
+            createExplosion(mouseX, mouseY);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+
+            for (let i = 0; i < 3; i++) {
+                const offsetX = (Math.random() - 0.5) * 30;
+                const offsetY = (Math.random() - 0.5) * 30;
+                particles.push(new Particle(mouseX + offsetX, mouseY + offsetY));
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isMouseDown = false;
+        });
+
+        // ウィンドウリサイズ
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // アニメーション
+        function animate() {
+            // 背景をフェード
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 追従粒子を生成
+            createTrailParticles();
+
+            // 粒子を更新・描画
+            particles = particles.filter(p => !p.isDead());
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // トレイルを描画
+            if (particles.length > 0) {
+                ctx.save();
+                ctx.globalAlpha = 0.1;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                particles.forEach((p, i) => {
+                    if (i === 0) {
+                        ctx.moveTo(p.x, p.y);
+                    } else {
+                        ctx.lineTo(p.x, p.y);
+                    }
+                });
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // 開始
+        animate();
+    </script>
+</body>
+</html>
