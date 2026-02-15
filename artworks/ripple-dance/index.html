@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>波紋のダンス | Ripple Dance</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            z-index: 100;
+        }
+        
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #fff;
+            font-size: 12px;
+        }
+        
+        input[type="range"] {
+            width: 100px;
+            cursor: pointer;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+        }
+        
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ 全画面</button>
+    
+    <div class="controls">
+        <div class="control-group">
+            <label>円の数:</label>
+            <input type="range" id="circleCount" min="5" max="30" value="15">
+            <span id="circleCountValue">15</span>
+        </div>
+        <div class="control-group">
+            <label>速度:</label>
+            <input type="range" id="speed" min="1" max="10" value="5">
+            <span id="speedValue">5</span>
+        </div>
+        <div class="control-group">
+            <label>大きさ:</label>
+            <input type="range" id="size" min="50" max="200" value="100">
+            <span id="sizeValue">100</span>
+        </div>
+        <button onclick="reset()">リセット</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let circles = [];
+        let animationId;
+        let time = 0;
+        
+        // 設定
+        let settings = {
+            circleCount: 15,
+            speed: 5,
+            size: 100
+        };
+        
+        // 円クラス
+        class Circle {
+            constructor(index) {
+                this.index = index;
+                this.reset();
+            }
+            
+            reset() {
+                const angle = (this.index / settings.circleCount) * Math.PI * 2;
+                const distance = Math.random() * 100 + 50;
+                
+                this.x = canvas.width / 2 + Math.cos(angle) * distance;
+                this.y = canvas.height / 2 + Math.sin(angle) * distance;
+                this.baseRadius = settings.size + Math.random() * 50;
+                this.radius = this.baseRadius;
+                this.hue = (this.index / settings.circleCount) * 360;
+                this.phase = Math.random() * Math.PI * 2;
+                this.amplitude = Math.random() * 30 + 10;
+            }
+            
+            update(time) {
+                // 複雑な動き
+                const wave = Math.sin(time * 0.001 * settings.speed + this.phase);
+                this.radius = this.baseRadius + wave * this.amplitude;
+                
+                // 色の変化
+                this.hue = (this.hue + 0.1) % 360;
+            }
+            
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, Math.abs(this.radius), 0, Math.PI * 2);
+                
+                // グラデーション
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, Math.abs(this.radius)
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 80%, 60%, 0.3)`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 70%, 50%, 0.1)`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 60%, 40%, 0)`);
+                
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+        
+        // 初期化
+        function init() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            circles = [];
+            for (let i = 0; i < settings.circleCount; i++) {
+                circles.push(new Circle(i));
+            }
+        }
+        
+        // 描画
+        function draw() {
+            // 半透明の黒で上書き（トレイル効果）
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // ブレンドモード
+            ctx.globalCompositeOperation = 'lighter';
+            
+            circles.forEach(circle => {
+                circle.update(time);
+                circle.draw();
+            });
+            
+            ctx.globalCompositeOperation = 'source-over';
+            
+            time++;
+            animationId = requestAnimationFrame(draw);
+        }
+        
+        // リセット
+        function reset() {
+            cancelAnimationFrame(animationId);
+            time = 0;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            init();
+            draw();
+        }
+        
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // イベントリスナー
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            circles.forEach(circle => circle.reset());
+        });
+        
+        // スライダー
+        document.getElementById('circleCount').addEventListener('input', (e) => {
+            settings.circleCount = parseInt(e.target.value);
+            document.getElementById('circleCountValue').textContent = settings.circleCount;
+            reset();
+        });
+        
+        document.getElementById('speed').addEventListener('input', (e) => {
+            settings.speed = parseInt(e.target.value);
+            document.getElementById('speedValue').textContent = settings.speed;
+        });
+        
+        document.getElementById('size').addEventListener('input', (e) => {
+            settings.size = parseInt(e.target.value);
+            document.getElementById('sizeValue').textContent = settings.size;
+            circles.forEach(circle => circle.baseRadius = settings.size + Math.random() * 50);
+        });
+        
+        // タッチ操作
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            
+            circles.forEach(circle => {
+                circle.x = x;
+                circle.y = y;
+            });
+        });
+        
+        // マウス操作
+        canvas.addEventListener('mousemove', (e) => {
+            const x = e.clientX;
+            const y = e.clientY;
+            
+            circles.forEach(circle => {
+                const dx = x - circle.x;
+                const dy = y - circle.y;
+                circle.x += dx * 0.02;
+                circle.y += dy * 0.02;
+            });
+        });
+        
+        // 起動
+        init();
+        draw();
+    </script>
+</body>
+</html>

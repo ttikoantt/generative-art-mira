@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ブロックスタック | Block Stack</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            height: 100vh;
+            max-height: 800px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        #game-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 100;
+        }
+        
+        .overlay h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(102, 126, 234, 0.8);
+        }
+        
+        .overlay p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            opacity: 0.8;
+        }
+        
+        .overlay .score {
+            font-size: 72px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .overlay button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            border-radius: 25px;
+            font-size: 20px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .overlay button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        .overlay button:active {
+            transform: scale(0.98);
+        }
+        
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+            z-index: 50;
+        }
+        
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        .perfect {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #FFD700;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+            animation: perfectPop 0.5s ease-out forwards;
+            z-index: 60;
+        }
+        
+        @keyframes perfectPop {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(0.5);
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.2);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(1) translateY(-50px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ 全画面</button>
+    
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        
+        <div class="hud">
+            <div id="current-score">スコア: 0</div>
+            <div id="best-score">ベスト: 0</div>
+        </div>
+        
+        <div id="start-screen" class="overlay">
+            <h1>ブロックスタック</h1>
+            <p>クリック/タップでブロックを落として積み上げよう！</p>
+            <button onclick="startGame()">スタート</button>
+        </div>
+        
+        <div id="game-over-screen" class="overlay hidden">
+            <p>ゲームオーバー</p>
+            <div class="score" id="final-score">0</div>
+            <button onclick="startGame()">もう一度</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let blocks = [];
+        let currentBlock = null;
+        let score = 0;
+        let bestScore = 0;
+        let gameRunning = false;
+        let baseBlockSize = 100;
+        let blockHeight = 30;
+        let gameSpeed = 3;
+        let direction = 1;
+        
+        // 色の配列
+        const colors = [
+            '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A',
+            '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2'
+        ];
+        
+        // 初期化
+        function init() {
+            const container = document.getElementById('game-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            
+            blocks = [];
+            score = 0;
+            gameSpeed = 3;
+            direction = 1;
+            
+            // ベースブロック
+            const baseBlock = {
+                x: canvas.width / 2,
+                y: canvas.height - blockHeight,
+                width: baseBlockSize,
+                height: blockHeight,
+                color: colors[0],
+                velocity: 0
+            };
+            blocks.push(baseBlock);
+            
+            spawnBlock();
+        }
+        
+        // 新しいブロックを生成
+        function spawnBlock() {
+            const prevBlock = blocks[blocks.length - 1];
+            const newBlock = {
+                x: -prevBlock.width / 2,
+                y: prevBlock.y - blockHeight,
+                width: prevBlock.width,
+                height: blockHeight,
+                color: colors[blocks.length % colors.length],
+                velocity: gameSpeed
+            };
+            currentBlock = newBlock;
+        }
+        
+        // ゲームループ
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 現在のブロックを移動
+            if (currentBlock) {
+                currentBlock.x += currentBlock.velocity * direction;
+                
+                // 境界で反転
+                if (currentBlock.x > canvas.width + currentBlock.width / 2) {
+                    direction = -1;
+                } else if (currentBlock.x < -currentBlock.width / 2) {
+                    direction = 1;
+                }
+            }
+            
+            // ブロックを描画
+            blocks.forEach((block, index) => {
+                drawBlock(block, index);
+            });
+            
+            // 現在のブロックを描画
+            if (currentBlock) {
+                drawBlock(currentBlock, blocks.length);
+            }
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // ブロックを描画
+        function drawBlock(block, index) {
+            ctx.fillStyle = block.color;
+            ctx.shadowColor = block.color;
+            ctx.shadowBlur = 10;
+            
+            const x = block.x - block.width / 2;
+            const y = block.y;
+            
+            ctx.fillRect(x, y, block.width, block.height);
+            
+            // ハイライト
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fillRect(x, y, block.width, 5);
+            
+            ctx.shadowBlur = 0;
+        }
+        
+        // ブロックを配置
+        function placeBlock() {
+            if (!currentBlock || !gameRunning) return;
+            
+            const prevBlock = blocks[blocks.length - 1];
+            
+            // 位置のズレを計算
+            const diff = currentBlock.x - prevBlock.x;
+            const absDiff = Math.abs(diff);
+            
+            // Perfect判定（ズレが5px以内）
+            if (absDiff < 5) {
+                // Perfect!
+                currentBlock.x = prevBlock.x;
+                showPerfect();
+                
+                blocks.push(currentBlock);
+                score += 10;
+                gameSpeed += 0.1;
+                
+                updateHUD();
+                spawnBlock();
+                
+                // ゲームクリア判定
+                if (blocks.length > 20) {
+                    endGame();
+                }
+                return;
+            }
+            
+            // ズレが大きすぎて失敗
+            if (absDiff >= prevBlock.width) {
+                endGame();
+                return;
+            }
+            
+            // ブロックをカット
+            const cutSize = absDiff;
+            const remainingSize = prevBlock.width - cutSize;
+            
+            // 新しいブロックの位置とサイズを調整
+            if (currentBlock.x < prevBlock.x) {
+                // 左側がオーバー
+                currentBlock.width = remainingSize;
+                currentBlock.x = prevBlock.x - cutSize / 2;
+            } else {
+                // 右側がオーバー
+                currentBlock.width = remainingSize;
+                currentBlock.x = prevBlock.x + cutSize / 2;
+            }
+            
+            blocks.push(currentBlock);
+            score += 1;
+            gameSpeed += 0.05;
+            
+            updateHUD();
+            spawnBlock();
+            
+            // ゲームオーバー判定（ブロックが小さすぎる）
+            if (currentBlock.width < 20) {
+                endGame();
+            }
+        }
+        
+        // Perfectエフェクトを表示
+        function showPerfect() {
+            const perfect = document.createElement('div');
+            perfect.className = 'perfect';
+            perfect.textContent = 'PERFECT!';
+            document.getElementById('game-container').appendChild(perfect);
+            
+            setTimeout(() => {
+                perfect.remove();
+            }, 500);
+        }
+        
+        // HUDを更新
+        function updateHUD() {
+            document.getElementById('current-score').textContent = `スコア: ${score}`;
+            document.getElementById('best-score').textContent = `ベスト: ${bestScore}`;
+        }
+        
+        // ゲーム開始
+        function startGame() {
+            init();
+            gameRunning = true;
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            gameLoop();
+        }
+        
+        // ゲーム終了
+        function endGame() {
+            gameRunning = false;
+            
+            if (score > bestScore) {
+                bestScore = score;
+            }
+            
+            document.getElementById('final-score').textContent = score;
+            document.getElementById('game-over-screen').classList.remove('hidden');
+        }
+        
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // イベントリスナー
+        canvas.addEventListener('click', placeBlock);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            placeBlock();
+        });
+        
+        // キーボード操作
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (!gameRunning) {
+                    startGame();
+                } else {
+                    placeBlock();
+                }
+            }
+        });
+        
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            const container = document.getElementById('game-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            
+            if (blocks.length > 0) {
+                // ベースブロックの位置を再調整
+                blocks[0].x = canvas.width / 2;
+                blocks[0].y = canvas.height - blockHeight;
+            }
+        });
+        
+        // 初期描画
+        init();
+        blocks.forEach((block, index) => drawBlock(block, index));
+    </script>
+</body>
+</html>
