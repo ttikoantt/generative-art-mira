@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>パーティクル・フロー - インタラクティブ・アート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: clamp(1.5rem, 5vw, 2.5rem);
+            margin-bottom: 10px;
+            text-align: center;
+            font-weight: 300;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: clamp(0.8rem, 2vw, 1rem);
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            cursor: crosshair;
+        }
+
+        #particleCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            color: #aaa;
+            font-size: 0.85rem;
+            text-align: center;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: 1px solid #444;
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: #666;
+        }
+
+        .btn.active {
+            background: rgba(100, 150, 255, 0.3);
+            border-color: #6496ff;
+        }
+
+        .info {
+            color: #666;
+            font-size: 0.85rem;
+            text-align: center;
+            margin-top: 15px;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            z-index: 10;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 0, 0, 0.8);
+            border-color: #fff;
+        }
+
+        @media (max-width: 600px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌊 パーティクル・フロー</h1>
+        <p class="subtitle">Interactive Particle Flow Art</p>
+
+        <div class="canvas-container" id="canvasContainer">
+            <button class="fullscreen-btn" id="fullscreenBtn">⛶ 全画面</button>
+            <canvas id="particleCanvas"></canvas>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>パーティクル数</label>
+                <button class="btn" id="particleCount">2000</button>
+            </div>
+            <div class="control-group">
+                <label>フローモード</label>
+                <button class="btn" id="flowMode">渦</button>
+            </div>
+            <div class="control-group">
+                <label>色の変更</label>
+                <button class="btn" id="colorMode">虹色</button>
+            </div>
+            <div class="control-group">
+                <label>リセット</label>
+                <button class="btn" id="resetBtn">↻ リセット</button>
+            </div>
+        </div>
+
+        <p class="info">🖱️ マウス/タッチでインタラクティブに操作できます</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvasContainer');
+
+        let width, height;
+        let particles = [];
+        let mouseX = 0, mouseY = 0;
+        let isMouseDown = false;
+        let particleCount = 2000;
+        let flowMode = 'vortex'; // vortex, field, wave
+        let colorMode = 'rainbow'; // rainbow, monochrome, warm
+        let hueOffset = 0;
+
+        // パーティクルクラス
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.life = Math.random() * 100 + 50;
+                this.maxLife = this.life;
+                this.size = Math.random() * 2 + 1;
+                this.hue = Math.random() * 360;
+            }
+
+            update() {
+                // フローモードに応じた動き
+                if (flowMode === 'vortex') {
+                    // 渦状の動き
+                    const dx = this.x - width / 2;
+                    const dy = this.y - height / 2;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const angle = Math.atan2(dy, dx);
+
+                    if (dist > 0) {
+                        const speed = 0.5;
+                        this.vx += Math.cos(angle + Math.PI / 2) * speed;
+                        this.vy += Math.sin(angle + Math.PI / 2) * speed;
+                        this.vx += -dx * 0.0001;
+                        this.vy += -dy * 0.0001;
+                    }
+                } else if (flowMode === 'field') {
+                    // フロー場
+                    const scale = 0.01;
+                    const angle = Math.sin(this.x * scale) * Math.cos(this.y * scale) * Math.PI * 2;
+                    this.vx += Math.cos(angle) * 0.3;
+                    this.vy += Math.sin(angle) * 0.3;
+                } else if (flowMode === 'wave') {
+                    // 波動
+                    const wave = Math.sin(this.x * 0.02 + hueOffset * 0.01) * 0.5;
+                    this.vy += wave;
+                }
+
+                // マウスの影響
+                if (isMouseDown) {
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 150) {
+                        const force = (150 - dist) / 150;
+                        this.vx -= dx * force * 0.05;
+                        this.vy -= dy * force * 0.05;
+                    }
+                }
+
+                // 速度制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 3) {
+                    this.vx = (this.vx / speed) * 3;
+                    this.vy = (this.vy / speed) * 3;
+                }
+
+                // 減衰
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+
+                // 移動
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // ライフ減少
+                this.life--;
+
+                // 色の変化
+                this.hue += 0.5;
+
+                // 境界チェック
+                if (this.x < 0 || this.x > width ||
+                    this.y < 0 || this.y > height ||
+                    this.life <= 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = (this.life / this.maxLife) * 0.8;
+                let color;
+
+                if (colorMode === 'rainbow') {
+                    color = `hsla(${this.hue + hueOffset}, 80%, 60%, ${alpha})`;
+                } else if (colorMode === 'monochrome') {
+                    color = `rgba(255, 255, 255, ${alpha})`;
+                } else if (colorMode === 'warm') {
+                    color = `hsla(${(this.hue + hueOffset) % 60 + 10}, 90%, 60%, ${alpha})`;
+                }
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+            }
+        }
+
+        // 初期化
+        function init() {
+            resize();
+            createParticles();
+            animate();
+        }
+
+        // パーティクル作成
+        function createParticles() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        // リサイズ
+        function resize() {
+            const rect = container.getBoundingClientRect();
+            width = canvas.width = rect.width;
+            height = canvas.height = rect.height;
+        }
+
+        // アニメーション
+        function animate() {
+            // トレイル効果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            // パーティクル更新と描画
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            hueOffset += 0.5;
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mousedown', () => isMouseDown = true);
+        canvas.addEventListener('mouseup', () => isMouseDown = false);
+        canvas.addEventListener('mouseleave', () => isMouseDown = false);
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.touches[0].clientX - rect.left;
+            mouseY = e.touches[0].clientY - rect.top;
+        });
+
+        canvas.addEventListener('touchstart', () => isMouseDown = true);
+        canvas.addEventListener('touchend', () => isMouseDown = false);
+
+        // ボタン
+        document.getElementById('particleCount').addEventListener('click', function() {
+            const counts = [1000, 2000, 3000, 5000];
+            const current = counts.indexOf(particleCount);
+            particleCount = counts[(current + 1) % counts.length];
+            this.textContent = particleCount;
+            createParticles();
+        });
+
+        document.getElementById('flowMode').addEventListener('click', function() {
+            const modes = {
+                'vortex': '渦',
+                'field': '場',
+                'wave': '波'
+            };
+            const modeKeys = Object.keys(modes);
+            const current = modeKeys.indexOf(flowMode);
+            flowMode = modeKeys[(current + 1) % modeKeys.length];
+            this.textContent = modes[flowMode];
+        });
+
+        document.getElementById('colorMode').addEventListener('click', function() {
+            const modes = {
+                'rainbow': '虹色',
+                'monochrome': '白',
+                'warm': '暖色'
+            };
+            const modeKeys = Object.keys(modes);
+            const current = modeKeys.indexOf(colorMode);
+            colorMode = modeKeys[(current + 1) % modeKeys.length];
+            this.textContent = modes[colorMode];
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            createParticles();
+        });
+
+        // 全画面
+        document.getElementById('fullscreenBtn').addEventListener('click', function() {
+            if (!document.fullscreenElement) {
+                container.requestFullscreen().catch(err => {
+                    console.log('全画面エラー:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // 初期化実行
+        init();
+    </script>
+</body>
+</html>
