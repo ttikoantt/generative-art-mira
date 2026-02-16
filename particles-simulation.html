@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Ball Simulation - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+
+        #canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 15px;
+            color: white;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            max-width: 280px;
+        }
+
+        .controls h2 {
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            background: linear-gradient(90deg, #00d4ff, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+            color: #a0aec0;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #2d3748;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #00d4ff, #7c3aed);
+            cursor: pointer;
+        }
+
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            color: white;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        .stats p {
+            margin: 5px 0;
+            font-size: 0.9em;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #00d4ff, #7c3aed);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: bold;
+            z-index: 100;
+            transition: transform 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                top: 10px;
+                left: 10px;
+                padding: 15px;
+                max-width: 240px;
+            }
+
+            .stats {
+                top: 10px;
+                right: 10px;
+                padding: 10px 15px;
+            }
+
+            .fullscreen-btn {
+                bottom: 10px;
+                right: 10px;
+                padding: 10px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <h2>🔮 パーティクル制御</h2>
+        <div class="control-group">
+            <label>パーティクル数: <span id="particleCount">100</span></label>
+            <input type="range" id="particleSlider" min="10" max="300" value="100">
+        </div>
+        <div class="control-group">
+            <label>重力: <span id="gravityValue">0.5</span></label>
+            <input type="range" id="gravitySlider" min="0" max="20" value="5">
+        </div>
+        <div class="control-group">
+            <label>弾力性: <span id="bounceValue">0.8</span></label>
+            <input type="range" id="bounceSlider" min="0" max="100" value="80">
+        </div>
+        <div class="control-group">
+            <label>摩擦: <span id="frictionValue">0.99</span></label>
+            <input type="range" id="frictionSlider" min="90" max="100" value="99">
+        </div>
+        <p style="font-size: 0.8em; color: #a0aec0; margin-top: 10px;">
+            💡 クリックで新規パーティクル追加
+        </p>
+    </div>
+
+    <div class="stats">
+        <p>⚡ FPS: <span id="fps">60</span></p>
+        <p>🎯 パーティクル: <span id="particleNum">100</span></p>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">📺 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let particles = [];
+        let gravity = 0.5;
+        let bounce = 0.8;
+        let friction = 0.99;
+        let particleCount = 100;
+
+        const colors = [
+            '#00d4ff', '#7c3aed', '#f472b6', '#fbbf24',
+            '#10b981', '#ef4444', '#8b5cf6', '#06b6d4'
+        ];
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height * 0.3;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.radius = Math.random() * 15 + 5;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.mass = this.radius * 0.1;
+            }
+
+            update() {
+                this.vy += gravity;
+                this.vx *= friction;
+                this.vy *= friction;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                if (this.x - this.radius < 0) {
+                    this.x = this.radius;
+                    this.vx *= -bounce;
+                }
+                if (this.x + this.radius > width) {
+                    this.x = width - this.radius;
+                    this.vx *= -bounce;
+                }
+                if (this.y - this.radius < 0) {
+                    this.y = this.radius;
+                    this.vy *= -bounce;
+                }
+                if (this.y + this.radius > height) {
+                    this.y = height - this.radius;
+                    this.vy *= -bounce;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius
+                );
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(1, 'rgba(0,0,0,0)');
+
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        function init() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function checkCollision(p1, p2) {
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < p1.radius + p2.radius) {
+                const angle = Math.atan2(dy, dx);
+                const sin = Math.sin(angle);
+                const cos = Math.cos(angle);
+
+                const vx1 = p1.vx * cos + p1.vy * sin;
+                const vy1 = p1.vy * cos - p1.vx * sin;
+                const vx2 = p2.vx * cos + p2.vy * sin;
+                const vy2 = p2.vy * cos - p2.vx * sin;
+
+                const finalVx1 = ((p1.mass - p2.mass) * vx1 + 2 * p2.mass * vx2) / (p1.mass + p2.mass);
+                const finalVx2 = ((p2.mass - p1.mass) * vx2 + 2 * p1.mass * vx1) / (p1.mass + p2.mass);
+
+                p1.vx = finalVx1 * cos - vy1 * sin;
+                p1.vy = vy1 * cos + finalVx1 * sin;
+                p2.vx = finalVx2 * cos - vy2 * sin;
+                p2.vy = vy2 * cos + finalVx2 * sin;
+
+                const overlap = (p1.radius + p2.radius - distance) / 2;
+                p1.x -= overlap * cos;
+                p1.y -= overlap * sin;
+                p2.x += overlap * cos;
+                p2.y += overlap * sin;
+            }
+        }
+
+        let lastTime = 0;
+        let frameCount = 0;
+        let fps = 60;
+
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+                document.getElementById('fps').textContent = fps;
+            }
+
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(p => p.update());
+
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    checkCollision(particles[i], particles[j]);
+                }
+            }
+
+            particles.forEach(p => p.draw());
+
+            document.getElementById('particleNum').textContent = particles.length;
+        }
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            for (let i = 0; i < 5; i++) {
+                particles.push(new Particle(x, y));
+            }
+
+            if (particles.length > 500) {
+                particles.splice(0, 5);
+            }
+        });
+
+        document.getElementById('particleSlider').addEventListener('input', (e) => {
+            particleCount = parseInt(e.target.value);
+            document.getElementById('particleCount').textContent = particleCount;
+
+            while (particles.length < particleCount) {
+                particles.push(new Particle());
+            }
+            while (particles.length > particleCount) {
+                particles.pop();
+            }
+        });
+
+        document.getElementById('gravitySlider').addEventListener('input', (e) => {
+            gravity = e.target.value / 10;
+            document.getElementById('gravityValue').textContent = gravity.toFixed(1);
+        });
+
+        document.getElementById('bounceSlider').addEventListener('input', (e) => {
+            bounce = e.target.value / 100;
+            document.getElementById('bounceValue').textContent = bounce.toFixed(2);
+        });
+
+        document.getElementById('frictionSlider').addEventListener('input', (e) => {
+            friction = e.target.value / 100;
+            document.getElementById('frictionValue').textContent = friction.toFixed(2);
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        init();
+        animate(0);
+    </script>
+</body>
+</html>
