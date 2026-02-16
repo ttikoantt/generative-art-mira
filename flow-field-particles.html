@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow Field Particles</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .title {
+            font-size: 14px;
+            margin-bottom: 10px;
+            opacity: 0.9;
+        }
+
+        .info {
+            font-size: 11px;
+            opacity: 0.6;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            font-size: 12px;
+            cursor: pointer;
+            z-index: 100;
+            border-radius: 4px;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="title">🌊 Flow Field Particles</div>
+        <div class="info">Click or drag to disturb field</div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let mouseX = -1000, mouseY = -1000;
+        let isMouseDown = false;
+
+        const PARTICLE_COUNT = 3000;
+        const TRAIL_LENGTH = 0.92;
+        const NOISE_SCALE = 0.003;
+        const TIME_SCALE = 0.0001;
+
+        let time = 0;
+
+        // Simple noise function (simplified Perlin-like)
+        function noise(x, y, t) {
+            return Math.sin(x * 0.1 + t) * Math.cos(y * 0.1 + t * 0.7) +
+                   Math.sin(x * 0.05 + y * 0.05 + t * 1.3) * 0.5;
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.age = 0;
+                this.maxAge = 500 + Math.random() * 500;
+                this.hue = Math.random() * 60 + 180; // Blue-cyan range
+            }
+
+            update() {
+                // Get flow field angle at this position
+                const angle = noise(this.x * NOISE_SCALE, this.y * NOISE_SCALE, time) * Math.PI * 2;
+
+                // Mouse interaction
+                const dx = this.x - mouseX;
+                const dy = this.y - mouseY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 150) {
+                    const force = (150 - dist) / 150;
+                    this.x += (dx / dist) * force * 3;
+                    this.y += (dy / dist) * force * 3;
+                    this.hue = (this.hue + 2) % 360;
+                }
+
+                // Flow field velocity
+                const speed = 1.5 + Math.sin(time * 0.5 + this.x * 0.01) * 0.5;
+                this.x += Math.cos(angle) * speed;
+                this.y += Math.sin(angle) * speed;
+
+                this.age++;
+
+                // Wrap around edges or reset
+                if (this.x < 0 || this.x > width ||
+                    this.y < 0 || this.y > height ||
+                    this.age > this.maxAge) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = Math.min(1, this.age / 50) * Math.min(1, (this.maxAge - this.age) / 100);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha * 0.8})`;
+                ctx.fillRect(this.x, this.y, 1.5, 1.5);
+            }
+        }
+
+        function init() {
+            resize();
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function animate() {
+            // Fade effect for trails
+            ctx.fillStyle = `rgba(0, 0, 0, ${1 - TRAIL_LENGTH})`;
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            time += TIME_SCALE * 10;
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isMouseDown) {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isMouseDown = true;
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isMouseDown) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isMouseDown = false;
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        // Single tap interaction
+        canvas.addEventListener('click', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            setTimeout(() => {
+                if (!isMouseDown) {
+                    mouseX = -1000;
+                    mouseY = -1000;
+                }
+            }, 300);
+        });
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
