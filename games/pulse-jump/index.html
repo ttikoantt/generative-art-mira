@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pulse Jump - Timing Game</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Arial', sans-serif;
+      overflow: hidden;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    }
+
+    #gameContainer {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    canvas {
+      display: block;
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      box-shadow: 0 0 50px rgba(100, 100, 255, 0.3);
+    }
+
+    .ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 20px;
+    }
+
+    .score-display {
+      color: white;
+      font-size: 24px;
+      font-weight: bold;
+      text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+    }
+
+    .best-score {
+      font-size: 14px;
+      opacity: 0.7;
+      margin-top: 5px;
+    }
+
+    .game-over {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: white;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 40px;
+      border-radius: 20px;
+      display: none;
+      pointer-events: auto;
+    }
+
+    .game-over.show {
+      display: block;
+    }
+
+    .game-over h2 {
+      font-size: 36px;
+      margin-bottom: 20px;
+    }
+
+    .game-over p {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+
+    .game-over button {
+      margin-top: 20px;
+      padding: 15px 30px;
+      font-size: 18px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .game-over button:hover {
+      transform: scale(1.1);
+    }
+
+    .controls {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      font-size: 14px;
+      opacity: 0.7;
+      text-align: center;
+    }
+
+    .fullscreen-btn {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      padding: 10px 20px;
+      font-size: 14px;
+      background: rgba(100, 100, 255, 0.3);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 8px;
+      cursor: pointer;
+      pointer-events: auto;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+    }
+
+    .fullscreen-btn:hover {
+      background: rgba(100, 100, 255, 0.5);
+      transform: scale(1.05);
+    }
+
+    @media (max-width: 768px) {
+      canvas {
+        border-radius: 5px;
+      }
+
+      .score-display {
+        font-size: 20px;
+      }
+
+      .game-over {
+        padding: 30px 20px;
+      }
+
+      .game-over h2 {
+        font-size: 28px;
+      }
+
+      .game-over p {
+        font-size: 16px;
+      }
+
+      .game-over button {
+        padding: 12px 24px;
+        font-size: 16px;
+      }
+
+      .controls {
+        font-size: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui-overlay">
+      <div class="score-display">
+        <div id="score">Score: 0</div>
+        <div class="best-score" id="bestScore">Best: 0</div>
+      </div>
+
+      <div class="controls">
+        タップ/クリックでジャンプ
+      </div>
+    </div>
+
+    <div class="game-over" id="gameOver">
+      <h2>Game Over</h2>
+      <p id="finalScore">Score: 0</p>
+      <p id="newBest" style="display: none; color: #ffd700;">🎉 New Best!</p>
+      <button id="restartBtn">Retry</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">🔳 全画面</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreDisplay = document.getElementById('score');
+    const bestScoreDisplay = document.getElementById('bestScore');
+    const gameOverDiv = document.getElementById('gameOver');
+    const finalScoreDisplay = document.getElementById('finalScore');
+    const newBestDisplay = document.getElementById('newBest');
+    const restartBtn = document.getElementById('restartBtn');
+
+    // ゲーム設定
+    const GAME_WIDTH = 800;
+    const GAME_HEIGHT = 600;
+    let scale = 1;
+
+    function resize() {
+      const container = document.getElementById('gameContainer');
+      const maxWidth = container.clientWidth - 40;
+      const maxHeight = container.clientHeight - 100;
+
+      scale = Math.min(maxWidth / GAME_WIDTH, maxHeight / GAME_HEIGHT, 1);
+
+      canvas.width = GAME_WIDTH;
+      canvas.height = GAME_HEIGHT;
+      canvas.style.width = (GAME_WIDTH * scale) + 'px';
+      canvas.style.height = (GAME_HEIGHT * scale) + 'px';
+    }
+
+    resize();
+    window.addEventListener('resize', resize);
+
+    // ゲーム状態
+    let gameState = 'playing';
+    let score = 0;
+    let bestScore = localStorage.getItem('pulseJumpBestScore') || 0;
+    bestScoreDisplay.textContent = `Best: ${bestScore}`;
+
+    // プレイヤー
+    const player = {
+      x: 100,
+      y: GAME_HEIGHT - 100,
+      width: 40,
+      height: 40,
+      velocityY: 0,
+      jumping: false,
+      color: '#667eea'
+    };
+
+    const GRAVITY = 0.6;
+    const JUMP_FORCE = -12;
+    const GROUND_Y = GAME_HEIGHT - 80;
+
+    // 障害物
+    let obstacles = [];
+    let obstacleTimer = 0;
+    const OBSTACLE_INTERVAL = 100;
+
+    // 背景パルス
+    let pulsePhase = 0;
+
+    function spawnObstacle() {
+      const types = ['spike', 'block', 'floating'];
+      const type = types[Math.floor(Math.random() * types.length)];
+
+      let obstacle = {
+        x: GAME_WIDTH + 50,
+        width: 30 + Math.random() * 20,
+        height: 30 + Math.random() * 20,
+        type: type
+      };
+
+      if (type === 'spike') {
+        obstacle.y = GROUND_Y - obstacle.height;
+        obstacle.color = '#ff6b6b';
+      } else if (type === 'block') {
+        obstacle.y = GROUND_Y - obstacle.height;
+        obstacle.color = '#feca57';
+      } else if (type === 'floating') {
+        obstacle.y = GROUND_Y - 100 - Math.random() * 80;
+        obstacle.color = '#48dbfb';
+      }
+
+      obstacles.push(obstacle);
+    }
+
+    function jump() {
+      if (gameState === 'playing' && !player.jumping) {
+        player.velocityY = JUMP_FORCE;
+        player.jumping = true;
+      }
+    }
+
+    function resetGame() {
+      gameState = 'playing';
+      score = 0;
+      scoreDisplay.textContent = `Score: ${score}`;
+      gameOverDiv.classList.remove('show');
+      player.y = GROUND_Y - player.height;
+      player.velocityY = 0;
+      player.jumping = false;
+      obstacles = [];
+      obstacleTimer = 0;
+    }
+
+    function update() {
+      if (gameState !== 'playing') return;
+
+      // プレイヤー更新
+      player.velocityY += GRAVITY;
+      player.y += player.velocityY;
+
+      if (player.y >= GROUND_Y - player.height) {
+        player.y = GROUND_Y - player.height;
+        player.velocityY = 0;
+        player.jumping = false;
+      }
+
+      // 障害物更新
+      obstacleTimer++;
+      if (obstacleTimer >= OBSTACLE_INTERVAL) {
+        spawnObstacle();
+        obstacleTimer = 0;
+      }
+
+      obstacles.forEach(obs => {
+        obs.x -= 5 + score * 0.05; // 徐々にスピードアップ
+
+        // 衝突判定
+        if (player.x < obs.x + obs.width &&
+            player.x + player.width > obs.x &&
+            player.y < obs.y + obs.height &&
+            player.y + player.height > obs.y) {
+          gameOver();
+        }
+      });
+
+      // 画面外の障害物を削除＆スコア更新
+      obstacles = obstacles.filter(obs => {
+        if (obs.x + obs.width < 0) {
+          score++;
+          scoreDisplay.textContent = `Score: ${score}`;
+          return false;
+        }
+        return true;
+      });
+
+      // 背景パルス
+      pulsePhase += 0.05;
+    }
+
+    function draw() {
+      // 背景グラデーション
+      const gradient = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
+      gradient.addColorStop(0, `hsl(${230 + Math.sin(pulsePhase) * 10}, 40%, 15%)`);
+      gradient.addColorStop(1, `hsl(${260 + Math.cos(pulsePhase) * 10}, 40%, 20%)`);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+      // 地面
+      ctx.fillStyle = '#2d3436';
+      ctx.fillRect(0, GROUND_Y, GAME_WIDTH, GAME_HEIGHT - GROUND_Y);
+
+      // パルス効果の地面ライン
+      ctx.strokeStyle = `hsla(${280 + pulsePhase * 20}, 70%, 60%, 0.5)`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, GROUND_Y);
+      ctx.lineTo(GAME_WIDTH, GROUND_Y);
+      ctx.stroke();
+
+      // プレイヤー（パルスする四角形）
+      const pulse = 1 + Math.sin(pulsePhase * 2) * 0.1;
+      const playerWidth = player.width * pulse;
+      const playerHeight = player.height * pulse;
+      const playerX = player.x + (player.width - playerWidth) / 2;
+      const playerY = player.y + (player.height - playerHeight) / 2;
+
+      ctx.fillStyle = player.color;
+      ctx.shadowColor = player.color;
+      ctx.shadowBlur = 20;
+      ctx.fillRect(playerX, playerY, playerWidth, playerHeight);
+      ctx.shadowBlur = 0;
+
+      // 障害物
+      obstacles.forEach(obs => {
+        ctx.fillStyle = obs.color;
+        ctx.shadowColor = obs.color;
+        ctx.shadowBlur = 10;
+
+        if (obs.type === 'spike') {
+          // 三角形のスパイク
+          ctx.beginPath();
+          ctx.moveTo(obs.x, obs.y + obs.height);
+          ctx.lineTo(obs.x + obs.width / 2, obs.y);
+          ctx.lineTo(obs.x + obs.width, obs.y + obs.height);
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+        }
+        ctx.shadowBlur = 0;
+      });
+    }
+
+    function gameOver() {
+      gameState = 'gameover';
+      finalScoreDisplay.textContent = `Score: ${score}`;
+
+      if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem('pulseJumpBestScore', bestScore);
+        bestScoreDisplay.textContent = `Best: ${bestScore}`;
+        newBestDisplay.style.display = 'block';
+      } else {
+        newBestDisplay.style.display = 'none';
+      }
+
+      gameOverDiv.classList.add('show');
+    }
+
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // イベントリスナー
+    canvas.addEventListener('click', jump);
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      jump();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        if (gameState === 'playing') {
+          jump();
+        } else if (gameState === 'gameover') {
+          resetGame();
+        }
+      }
+    });
+
+    restartBtn.addEventListener('click', resetGame);
+
+    // 全画面ボタン
+    document.getElementById('fullscreenBtn').addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    });
+
+    // ゲーム開始
+    gameLoop();
+  </script>
+</body>
+</html>
