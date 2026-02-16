@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Flow Field - パーティクルフロー場</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0e27;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #ffffff;
+            font-size: 14px;
+            pointer-events: none;
+            opacity: 0.8;
+            text-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+        }
+
+        .info h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+            background: linear-gradient(90deg, #00ffff, #ff00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .fullscreen {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h1>Particle Flow Field</h1>
+        <p>マウスを動かしてパーティクルを影響させる</p>
+    </div>
+
+    <button class="fullscreen" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="controls">
+        <button onclick="resetParticles()">リセット</button>
+        <button onclick="changeColors()">色変更</button>
+        <button onclick="toggleTrail()">トレール切替</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let flowField = [];
+        let rows, cols;
+        const scale = 20;
+        let colorScheme = 0;
+        let showTrail = true;
+
+        const colorSchemes = [
+            { bg: '#0a0e27', particles: ['#00ffff', '#ff00ff', '#ffff00', '#00ff00'] },
+            { bg: '#1a0a1a', particles: ['#ff6b6b', '#4ecdc4', '#ffe66d', '#95e1d3'] },
+            { bg: '#0a1a0a', particles: ['#00ff88', '#ff0088', '#00aaff', '#ffaa00'] },
+            { bg: '#0a0a1a', particles: ['#ffffff', '#888888', '#aaaaaa', '#cccccc'] }
+        ];
+
+        let mouseX = -1000;
+        let mouseY = -1000;
+        let mouseInfluence = 150;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.floor(width / scale) + 1;
+            rows = Math.floor(height / scale) + 1;
+            initFlowField();
+        }
+
+        function initFlowField() {
+            flowField = [];
+            let yoff = 0;
+            for (let y = 0; y < rows; y++) {
+                let row = [];
+                let xoff = 0;
+                for (let x = 0; x < cols; x++) {
+                    let angle = Math.cos(xoff) + Math.sin(yoff);
+                    row.push(angle);
+                    xoff += 0.1;
+                }
+                flowField.push(row);
+                yoff += 0.1;
+            }
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.ax = 0;
+                this.ay = 0;
+                this.maxSpeed = 3 + Math.random() * 2;
+                this.color = colorSchemes[colorScheme].particles[Math.floor(Math.random() * 4)];
+                this.size = 1 + Math.random() * 2;
+                this.life = 0;
+                this.maxLife = 100 + Math.random() * 200;
+            }
+
+            update() {
+                this.life++;
+                if (this.life > this.maxLife) {
+                    this.reset();
+                }
+
+                let col = Math.floor(this.x / scale);
+                let row = Math.floor(this.y / scale);
+
+                if (col >= 0 && col < cols && row >= 0 && row < rows) {
+                    let angle = flowField[row][col];
+                    this.ax = Math.cos(angle) * 0.5;
+                    this.ay = Math.sin(angle) * 0.5;
+                }
+
+                // マウスの影響
+                let dx = this.x - mouseX;
+                let dy = this.y - mouseY;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < mouseInfluence) {
+                    let force = (mouseInfluence - dist) / mouseInfluence;
+                    this.ax += (dx / dist) * force * 2;
+                    this.ay += (dy / dist) * force * 2;
+                }
+
+                this.vx += this.ax;
+                this.vy += this.ay;
+
+                let speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > this.maxSpeed) {
+                    this.vx = (this.vx / speed) * this.maxSpeed;
+                    this.vy = (this.vy / speed) * this.maxSpeed;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+            }
+
+            draw() {
+                let alpha = 1 - (this.life / this.maxLife);
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = alpha;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            let count = Math.min(2000, (width * height) / 1000);
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function resetParticles() {
+            initParticles();
+        }
+
+        function changeColors() {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+            particles.forEach(p => {
+                p.color = colorSchemes[colorScheme].particles[Math.floor(Math.random() * 4)];
+            });
+        }
+
+        function toggleTrail() {
+            showTrail = !showTrail;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function animate() {
+            let scheme = colorSchemes[colorScheme];
+
+            if (showTrail) {
+                ctx.fillStyle = scheme.bg + '08';
+            } else {
+                ctx.fillStyle = scheme.bg;
+            }
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // フロー場を少しずつ変化
+            if (Math.random() < 0.01) {
+                initFlowField();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        window.addEventListener('resize', () => {
+            resize();
+            initParticles();
+        });
+
+        resize();
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>
