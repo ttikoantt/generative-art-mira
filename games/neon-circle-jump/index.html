@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Neon Circle Jump</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0a0a2a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .game-container {
+            position: relative;
+            width: min(90vw, 90vh);
+            height: min(90vw, 90vh);
+        }
+
+        #gameCanvas {
+            background: radial-gradient(circle, #1a1a3a 0%, #0a0a1a 100%);
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            pointer-events: none;
+        }
+
+        .score {
+            text-align: center;
+            padding: 15px;
+            color: #fff;
+            font-size: 2rem;
+            font-weight: bold;
+            text-shadow: 0 0 20px #4ecdc4;
+        }
+
+        .high-score {
+            text-align: center;
+            padding: 5px;
+            color: #ff6b6b;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+
+        .start-screen, .game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(10, 10, 26, 0.95);
+            border-radius: 20px;
+            pointer-events: auto;
+        }
+
+        .game-over-screen {
+            display: none;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #ff6b6b, #4ecdc4, #45b7d1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .instructions {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            border: none;
+            border-radius: 30px;
+            background: linear-gradient(135deg, #4ecdc4, #45b7d1);
+            color: #fff;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(78, 205, 196, 0.4);
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 30px rgba(78, 205, 196, 0.6);
+        }
+
+        .final-score {
+            font-size: 3rem;
+            color: #4ecdc4;
+            margin: 20px 0;
+            text-shadow: 0 0 30px #4ecdc4;
+        }
+
+        .best-score {
+            color: #ff6b6b;
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            background: rgba(255, 255, 255, 0.15);
+            border: none;
+            border-radius: 25px;
+            color: #fff;
+            font-size: 0.9rem;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div class="ui-overlay">
+            <div class="score" id="score">0</div>
+            <div class="high-score" id="highScore">Best: 0</div>
+        </div>
+
+        <div class="start-screen" id="startScreen">
+            <h1>🌀 Neon Circle Jump</h1>
+            <p class="instructions">画面をタップして円をジャンプ！<br>回転する円の間を通り抜けよう</p>
+            <button class="btn" id="startBtn">スタート</button>
+        </div>
+
+        <div class="game-over-screen" id="gameOverScreen">
+            <h1>💀 Game Over</h1>
+            <div class="final-score" id="finalScore">0</div>
+            <div class="best-score" id="bestScore">Best: 0</div>
+            <button class="btn" id="restartBtn">もう一度</button>
+        </div>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">🖥️ 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let score = 0;
+        let highScore = localStorage.getItem('neonCircleJumpHighScore') || 0;
+        let gameRunning = false;
+        let animationId;
+
+        const player = {
+            x: 0,
+            y: 0,
+            radius: 15,
+            jumpPower: 0,
+            gravity: 0.5,
+            velocityY: 0,
+            isJumping: false
+        };
+
+        let circles = [];
+        let circleGap = 250;
+        let circleSpeed = 0.02;
+
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const size = Math.min(container.offsetWidth, container.offsetHeight);
+            canvas.width = size;
+            canvas.height = size;
+            
+            // プレイヤーの初期位置
+            player.x = canvas.width / 2;
+            player.y = canvas.height / 3;
+            
+            if (!gameRunning) {
+                draw();
+            }
+        }
+
+        function createCircles() {
+            circles = [];
+            const numCircles = Math.ceil(canvas.height / circleGap) + 2;
+            
+            for (let i = 0; i < numCircles; i++) {
+                circles.push({
+                    y: canvas.height / 3 + i * circleGap,
+                    angle: Math.random() * Math.PI * 2,
+                    radius: 80,
+                    gapAngle: Math.PI / 2, // 90度の隙間
+                    rotationSpeed: circleSpeed + (score * 0.001)
+                });
+            }
+        }
+
+        function drawCircles() {
+            circles.forEach(circle => {
+                // 外側の円
+                ctx.save();
+                ctx.translate(canvas.width / 2, circle.y);
+                
+                // グロー効果
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#4ecdc4';
+                
+                // 円を描画（隙間を開ける）
+                const startAngle = circle.angle;
+                const endAngle = circle.angle + Math.PI * 2 - circle.gapAngle;
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, circle.radius, startAngle, endAngle);
+                ctx.strokeStyle = '#4ecdc4';
+                ctx.lineWidth = 8;
+                ctx.stroke();
+                
+                // 内側の装飾
+                ctx.beginPath();
+                ctx.arc(0, 0, circle.radius - 15, startAngle, endAngle);
+                ctx.strokeStyle = 'rgba(78, 205, 196, 0.3)';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                
+                ctx.restore();
+                
+                // 回転
+                circle.angle += circle.rotationSpeed;
+            });
+        }
+
+        function drawPlayer() {
+            ctx.save();
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#ff6b6b';
+            
+            // プレイヤーの体
+            const gradient = ctx.createRadialGradient(
+                player.x, player.y, 0,
+                player.x, player.y, player.radius
+            );
+            gradient.addColorStop(0, '#ff6b6b');
+            gradient.addColorStop(1, '#c44569');
+            
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            // 光るエフェクト
+            ctx.shadowBlur = 30;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius * 0.6, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.fill();
+            
+            ctx.restore();
+        }
+
+        function updatePlayer() {
+            // 重力
+            player.velocityY += player.gravity;
+            player.y += player.velocityY;
+            
+            // 下限
+            if (player.y > canvas.height - player.radius) {
+                gameOver();
+            }
+            
+            // 円との衝突判定
+            checkCollisions();
+        }
+
+        function checkCollisions() {
+            circles.forEach(circle => {
+                const dx = player.x - canvas.width / 2;
+                const dy = player.y - circle.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                // 円の近くにある場合
+                if (Math.abs(distance - circle.radius) < player.radius + 5) {
+                    // 角度を計算
+                    let angle = Math.atan2(dy, dx);
+                    if (angle < 0) angle += Math.PI * 2;
+                    
+                    // 円の現在の角度を考慮
+                    let relativeAngle = angle - circle.angle;
+                    while (relativeAngle < 0) relativeAngle += Math.PI * 2;
+                    while (relativeAngle >= Math.PI * 2) relativeAngle -= Math.PI * 2;
+                    
+                    // 隙間の外側にいる場合（衝突）
+                    const gapStart = 0;
+                    const gapEnd = circle.gapAngle;
+                    
+                    if (relativeAngle > gapEnd && relativeAngle < Math.PI * 2) {
+                        gameOver();
+                    }
+                }
+            });
+        }
+
+        function jump() {
+            if (!player.isJumping) {
+                player.velocityY = -player.jumpPower;
+                player.isJumping = true;
+            }
+        }
+
+        function endJump() {
+            player.isJumping = false;
+        }
+
+        function updateCircles() {
+            // 円を移動
+            circles.forEach(circle => {
+                circle.y -= 3;
+            });
+            
+            // 新しい円を追加
+            const lastCircle = circles[circles.length - 1];
+            if (lastCircle.y < canvas.height) {
+                circles.push({
+                    y: lastCircle.y + circleGap,
+                    angle: Math.random() * Math.PI * 2,
+                    radius: 80,
+                    gapAngle: Math.max(Math.PI / 3, Math.PI / 2 - score * 0.01),
+                    rotationSpeed: circleSpeed + (score * 0.001)
+                });
+            }
+            
+            // 古い円を削除
+            circles = circles.filter(circle => circle.y > -100);
+            
+            // スコア更新
+            score++;
+            document.getElementById('score').textContent = score;
+        }
+
+        function draw() {
+            // クリア
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 背景
+            const gradient = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, 0,
+                canvas.width / 2, canvas.height / 2, canvas.width / 2
+            );
+            gradient.addColorStop(0, '#1a1a3a');
+            gradient.addColorStop(1, '#0a0a1a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            drawCircles();
+            drawPlayer();
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            updatePlayer();
+            updateCircles();
+            draw();
+            
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            score = 0;
+            player.y = canvas.height / 3;
+            player.velocityY = 0;
+            player.jumpPower = 12;
+            player.isJumping = false;
+            
+            createCircles();
+            
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('gameOverScreen').style.display = 'none';
+            document.getElementById('score').textContent = '0';
+            
+            gameRunning = true;
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+            
+            // ハイスコア更新
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('neonCircleJumpHighScore', highScore);
+            }
+            
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('bestScore').textContent = `Best: ${highScore}`;
+            document.getElementById('gameOverScreen').style.display = 'flex';
+            document.getElementById('highScore').textContent = `Best: ${highScore}`;
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            jump();
+        });
+
+        canvas.addEventListener('mouseup', endJump);
+        canvas.addEventListener('mouseleave', endJump);
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        });
+
+        canvas.addEventListener('touchend', endJump);
+
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // 初期化
+        document.getElementById('highScore').textContent = `Best: ${highScore}`;
+        resizeCanvas();
+
+        window.addEventListener('resize', resizeCanvas);
+    </script>
+</body>
+</html>

@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Symmetry Mandala Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0a0a2a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .header {
+            text-align: center;
+            padding: 15px;
+            color: #fff;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 5px;
+            background: linear-gradient(90deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px 12px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .control-group label {
+            color: #fff;
+            font-size: 0.85rem;
+        }
+
+        .control-group input[type="range"] {
+            width: 80px;
+            height: 6px;
+            border-radius: 3px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #4ecdc4;
+            cursor: pointer;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .btn-color {
+            background: linear-gradient(135deg, #ff6b6b, #4ecdc4);
+        }
+
+        .btn-clear {
+            background: linear-gradient(135deg, #ff6b9d, #c44569);
+        }
+
+        .btn-save {
+            background: linear-gradient(135deg, #11998e, #38ef7d);
+        }
+
+        .canvas-container {
+            position: relative;
+            width: min(90vw, 90vh);
+            height: min(90vw, 90vh);
+            margin: 10px;
+        }
+
+        #canvas {
+            background: radial-gradient(circle, #1a1a3a 0%, #0a0a1a 100%);
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5),
+                        inset 0 0 60px rgba(78, 205, 196, 0.1);
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .color-preview {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 3px solid #fff;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            background: rgba(255, 255, 255, 0.15);
+            border: none;
+            border-radius: 25px;
+            color: #fff;
+            font-size: 0.9rem;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>✨ Symmetry Mandala ✨</h1>
+        <p class="subtitle">描画すると対称的に複製されます</p>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>対称数:</label>
+            <input type="range" id="symmetry" min="4" max="24" value="12">
+            <span id="symmetryValue">12</span>
+        </div>
+        <div class="control-group">
+            <label>色相速度:</label>
+            <input type="range" id="colorSpeed" min="0" max="10" value="3">
+        </div>
+        <div class="control-group">
+            <div class="color-preview" id="colorPreview"></div>
+        </div>
+        <button class="btn btn-color" id="rainbowBtn">🌈 レインボー</button>
+        <button class="btn btn-clear" id="clearBtn">🗑️ クリア</button>
+        <button class="btn btn-save" id="saveBtn">💾 保存</button>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">🖥️ 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let symmetry = 12;
+        let colorSpeed = 3;
+        let hue = 0;
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let isRainbow = true;
+        let currentColor = '#4ecdc4';
+
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const size = Math.min(container.offsetWidth, container.offsetHeight);
+            canvas.width = size;
+            canvas.height = size;
+            
+            // 背景を再描画
+            ctx.fillStyle = '#0a0a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 中心の円を描画
+            ctx.strokeStyle = 'rgba(78, 205, 196, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, 5, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        function drawLine(x1, y1, x2, y2) {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            // 現在の色を設定
+            if (isRainbow) {
+                ctx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
+                ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+            } else {
+                ctx.strokeStyle = currentColor;
+                ctx.shadowColor = currentColor;
+            }
+            
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.shadowBlur = 15;
+
+            // 対称的な線を描画
+            for (let i = 0; i < symmetry; i++) {
+                const angle = (Math.PI * 2 / symmetry) * i;
+                
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(angle);
+                ctx.translate(-centerX, -centerY);
+                
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                
+                // 鏡像も描画
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.scale(1, -1);
+                ctx.translate(-centerX, -centerY);
+                
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                
+                ctx.restore();
+                ctx.restore();
+            }
+            
+            hue += colorSpeed;
+        }
+
+        function getPosition(e) {
+            const rect = canvas.getBoundingClientRect();
+            let x, y;
+            
+            if (e.touches) {
+                x = e.touches[0].clientX - rect.left;
+                y = e.touches[0].clientY - rect.top;
+            } else {
+                x = e.clientX - rect.left;
+                y = e.clientY - rect.top;
+            }
+            
+            return { x, y };
+        }
+
+        function startDrawing(e) {
+            e.preventDefault();
+            isDrawing = true;
+            const pos = getPosition(e);
+            lastX = pos.x;
+            lastY = pos.y;
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+            
+            const pos = getPosition(e);
+            drawLine(lastX, lastY, pos.x, pos.y);
+            
+            lastX = pos.x;
+            lastY = pos.y;
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+
+        canvas.addEventListener('touchstart', startDrawing);
+        canvas.addEventListener('touchmove', draw);
+        canvas.addEventListener('touchend', stopDrawing);
+
+        // コントロール
+        const symmetrySlider = document.getElementById('symmetry');
+        const symmetryValue = document.getElementById('symmetryValue');
+        const colorSpeedSlider = document.getElementById('colorSpeed');
+        const colorPreview = document.getElementById('colorPreview');
+        const rainbowBtn = document.getElementById('rainbowBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        symmetrySlider.addEventListener('input', (e) => {
+            symmetry = parseInt(e.target.value);
+            symmetryValue.textContent = symmetry;
+        });
+
+        colorSpeedSlider.addEventListener('input', (e) => {
+            colorSpeed = parseInt(e.target.value);
+        });
+
+        function updateColorPreview() {
+            if (isRainbow) {
+                colorPreview.style.background = 'linear-gradient(135deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4)';
+            } else {
+                colorPreview.style.background = currentColor;
+            }
+        }
+
+        rainbowBtn.addEventListener('click', () => {
+            isRainbow = !isRainbow;
+            rainbowBtn.textContent = isRainbow ? '🌈 レインボー' : '🎨 単色';
+            updateColorPreview();
+        });
+
+        clearBtn.addEventListener('click', () => {
+            ctx.fillStyle = '#0a0a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.strokeStyle = 'rgba(78, 205, 196, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, 5, 0, Math.PI * 2);
+            ctx.stroke();
+        });
+
+        saveBtn.addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = `mandala-${Date.now()}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // 初期化
+        resizeCanvas();
+        updateColorPreview();
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // タッチデバイス向けのスクロール防止
+        document.body.addEventListener('touchmove', (e) => {
+            if (e.target === canvas) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+    </script>
+</body>
+</html>
