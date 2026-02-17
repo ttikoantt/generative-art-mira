@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procedural Landscape</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            padding: 20px;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 2rem;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .description {
+            color: #888;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+
+        .canvas-container {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: #111;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            color: #666;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+
+        .fullscreen-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
+        }
+
+        .fullscreen-btn:hover {
+            box-shadow: 0 6px 20px rgba(245, 87, 108, 0.6);
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏔️ Procedural Landscape</h1>
+        <p class="description">プロシージャル生成の風景 - Perlinノイズで山と雲を描く</p>
+
+        <div class="canvas-container">
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <div class="controls">
+            <button id="generateBtn">🎨 新しい風景</button>
+            <button id="fullscreenBtn" class="fullscreen-btn">📺 全画面</button>
+        </div>
+
+        <p class="info">ボタンを押すたびに、新しい風景が生成されます</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const generateBtn = document.getElementById('generateBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        // キャンバスサイズ設定
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            canvas.width = container.clientWidth * window.devicePixelRatio;
+            canvas.height = container.clientHeight * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+
+        // Perlinノイズの実装
+        class PerlinNoise {
+            constructor(seed = Math.random() * 10000) {
+                this.permutation = [];
+                this.p = [];
+
+                // ランダムな順列を生成
+                for (let i = 0; i < 256; i++) {
+                    this.permutation[i] = i;
+                }
+
+                // シード付きの乱数
+                let random = this.seededRandom(seed);
+                for (let i = 255; i > 0; i--) {
+                    const j = Math.floor(random() * (i + 1));
+                    [this.permutation[i], this.permutation[j]] = [this.permutation[j], this.permutation[i]];
+                }
+
+                // 2回繰り返して配列を拡張
+                for (let i = 0; i < 512; i++) {
+                    this.p[i] = this.permutation[i % 256];
+                }
+            }
+
+            seededRandom(seed) {
+                return function() {
+                    seed = (seed * 9301 + 49297) % 233280;
+                    return seed / 233280;
+                };
+            }
+
+            fade(t) {
+                return t * t * t * (t * (t * 6 - 15) + 10);
+            }
+
+            lerp(t, a, b) {
+                return a + t * (b - a);
+            }
+
+            grad(hash, x, y) {
+                const h = hash & 7;
+                const u = h < 4 ? x : y;
+                const v = h < 4 ? y : x;
+                return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
+            }
+
+            noise(x, y) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+
+                const u = this.fade(x);
+                const v = this.fade(y);
+
+                const A = this.p[X] + Y;
+                const B = this.p[X + 1] + Y;
+
+                return this.lerp(v,
+                    this.lerp(u, this.grad(this.p[A], x, y), this.grad(this.p[B], x - 1, y)),
+                    this.lerp(u, this.grad(this.p[A + 1], x, y - 1), this.grad(this.p[B + 1], x - 1, y - 1))
+                );
+            }
+
+            octaveNoise(x, y, octaves, persistence) {
+                let total = 0;
+                let frequency = 1;
+                let amplitude = 1;
+                let maxValue = 0;
+
+                for (let i = 0; i < octaves; i++) {
+                    total += this.noise(x * frequency, y * frequency) * amplitude;
+                    maxValue += amplitude;
+                    amplitude *= persistence;
+                    frequency *= 2;
+                }
+
+                return total / maxValue;
+            }
+        }
+
+        // 風景を描画
+        function drawLandscape() {
+            const width = canvas.width / window.devicePixelRatio;
+            const height = canvas.height / window.devicePixelRatio;
+
+            // ランダムなシード
+            const seed = Math.random() * 10000;
+            const perlin = new PerlinNoise(seed);
+
+            // スカイグラデーション（夕焼け～夜）
+            const skyGradient = ctx.createLinearGradient(0, 0, 0, height);
+            const skyColors = [
+                ['#0f0c29', '#302b63', '#24243e'], // 夜
+                ['#141e30', '#243b55'], // 深夜
+                ['#1a1a2e', '#16213e', '#0f3460'], // 夕暮れ
+                ['#0f2027', '#203a43', '#2c5364'], // 暁
+            ];
+            const colorScheme = skyColors[Math.floor(Math.random() * skyColors.length)];
+
+            skyGradient.addColorStop(0, colorScheme[0]);
+            skyGradient.addColorStop(0.5, colorScheme[1]);
+            if (colorScheme[2]) {
+                skyGradient.addColorStop(1, colorScheme[2]);
+            }
+            ctx.fillStyle = skyGradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // 星を描画
+            const starCount = 100 + Math.floor(Math.random() * 100);
+            for (let i = 0; i < starCount; i++) {
+                const x = Math.random() * width;
+                const y = Math.random() * height * 0.6;
+                const size = Math.random() * 1.5 + 0.5;
+                const brightness = Math.random() * 0.5 + 0.5;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${brightness})`;
+                ctx.fill();
+            }
+
+            // 月
+            if (Math.random() > 0.3) {
+                const moonX = width * (0.2 + Math.random() * 0.6);
+                const moonY = height * (0.1 + Math.random() * 0.2);
+                const moonSize = 20 + Math.random() * 15;
+
+                // 月の光
+                const moonGlow = ctx.createRadialGradient(moonX, moonY, moonSize, moonX, moonY, moonSize * 3);
+                moonGlow.addColorStop(0, 'rgba(255, 255, 230, 0.3)');
+                moonGlow.addColorStop(1, 'rgba(255, 255, 230, 0)');
+                ctx.fillStyle = moonGlow;
+                ctx.fillRect(moonX - moonSize * 3, moonY - moonSize * 3, moonSize * 6, moonSize * 6);
+
+                // 月本体
+                ctx.beginPath();
+                ctx.arc(moonX, moonY, moonSize, 0, Math.PI * 2);
+                ctx.fillStyle = '#fffef0';
+                ctx.fill();
+            }
+
+            // 遠い山（背景）
+            drawMountainRange(perlin, width, height, 0.4, 0.25, 0.003, 4, 'rgba(40, 40, 60, 0.9)', seed + 1);
+
+            // 中間の山
+            drawMountainRange(perlin, width, height, 0.5, 0.35, 0.005, 5, 'rgba(30, 35, 50, 0.95)', seed + 2);
+
+            // 近くの山（前景）
+            drawMountainRange(perlin, width, height, 0.6, 0.5, 0.008, 6, 'rgba(20, 25, 40, 1)', seed + 3);
+
+            // 雲
+            drawClouds(perlin, width, height, seed + 10);
+
+            // 地面のテクスチャ
+            const groundY = height * 0.6;
+            const groundGradient = ctx.createLinearGradient(0, groundY, 0, height);
+            groundGradient.addColorStop(0, 'rgba(20, 25, 35, 0.8)');
+            groundGradient.addColorStop(1, 'rgba(15, 20, 30, 0.95)');
+            ctx.fillStyle = groundGradient;
+            ctx.fillRect(0, groundY, width, height - groundY);
+
+            // 地面のディテール
+            for (let x = 0; x < width; x += 3) {
+                const noiseVal = perlin.octaveNoise(x * 0.01, seed * 0.1, 3, 0.5);
+                const groundDetailY = groundY + noiseVal * 20;
+                ctx.fillStyle = `rgba(30, 35, 45, ${0.1 + Math.abs(noiseVal) * 0.2})`;
+                ctx.fillRect(x, groundDetailY, 3, height - groundDetailY);
+            }
+        }
+
+        function drawMountainRange(perlin, width, height, yOffset, heightRatio, frequency, octaves, color, seedOffset) {
+            ctx.beginPath();
+            ctx.moveTo(0, height);
+
+            for (let x = 0; x <= width; x += 2) {
+                const noiseVal = perlin.octaveNoise(x * frequency + seedOffset, seedOffset * 0.1, octaves, 0.5);
+                const y = height * yOffset + noiseVal * height * heightRatio;
+                ctx.lineTo(x, y);
+            }
+
+            ctx.lineTo(width, height);
+            ctx.closePath();
+
+            // グラデーション
+            const gradient = ctx.createLinearGradient(0, height * 0.3, 0, height);
+            gradient.addColorStop(0, color);
+            gradient.addColorStop(1, 'rgba(10, 15, 25, 1)');
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+
+        function drawClouds(perlin, width, height, seedOffset) {
+            const cloudCount = 5 + Math.floor(Math.random() * 5);
+
+            for (let i = 0; i < cloudCount; i++) {
+                const cloudX = Math.random() * width;
+                const cloudY = height * (0.05 + Math.random() * 0.25);
+                const cloudWidth = 80 + Math.random() * 120;
+                const cloudHeight = 30 + Math.random() * 40;
+
+                ctx.beginPath();
+
+                for (let x = cloudX - cloudWidth / 2; x < cloudX + cloudWidth / 2; x += 5) {
+                    const distFromCenter = Math.abs(x - cloudX) / (cloudWidth / 2);
+                    const noiseVal = perlin.octaveNoise(x * 0.02 + seedOffset + i * 100, seedOffset * 0.1, 3, 0.5);
+                    const y = cloudY + noiseVal * cloudHeight * (1 - distFromCenter * 0.5);
+
+                    if (x === cloudX - cloudWidth / 2) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+
+                ctx.lineTo(cloudX + cloudWidth / 2, cloudY + 20);
+                ctx.lineTo(cloudX - cloudWidth / 2, cloudY + 20);
+                ctx.closePath();
+
+                const cloudGradient = ctx.createRadialGradient(
+                    cloudX, cloudY, 0,
+                    cloudX, cloudY, cloudWidth / 2
+                );
+                cloudGradient.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+                cloudGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.05)');
+                cloudGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                ctx.fillStyle = cloudGradient;
+                ctx.fill();
+            }
+        }
+
+        // 全画面表示
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                canvas.parentElement.requestFullscreen().catch(err => {
+                    console.log('全画面エラー:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        generateBtn.addEventListener('click', drawLandscape);
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+        // 初期描画
+        resizeCanvas();
+        drawLandscape();
+
+        // リサイズ時に再描画
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            drawLandscape();
+        });
+    </script>
+</body>
+</html>
