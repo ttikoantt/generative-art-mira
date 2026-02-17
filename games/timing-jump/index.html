@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timing Jump</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+            touch-action: manipulation;
+        }
+
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .score-display {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-size: 28px;
+            font-weight: bold;
+            text-shadow: 0 2px 10px rgba(255, 255, 255, 0.3);
+            z-index: 100;
+        }
+
+        .combo-display {
+            position: fixed;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffd700;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 0 2px 10px rgba(255, 215, 0, 0.5);
+            z-index: 100;
+            transition: transform 0.2s;
+        }
+
+        .combo-display.pop {
+            transform: translateX(-50%) scale(1.3);
+        }
+
+        .instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+            z-index: 100;
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(26, 26, 46, 0.95);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            z-index: 200;
+            display: none;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .game-over h2 {
+            color: #fff;
+            font-size: 32px;
+            margin-bottom: 20px;
+        }
+
+        .game-over .final-score {
+            color: #ffd700;
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 30px;
+        }
+
+        .game-over .best-score {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+
+        .restart-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            background: rgba(102, 126, 234, 0.9);
+            border: none;
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+
+        .fullscreen-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .perfect-indicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #00ff88;
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.8);
+            z-index: 150;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .perfect-indicator.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div class="score-display">スコア: <span id="score">0</span></div>
+    <div class="combo-display" id="combo"></div>
+    <div class="perfect-indicator" id="perfect">PERFECT!</div>
+    <div class="instructions">タップ/クリック/スペースでジャンプ</div>
+
+    <div class="game-over" id="gameOver">
+        <h2>ゲームオーバー</h2>
+        <div class="final-score" id="finalScore">0</div>
+        <div class="best-score">ベスト: <span id="bestScore">0</span></div>
+        <button class="restart-btn" onclick="restart()">もう一度</button>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game state
+        let gameState = 'playing';
+        let score = 0;
+        let combo = 0;
+        let bestScore = localStorage.getItem('timingJumpBestScore') || 0;
+        let gameSpeed = 1;
+        let lastJumpTime = 0;
+
+        // Player
+        const player = {
+            x: 100,
+            y: 0,
+            radius: 15,
+            vy: 0,
+            gravity: 0.6,
+            jumpForce: -12,
+            grounded: false,
+            rotation: 0,
+            trail: []
+        };
+
+        // Platforms
+        let platforms = [];
+        const platformGap = 300;
+        let platformSpeed = 3;
+        let nextPlatformX = 0;
+
+        // Visual effects
+        let particles = [];
+        let screenShake = 0;
+
+        function resize() {
+            const maxWidth = 800;
+            const maxHeight = 600;
+            
+            let width = Math.min(window.innerWidth - 40, maxWidth);
+            let height = Math.min(window.innerHeight - 200, maxHeight);
+            
+            canvas.width = width;
+            canvas.height = height;
+
+            // Ground level
+            player.groundY = height - 100;
+            if (gameState === 'start') {
+                player.y = player.groundY - player.radius;
+            }
+        }
+
+        function createPlatform(x) {
+            return {
+                x: x,
+                y: player.groundY,
+                width: 80 + Math.random() * 40,
+                height: 20,
+                color: `hsl(${Math.random() * 60 + 200}, 70%, 50%)`,
+                passed: false
+            };
+        }
+
+        function init() {
+            resize();
+            
+            score = 0;
+            combo = 0;
+            gameSpeed = 1;
+            platformSpeed = 3;
+            player.y = player.groundY - player.radius;
+            player.vy = 0;
+            player.rotation = 0;
+            player.trail = [];
+            player.grounded = true;
+            
+            platforms = [];
+            nextPlatformX = canvas.width * 0.6;
+            
+            // Create initial platform
+            platforms.push(createPlatform(canvas.width * 0.5));
+            
+            particles = [];
+            screenShake = 0;
+            
+            updateUI();
+            gameState = 'playing';
+        }
+
+        function jump() {
+            if (gameState !== 'playing') return;
+            
+            const now = Date.now();
+            if (now - lastJumpTime < 100) return; // Prevent double jump
+            lastJumpTime = now;
+
+            if (player.grounded) {
+                player.vy = player.jumpForce;
+                player.grounded = false;
+                
+                // Create jump particles
+                for (let i = 0; i < 10; i++) {
+                    particles.push({
+                        x: player.x,
+                        y: player.y + player.radius,
+                        vx: (Math.random() - 0.5) * 4,
+                        vy: Math.random() * 2,
+                        life: 30,
+                        maxLife: 30,
+                        color: `hsl(${Math.random() * 60 + 200}, 70%, 60%)`
+                    });
+                }
+            }
+        }
+
+        function createLandParticles(x, y) {
+            for (let i = 0; i < 15; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: -Math.random() * 3,
+                    life: 20,
+                    maxLife: 20,
+                    color: `hsl(${Math.random() * 60 + 30}, 80%, 60%)`
+                });
+            }
+        }
+
+        function showPerfect() {
+            const perfect = document.getElementById('perfect');
+            perfect.classList.add('show');
+            setTimeout(() => perfect.classList.remove('show'), 500);
+        }
+
+        function update() {
+            if (gameState !== 'playing') return;
+
+            // Update player
+            player.vy += player.gravity;
+            player.y += player.vy;
+            player.rotation += player.vy * 0.05;
+
+            // Trail
+            player.trail.push({ x: player.x, y: player.y, alpha: 1 });
+            if (player.trail.length > 10) player.trail.shift();
+            player.trail.forEach(t => t.alpha *= 0.9);
+
+            // Check ground collision
+            let onPlatform = false;
+            platforms.forEach(p => {
+                if (player.x + player.radius > p.x &&
+                    player.x - player.radius < p.x + p.width &&
+                    player.y + player.radius >= p.y &&
+                    player.y + player.radius <= p.y + p.height + 10 &&
+                    player.vy >= 0) {
+                    
+                    player.y = p.y - player.radius;
+                    player.vy = 0;
+                    
+                    if (!player.grounded) {
+                        // Just landed
+                        player.grounded = true;
+                        player.rotation = 0;
+                        createLandParticles(player.x, player.y + player.radius);
+                        
+                        // Scoring
+                        if (!p.passed) {
+                            p.passed = true;
+                            
+                            // Perfect timing check (landing near center)
+                            const platformCenter = p.x + p.width / 2;
+                            const distanceFromCenter = Math.abs(player.x - platformCenter);
+                            
+                            if (distanceFromCenter < 15) {
+                                combo++;
+                                score += 10 * combo;
+                                showPerfect();
+                                screenShake = 5;
+                                
+                                const comboDisplay = document.getElementById('combo');
+                                comboDisplay.textContent = combo > 1 ? `${combo}x コンボ!` : '';
+                                comboDisplay.classList.add('pop');
+                                setTimeout(() => comboDisplay.classList.remove('pop'), 200);
+                            } else {
+                                combo = 0;
+                                score += 5;
+                                document.getElementById('combo').textContent = '';
+                            }
+                            
+                            // Increase difficulty
+                            if (score % 50 === 0) {
+                                platformSpeed += 0.2;
+                                gameSpeed += 0.05;
+                            }
+                            
+                            updateUI();
+                        }
+                    }
+                    onPlatform = true;
+                }
+            });
+
+            // Fall off screen
+            if (player.y > canvas.height + 50) {
+                gameOver();
+                return;
+            }
+
+            // Move platforms
+            platforms.forEach(p => {
+                p.x -= platformSpeed;
+            });
+
+            // Remove off-screen platforms
+            platforms = platforms.filter(p => p.x > -100);
+
+            // Add new platforms
+            if (platforms.length === 0 || platforms[platforms.length - 1].x < canvas.width - platformGap) {
+                platforms.push(createPlatform(nextPlatformX));
+                nextPlatformX += platformGap + Math.random() * 100;
+            }
+
+            // Update particles
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.1;
+                p.life--;
+            });
+            particles = particles.filter(p => p.life > 0);
+
+            // Screen shake decay
+            if (screenShake > 0) screenShake *= 0.9;
+        }
+
+        function draw() {
+            ctx.save();
+            
+            // Apply screen shake
+            if (screenShake > 0.5) {
+                ctx.translate(
+                    (Math.random() - 0.5) * screenShake,
+                    (Math.random() - 0.5) * screenShake
+                );
+            }
+
+            // Clear
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw platforms
+            platforms.forEach(p => {
+                const gradient = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.height);
+                gradient.addColorStop(0, p.color);
+                gradient.addColorStop(1, '#1a1a2e');
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(p.x, p.y, p.width, p.height);
+                
+                // Platform glow
+                ctx.shadowColor = p.color;
+                ctx.shadowBlur = 10;
+                ctx.fillRect(p.x, p.y, p.width, 3);
+                ctx.shadowBlur = 0;
+            });
+
+            // Draw player trail
+            player.trail.forEach((t, i) => {
+                const alpha = (i / player.trail.length) * t.alpha;
+                ctx.beginPath();
+                ctx.arc(t.x, t.y, player.radius * (i / player.trail.length), 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(102, 126, 234, ${alpha * 0.5})`;
+                ctx.fill();
+            });
+
+            // Draw player
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            ctx.rotate(player.rotation);
+            
+            const playerGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, player.radius);
+            playerGradient.addColorStop(0, '#667eea');
+            playerGradient.addColorStop(1, '#764ba2');
+            
+            ctx.beginPath();
+            ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = playerGradient;
+            ctx.fill();
+            
+            // Player glow
+            ctx.shadowColor = '#667eea';
+            ctx.shadowBlur = 20;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            ctx.restore();
+
+            // Draw particles
+            particles.forEach(p => {
+                const alpha = p.life / p.maxLife;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3 * alpha, 0, Math.PI * 2);
+                ctx.fillStyle = p.color.replace(')', `, ${alpha})`).replace('hsl', 'hsla');
+                ctx.fill();
+            });
+
+            ctx.restore();
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+        }
+
+        function gameOver() {
+            gameState = 'gameover';
+            
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('timingJumpBestScore', bestScore);
+            }
+            
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('bestScore').textContent = bestScore;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        function restart() {
+            document.getElementById('gameOver').style.display = 'none';
+            init();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Input handling
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                jump();
+            }
+        });
+
+        canvas.addEventListener('click', jump);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        });
+
+        window.addEventListener('resize', () => {
+            const oldGroundY = player.groundY;
+            resize();
+            if (player.grounded) {
+                player.y = player.groundY - player.radius;
+            }
+        });
+
+        // Start
+        init();
+        gameLoop();
+    </script>
+</body>
+</html>
