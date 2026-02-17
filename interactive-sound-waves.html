@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Sound Waves</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0e27;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 100;
+        }
+
+        .start-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            font-size: 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.4);
+        }
+
+        .start-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 15px 50px rgba(102, 126, 234, 0.6);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            z-index: 50;
+            pointer-events: none;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 16px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+            z-index: 50;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="overlay" id="overlay">
+        <button class="start-btn" id="startBtn">🎵 Start Experience</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶ Fullscreen</button>
+
+    <div class="info">
+        Move mouse to change sound • Click to change wave pattern
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const overlay = document.getElementById('overlay');
+        const startBtn = document.getElementById('startBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let audioContext;
+        let analyser;
+        let oscillator;
+        let gainNode;
+        let isRunning = false;
+        let mouseX = 0;
+        let mouseY = 0;
+        let wavePattern = 0;
+        const patterns = ['sine', 'square', 'triangle', 'sawtooth'];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+
+            oscillator = audioContext.createOscillator();
+            gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(analyser);
+            analyser.connect(audioContext.destination);
+
+            oscillator.type = 'sine';
+            oscillator.frequency.value = 440;
+            gainNode.gain.value = 0.3;
+
+            oscillator.start();
+        }
+
+        function updateSound(x, y) {
+            if (!oscillator) return;
+
+            const freq = 200 + (x / canvas.width) * 800;
+            const volume = (y / canvas.height) * 0.5;
+
+            oscillator.frequency.setValueAtTime(freq, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+        }
+
+        function drawWave() {
+            ctx.fillStyle = 'rgba(10, 14, 39, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const time = Date.now() * 0.001;
+
+            // Draw multiple wave layers
+            for (let layer = 0; layer < 5; layer++) {
+                ctx.beginPath();
+                ctx.strokeStyle = `hsla(${240 + layer * 20 + time * 20}, 80%, ${60 + layer * 5}%, ${0.8 - layer * 0.1})`;
+                ctx.lineWidth = 3 - layer * 0.4;
+
+                for (let x = 0; x < canvas.width; x++) {
+                    const normalizedX = x / canvas.width;
+                    const mouseInfluence = Math.exp(-Math.pow((normalizedX - mouseX / canvas.width) * 5, 2));
+
+                    let y;
+                    const baseFreq = 0.02 + layer * 0.01;
+                    const amplitude = 100 + layer * 30;
+
+                    if (patterns[wavePattern] === 'sine') {
+                        y = Math.sin(x * baseFreq + time * 2 + layer) * amplitude * (1 + mouseInfluence);
+                    } else if (patterns[wavePattern] === 'square') {
+                        y = Math.sign(Math.sin(x * baseFreq + time * 2 + layer)) * amplitude * (0.5 + mouseInfluence * 0.5);
+                    } else if (patterns[wavePattern] === 'triangle') {
+                        y = (Math.abs((x * baseFreq + time * 2 + layer) % (2 * Math.PI) - Math.PI) - Math.PI / 2) * 2 / Math.PI * amplitude * (1 + mouseInfluence);
+                    } else {
+                        y = ((x * baseFreq + time * 2 + layer) % (2 * Math.PI) - Math.PI) / Math.PI * amplitude * (1 + mouseInfluence);
+                    }
+
+                    y += canvas.height / 2 + Math.sin(time + layer) * 20;
+
+                    if (x === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+
+                ctx.stroke();
+            }
+
+            // Draw particles
+            for (let i = 0; i < 50; i++) {
+                const x = (Math.sin(time * 0.5 + i * 0.5) * 0.5 + 0.5) * canvas.width;
+                const y = (Math.cos(time * 0.3 + i * 0.3) * 0.5 + 0.5) * canvas.height;
+                const size = 2 + Math.sin(time + i) * 1;
+
+                ctx.beginPath();
+                ctx.fillStyle = `hsla(${200 + i * 5 + time * 30}, 70%, 70%, 0.8)`;
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw frequency bars at bottom
+            if (analyser) {
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                analyser.getByteFrequencyData(dataArray);
+
+                const barWidth = canvas.width / bufferLength * 2.5;
+
+                for (let i = 0; i < bufferLength; i++) {
+                    const barHeight = (dataArray[i] / 255) * 150;
+                    const x = i * barWidth;
+                    const y = canvas.height - barHeight;
+
+                    const hue = 200 + (i / bufferLength) * 120;
+                    ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.8)`;
+                    ctx.fillRect(x, y, barWidth - 2, barHeight);
+                }
+            }
+
+            requestAnimationFrame(drawWave);
+        }
+
+        startBtn.addEventListener('click', () => {
+            initAudio();
+            overlay.style.display = 'none';
+            isRunning = true;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            if (isRunning) {
+                updateSound(mouseX, mouseY);
+            }
+        });
+
+        canvas.addEventListener('click', () => {
+            wavePattern = (wavePattern + 1) % patterns.length;
+            if (oscillator) {
+                oscillator.type = patterns[wavePattern];
+            }
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Start animation
+        drawWave();
+    </script>
+</body>
+</html>
