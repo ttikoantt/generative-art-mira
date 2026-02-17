@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Pattern Memory</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #00d9ff;
+            margin-bottom: 10px;
+            font-size: 28px;
+            text-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+        }
+
+        .stat {
+            color: #00ff88;
+            font-size: 16px;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+
+        .stat span {
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .grid-container {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .cell {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(0, 217, 255, 0.3);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            backdrop-filter: blur(5px);
+        }
+
+        .cell:hover:not(.revealed) {
+            background: rgba(0, 217, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .cell.pattern {
+            background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+            border-color: #00ff88;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.6);
+        }
+
+        .cell.selected {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff8e8e 100%);
+            border-color: #ff6b6b;
+            box-shadow: 0 0 20px rgba(255, 107, 107, 0.6);
+        }
+
+        .cell.correct {
+            background: linear-gradient(135deg, #00ff88 0%, #00d9ff 100%);
+            animation: correctPulse 0.5s;
+        }
+
+        .cell.wrong {
+            background: linear-gradient(135deg, #ff0000 0%, #ff6b6b 100%);
+            animation: wrongPulse 0.5s;
+        }
+
+        @keyframes correctPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        @keyframes wrongPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .message {
+            color: #00d9ff;
+            font-size: 18px;
+            margin-bottom: 20px;
+            min-height: 27px;
+            text-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+        }
+
+        .timer {
+            color: #ff6b6b;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.2) 0%, rgba(0, 255, 136, 0.2) 100%);
+            border: 2px solid #00d9ff;
+            color: #00d9ff;
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(5px);
+            border-radius: 25px;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.4) 0%, rgba(0, 255, 136, 0.4) 100%);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 22px;
+            }
+
+            .cell {
+                width: 55px;
+                height: 55px;
+            }
+
+            .stats {
+                gap: 15px;
+            }
+
+            .stat {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <h1>🧠 Pattern Memory</h1>
+
+    <div class="stats">
+        <div class="stat">レベル: <span id="level">1</span></div>
+        <div class="stat">スコア: <span id="score">0</span></div>
+        <div class="stat">ハイスコア: <span id="highScore">0</span></div>
+    </div>
+
+    <div class="timer" id="timer"></div>
+
+    <div class="message" id="message">スタートボタンを押してね！</div>
+
+    <div class="grid-container" id="grid"></div>
+
+    <div class="controls">
+        <button onclick="startGame()">スタート</button>
+        <button onclick="resetGame()">リセット</button>
+    </div>
+
+    <script>
+        let gridSize = 3;
+        let pattern = [];
+        let selected = [];
+        let level = 1;
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('patternMemoryHighScore')) || 0;
+        let gameState = 'idle'; // idle, showing, memorizing, playing, gameOver
+        let showTimer = null;
+        let countdownTimer = null;
+
+        const grid = document.getElementById('grid');
+        const message = document.getElementById('message');
+        const levelDisplay = document.getElementById('level');
+        const scoreDisplay = document.getElementById('score');
+        const highScoreDisplay = document.getElementById('highScore');
+        const timerDisplay = document.getElementById('timer');
+
+        highScoreDisplay.textContent = highScore;
+
+        function initGrid() {
+            grid.innerHTML = '';
+            grid.style.gridTemplateColumns = `repeat(${gridSize}, 70px)`;
+
+            for (let i = 0; i < gridSize * gridSize; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.index = i;
+                cell.addEventListener('click', () => handleCellClick(i));
+                grid.appendChild(cell);
+            }
+        }
+
+        function generatePattern() {
+            pattern = [];
+            const totalCells = gridSize * gridSize;
+            const patternSize = Math.min(3 + level, totalCells - 1);
+
+            while (pattern.length < patternSize) {
+                const index = Math.floor(Math.random() * totalCells);
+                if (!pattern.includes(index)) {
+                    pattern.push(index);
+                }
+            }
+        }
+
+        function showPattern() {
+            gameState = 'showing';
+            message.textContent = 'パターンを覚えてね！';
+            timerDisplay.textContent = '';
+
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach((cell, index) => {
+                cell.classList.remove('pattern', 'selected', 'correct', 'wrong');
+                if (pattern.includes(index)) {
+                    cell.classList.add('pattern');
+                }
+            });
+
+            // パターンを表示
+            const showTime = Math.max(1000 - level * 50, 500);
+
+            showTimer = setTimeout(() => {
+                hidePattern();
+            }, showTime);
+        }
+
+        function hidePattern() {
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                cell.classList.remove('pattern');
+            });
+
+            gameState = 'memorizing';
+            message.textContent = '準備...';
+
+            countdownTimer = setTimeout(() => {
+                gameState = 'playing';
+                message.textContent = 'パターンを再現してね！';
+                selected = [];
+            }, 500);
+        }
+
+        function handleCellClick(index) {
+            if (gameState !== 'playing') return;
+
+            const cell = document.querySelectorAll('.cell')[index];
+
+            if (selected.includes(index)) {
+                selected = selected.filter(i => i !== index);
+                cell.classList.remove('selected');
+            } else {
+                selected.push(index);
+                cell.classList.add('selected');
+
+                // 選択数がパターンと同じになったらチェック
+                if (selected.length === pattern.length) {
+                    checkPattern();
+                }
+            }
+        }
+
+        function checkPattern() {
+            const cells = document.querySelectorAll('.cell');
+            let correct = 0;
+
+            selected.forEach(index => {
+                const cell = cells[index];
+                if (pattern.includes(index)) {
+                    cell.classList.remove('selected');
+                    cell.classList.add('correct');
+                    correct++;
+                } else {
+                    cell.classList.remove('selected');
+                    cell.classList.add('wrong');
+                }
+            });
+
+            // 未選択のパターンセルを表示
+            pattern.forEach(index => {
+                if (!selected.includes(index)) {
+                    cells[index].classList.add('pattern');
+                }
+            });
+
+            setTimeout(() => {
+                if (correct === pattern.length) {
+                    // 正解
+                    level++;
+                    score += level * 10;
+                    updateStats();
+
+                    if (level % 3 === 1 && gridSize < 5) {
+                        gridSize++;
+                        initGrid();
+                    }
+
+                    message.textContent = '正解！次のレベルへ！';
+                    setTimeout(() => {
+                        startLevel();
+                    }, 1500);
+                } else {
+                    // 不正解
+                    gameOver();
+                }
+            }, 1000);
+        }
+
+        function startLevel() {
+            selected = [];
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                cell.classList.remove('pattern', 'selected', 'correct', 'wrong');
+            });
+
+            setTimeout(() => {
+                generatePattern();
+                showPattern();
+            }, 500);
+        }
+
+        function startGame() {
+            if (showTimer) clearTimeout(showTimer);
+            if (countdownTimer) clearTimeout(countdownTimer);
+
+            gridSize = 3;
+            level = 1;
+            score = 0;
+
+            updateStats();
+            initGrid();
+
+            gameState = 'playing';
+            message.textContent = 'ゲームスタート！';
+
+            setTimeout(() => {
+                startLevel();
+            }, 1000);
+        }
+
+        function gameOver() {
+            gameState = 'gameOver';
+            message.textContent = `ゲームオーバー！ スコア: ${score}`;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('patternMemoryHighScore', highScore);
+                highScoreDisplay.textContent = highScore;
+                message.textContent += ' 🎉 新記録！';
+            }
+        }
+
+        function resetGame() {
+            if (showTimer) clearTimeout(showTimer);
+            if (countdownTimer) clearTimeout(countdownTimer);
+
+            gridSize = 3;
+            level = 1;
+            score = 0;
+            pattern = [];
+            selected = [];
+            gameState = 'idle';
+
+            updateStats();
+            initGrid();
+            message.textContent = 'スタートボタンを押してね！';
+            timerDisplay.textContent = '';
+        }
+
+        function updateStats() {
+            levelDisplay.textContent = level;
+            scoreDisplay.textContent = score;
+        }
+
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        // 初期化
+        initGrid();
+    </script>
+</body>
+</html>

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Neon Flow Fields</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .controls {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        button {
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid rgba(0, 255, 255, 0.5);
+            color: #0ff;
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(5px);
+        }
+
+        button:hover {
+            background: rgba(0, 255, 255, 0.4);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 100;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            color: #0ff;
+            font-size: 12px;
+            opacity: 0.7;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button onclick="resetParticles()">Reset</button>
+        <button onclick="toggleTrails()">Toggle Trails</button>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="info">Neon Flow Fields - タッチで新しい粒子を追加</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let showTrails = true;
+
+        // パラメータ
+        const PARTICLE_COUNT = 2000;
+        const NOISE_SCALE = 0.005;
+        const TIME_SCALE = 0.0001;
+        const PARTICLE_SPEED = 2;
+        const TRAIL_FADE = 0.02;
+
+        // シンプレックスノイズの簡易実装
+        class SimplexNoise {
+            constructor() {
+                this.grad3 = [
+                    [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
+                    [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+                    [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
+                ];
+                this.p = [];
+                for (let i = 0; i < 256; i++) {
+                    this.p[i] = Math.floor(Math.random() * 256);
+                }
+                this.perm = [];
+                for (let i = 0; i < 512; i++) {
+                    this.perm[i] = this.p[i & 255];
+                }
+            }
+
+            dot(g, x, y) {
+                return g[0] * x + g[1] * y;
+            }
+
+            noise(xin, yin) {
+                const F2 = 0.5 * (Math.sqrt(3.0) - 1.0);
+                const G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
+
+                let n0, n1, n2;
+                const s = (xin + yin) * F2;
+                const i = Math.floor(xin + s);
+                const j = Math.floor(yin + s);
+                const t = (i + j) * G2;
+                const X0 = i - t;
+                const Y0 = j - t;
+                const x0 = xin - X0;
+                const y0 = yin - Y0;
+
+                let i1, j1;
+                if (x0 > y0) {
+                    i1 = 1;
+                    j1 = 0;
+                } else {
+                    i1 = 0;
+                    j1 = 1;
+                }
+
+                const x1 = x0 - i1 + G2;
+                const y1 = y0 - j1 + G2;
+                const x2 = x0 - 1.0 + 2.0 * G2;
+                const y2 = y0 - 1.0 + 2.0 * G2;
+
+                const ii = i & 255;
+                const jj = j & 255;
+                const gi0 = this.perm[ii + this.perm[jj]] % 12;
+                const gi1 = this.perm[ii + i1 + this.perm[jj + j1]] % 12;
+                const gi2 = this.perm[ii + 1 + this.perm[jj + 1]] % 12;
+
+                let t0 = 0.5 - x0 * x0 - y0 * y0;
+                if (t0 < 0) {
+                    n0 = 0.0;
+                } else {
+                    t0 *= t0;
+                    n0 = t0 * t0 * this.dot(this.grad3[gi0], x0, y0);
+                }
+
+                let t1 = 0.5 - x1 * x1 - y1 * y1;
+                if (t1 < 0) {
+                    n1 = 0.0;
+                } else {
+                    t1 *= t1;
+                    n1 = t1 * t1 * this.dot(this.grad3[gi1], x1, y1);
+                }
+
+                let t2 = 0.5 - x2 * x2 - y2 * y2;
+                if (t2 < 0) {
+                    n2 = 0.0;
+                } else {
+                    t2 *= t2;
+                    n2 = t2 * t2 * this.dot(this.grad3[gi2], x2, y2);
+                }
+
+                return 70.0 * (n0 + n1 + n2);
+            }
+        }
+
+        const noise = new SimplexNoise();
+        let time = 0;
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.speed = PARTICLE_SPEED * (0.5 + Math.random() * 0.5);
+                this.life = 1;
+                this.maxLife = 100 + Math.random() * 200;
+                this.age = 0;
+                this.hueOffset = Math.random() * 60 - 30;
+            }
+
+            update() {
+                // ノイズから角度を取得
+                const angle = noise.noise(
+                    this.x * NOISE_SCALE,
+                    this.y * NOISE_SCALE + time * TIME_SCALE
+                ) * Math.PI * 4;
+
+                // 移動
+                this.x += Math.cos(angle) * this.speed;
+                this.y += Math.sin(angle) * this.speed;
+
+                this.age++;
+                this.life = 1 - (this.age / this.maxLife);
+
+                // 画面外に出たらリセット
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height || this.age >= this.maxLife) {
+                    this.reset();
+                }
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.age = 0;
+                this.life = 1;
+                this.hueOffset = Math.random() * 60 - 30;
+            }
+
+            draw() {
+                const hue = (time * 0.05 + this.x * 0.1 + this.y * 0.05 + this.hueOffset) % 360;
+                const saturation = 100;
+                const lightness = 50 + this.life * 20;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 1 + this.life, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${this.life * 0.8})`;
+                ctx.fill();
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function resetParticles() {
+            initParticles();
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        function toggleTrails() {
+            showTrails = !showTrails;
+        }
+
+        function animate() {
+            // 背景をフェード
+            if (showTrails) {
+                ctx.fillStyle = `rgba(0, 0, 0, ${TRAIL_FADE})`;
+                ctx.fillRect(0, 0, width, height);
+            } else {
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, width, height);
+            }
+
+            // 粒子を更新・描画
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            time++;
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        // タッチで新しい粒子を追加
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            for (let i = 0; i < 50; i++) {
+                const particle = new Particle(
+                    x + (Math.random() - 0.5) * 100,
+                    y + (Math.random() - 0.5) * 100
+                );
+                particles.push(particle);
+            }
+
+            // 粒子が多すぎたら古いものを削除
+            while (particles.length > PARTICLE_COUNT * 2) {
+                particles.shift();
+            }
+        });
+
+        window.addEventListener('resize', resize);
+        resize();
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>
