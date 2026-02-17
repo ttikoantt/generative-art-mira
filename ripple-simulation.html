@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>波紋シミュレーション | Ripple Simulation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0c1445 0%, #1a237e 50%, #0d47a1 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: clamp(1.5rem, 5vw, 3rem);
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(100, 181, 246, 0.5);
+            text-align: center;
+            padding: 0 20px;
+        }
+
+        .canvas-container {
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 0 60px rgba(100, 181, 246, 0.3);
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        canvas {
+            display: block;
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 0 20px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        label {
+            color: #ffffff;
+            font-size: 0.9rem;
+            text-shadow: 0 0 10px rgba(100, 181, 246, 0.5);
+        }
+
+        input[type="range"] {
+            width: 150px;
+            height: 6px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #64b5f6;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(100, 181, 246, 0.8);
+        }
+
+        button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 20px rgba(100, 181, 246, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 30px rgba(100, 181, 246, 0.6);
+        }
+
+        .hint {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.85rem;
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        @media (max-width: 768px) {
+            .canvas-container {
+                border-radius: 15px;
+            }
+
+            .controls {
+                gap: 10px;
+            }
+
+            input[type="range"] {
+                width: 120px;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🌊 波紋シミュレーション</h1>
+
+    <div class="canvas-container">
+        <canvas id="rippleCanvas"></canvas>
+        <button class="fullscreen-btn" id="fullscreenBtn" title="全画面表示">⛶</button>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="damping">波の減衰</label>
+            <input type="range" id="damping" min="0.9" max="0.99" step="0.01" value="0.96">
+        </div>
+        <div class="control-group">
+            <label for="radius">波の大きさ</label>
+            <input type="range" id="radius" min="1" max="10" step="1" value="5">
+        </div>
+        <button id="resetBtn">リセット</button>
+    </div>
+
+    <p class="hint">💡 画面をクリックまたはタップして波紋を作成</p>
+
+    <script>
+        const canvas = document.getElementById('rippleCanvas');
+        const ctx = canvas.getContext('2d');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const dampingSlider = document.getElementById('damping');
+        const radiusSlider = document.getElementById('radius');
+
+        // Canvasのサイズ設定
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const maxWidth = Math.min(800, window.innerWidth - 40);
+            const maxHeight = Math.min(600, window.innerHeight - 280);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 波紋シミュレーション用の配列
+        const cols = canvas.width;
+        const rows = canvas.height;
+        let current = new Array(cols * rows).fill(0);
+        let previous = new Array(cols * rows).fill(0);
+
+        // 波紋を追加
+        function addRipple(x, y, radius) {
+            const r = parseInt(radiusSlider.value);
+            for (let i = -r; i <= r; i++) {
+                for (let j = -r; j <= r; j++) {
+                    if (i * i + j * j <= r * r) {
+                        const px = Math.floor(x) + i;
+                        const py = Math.floor(y) + j;
+                        if (px >= 0 && px < cols && py >= 0 && py < rows) {
+                            const idx = py * cols + px;
+                            previous[idx] = 500;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 波紋を更新
+        function updateRipples() {
+            const damping = parseFloat(dampingSlider.value);
+
+            for (let x = 1; x < cols - 1; x++) {
+                for (let y = 1; y < rows - 1; y++) {
+                    const idx = y * cols + x;
+                    current[idx] = (
+                        previous[idx - 1] +
+                        previous[idx + 1] +
+                        previous[idx - cols] +
+                        previous[idx + cols]
+                    ) / 2 - current[idx];
+                    current[idx] *= damping;
+                }
+            }
+
+            // バッファをスワップ
+            [current, previous] = [previous, current];
+        }
+
+        // 波紋を描画
+        function drawRipples() {
+            const imageData = ctx.createImageData(cols, rows);
+            const data = imageData.data;
+
+            for (let i = 0; i < cols * rows; i++) {
+                const value = Math.min(255, Math.max(0, current[i]));
+                const idx = i * 4;
+
+                // 青い水面のような色
+                const r = Math.floor(value * 0.2);
+                const g = Math.floor(value * 0.4 + 20);
+                const b = Math.floor(value * 0.8 + 100);
+
+                data[idx] = r;
+                data[idx + 1] = g;
+                data[idx + 2] = b;
+                data[idx + 3] = 255;
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // アニメーションループ
+        function animate() {
+            updateRipples();
+            drawRipples();
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        function handleInteraction(e) {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const x = (clientX - rect.left) * (canvas.width / rect.width);
+            const y = (clientY - rect.top) * (canvas.height / rect.height);
+            addRipple(x, y);
+        }
+
+        canvas.addEventListener('mousedown', handleInteraction);
+        canvas.addEventListener('touchstart', handleInteraction);
+
+        // 全画面表示
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                canvas.parentElement.requestFullscreen();
+            }
+        });
+
+        // リセット
+        resetBtn.addEventListener('click', () => {
+            current.fill(0);
+            previous.fill(0);
+        });
+
+        // 初期波紋
+        setTimeout(() => {
+            addRipple(cols / 2, rows / 2);
+        }, 500);
+
+        animate();
+    </script>
+</body>
+</html>
