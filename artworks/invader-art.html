@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スペースインベーダーアートジェネレーター</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0e27;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #00ff00;
+            font-size: clamp(1.2rem, 4vw, 2rem);
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px #00ff00;
+        }
+
+        .subtitle {
+            color: #00ff00;
+            font-size: clamp(0.7rem, 2vw, 0.9rem);
+            margin-bottom: 20px;
+            opacity: 0.7;
+        }
+
+        #canvas {
+            border: 2px solid #00ff00;
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.3);
+            max-width: 100%;
+            image-rendering: pixelated;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        button {
+            background: #0a0e27;
+            border: 2px solid #00ff00;
+            color: #00ff00;
+            padding: 12px 24px;
+            font-family: 'Courier New', monospace;
+            font-size: clamp(0.8rem, 2vw, 1rem);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: #00ff00;
+            color: #0a0e27;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        }
+
+        .info {
+            margin-top: 20px;
+            color: #00ff00;
+            font-size: clamp(0.7rem, 2vw, 0.9rem);
+            opacity: 0.7;
+        }
+
+        .stats {
+            margin-top: 10px;
+            color: #00ff00;
+            font-size: clamp(0.6rem, 1.5vw, 0.8rem);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #0a0e27;
+            border: 2px solid #00ff00;
+            color: #00ff00;
+            padding: 10px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .fullscreen-btn:hover {
+            background: #00ff00;
+            color: #0a0e27;
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
+
+    <div class="container">
+        <h1>👾 SPACE INVADER ART</h1>
+        <p class="subtitle">ジェネレーティブ・インベーダー</p>
+
+        <canvas id="canvas" width="600" height="600"></canvas>
+
+        <div class="controls">
+            <button id="generateBtn">新規生成</button>
+            <button id="swarmBtn">群れを生成</button>
+            <button id="animateBtn">アニメーション</button>
+            <button id="downloadBtn">ダウンロード</button>
+        </div>
+
+        <div class="info">
+            <p>各インベーダーは8x8ピクセルの左右対称パターン</p>
+        </div>
+
+        <div class="stats">
+            <span id="stats"></span>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // レトロなカラーパレット
+        const colors = [
+            '#00ff00', // グリーン（クラシック）
+            '#ff0066', // ピンク
+            '#00ffff', // シアン
+            '#ffff00', // イエロー
+            '#ff6600', // オレンジ
+            '#ff00ff', // マゼンタ
+            '#66ff00', // ライトグリーン
+            '#00ff99', // ターコイズ
+        ];
+
+        // インベーダーサイズ（ピクセル単位）
+        const PIXEL_SIZE = 8;
+        const INVADER_SIZE = 8; // 8x8 グリッド
+        const INVADER_PIXEL = PIXEL_SIZE * 3; // 各ピクセルの描画サイズ
+
+        let invaders = [];
+        let animating = false;
+        let animationId = null;
+
+        // ランダムなインベーダーパターンを生成
+        function generateInvader() {
+            const pattern = [];
+            const grid = INVADER_SIZE;
+            const half = Math.floor(grid / 2);
+
+            // 左半分をランダムに生成
+            for (let y = 0; y < grid; y++) {
+                pattern[y] = [];
+                for (let x = 0; x < half; x++) {
+                    // エッジは埋める傾向、中心はランダム
+                    const edgeBonus = (x === 0 || y === 0 || y === grid - 1) ? 0.3 : 0;
+                    pattern[y][x] = Math.random() < (0.35 + edgeBonus) ? 1 : 0;
+                }
+            }
+
+            // 右半分をミラー
+            for (let y = 0; y < grid; y++) {
+                for (let x = half; x < grid; x++) {
+                    pattern[y][x] = pattern[y][grid - 1 - x];
+                }
+            }
+
+            return {
+                pattern: pattern,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                x: 0,
+                y: 0,
+                direction: Math.random() < 0.5 ? 1 : -1,
+                speed: 0.5 + Math.random() * 1.5
+            };
+        }
+
+        // インベーダーを描画
+        function drawInvader(invader) {
+            ctx.fillStyle = invader.color;
+            ctx.shadowColor = invader.color;
+            ctx.shadowBlur = 10;
+
+            for (let y = 0; y < INVADER_SIZE; y++) {
+                for (let x = 0; x < INVADER_SIZE; x++) {
+                    if (invader.pattern[y][x]) {
+                        ctx.fillRect(
+                            invader.x + x * INVADER_PIXEL,
+                            invader.y + y * INVADER_PIXEL,
+                            INVADER_PIXEL - 1,
+                            INVADER_PIXEL - 1
+                        );
+                    }
+                }
+            }
+
+            ctx.shadowBlur = 0;
+        }
+
+        // 単一のインベーダーを生成して描画
+        function generateSingle() {
+            invaders = [];
+            const invader = generateInvader();
+
+            // キャンバスの中心に配置
+            const size = INVADER_SIZE * INVADER_PIXEL;
+            invader.x = (canvas.width - size) / 2;
+            invader.y = (canvas.height - size) / 2;
+
+            invaders.push(invader);
+            draw();
+        }
+
+        // 群れを生成
+        function generateSwarm() {
+            invaders = [];
+            const cols = 8;
+            const rows = 6;
+            const spacing = 70;
+
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const invader = generateInvader();
+                    invader.x = 50 + col * spacing;
+                    invader.y = 50 + row * spacing;
+                    invader.speed = 0.5 + Math.random() * 0.5;
+                    invaders.push(invader);
+                }
+            }
+
+            draw();
+            updateStats();
+        }
+
+        // キャンバスを描画
+        function draw() {
+            // 背景
+            ctx.fillStyle = '#0a0e27';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 星空効果
+            for (let i = 0; i < 100; i++) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.3})`;
+                ctx.fillRect(
+                    Math.random() * canvas.width,
+                    Math.random() * canvas.height,
+                    1, 1
+                );
+            }
+
+            // インベーダーを描画
+            invaders.forEach(invader => {
+                drawInvader(invader);
+            });
+
+            updateStats();
+        }
+
+        // アニメーション
+        function animate() {
+            if (!animating) return;
+
+            invaders.forEach(invader => {
+                invader.x += invader.speed * invader.direction;
+
+                // 境界で反転
+                const size = INVADER_SIZE * INVADER_PIXEL;
+                if (invader.x <= 10 || invader.x + size >= canvas.width - 10) {
+                    invader.direction *= -1;
+                    invader.y += 20; // 少し下がる
+                }
+
+                // 下端に達したら上に戻る
+                if (invader.y > canvas.height - size) {
+                    invader.y = 10;
+                }
+            });
+
+            draw();
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // 統計を更新
+        function updateStats() {
+            document.getElementById('stats').textContent =
+                `インベーダー数: ${invaders.length}`;
+        }
+
+        // ダウンロード
+        function downloadImage() {
+            const link = document.createElement('a');
+            link.download = 'invader-art.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
+        // 全画面表示
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        document.getElementById('generateBtn').addEventListener('click', generateSingle);
+        document.getElementById('swarmBtn').addEventListener('click', generateSwarm);
+        document.getElementById('animateBtn').addEventListener('click', () => {
+            animating = !animating;
+            document.getElementById('animateBtn').textContent = animating ? '停止' : 'アニメーション';
+
+            if (invaders.length === 0) {
+                generateSwarm();
+            }
+
+            if (animating) {
+                animate();
+            } else {
+                cancelAnimationFrame(animationId);
+            }
+        });
+        document.getElementById('downloadBtn').addEventListener('click', downloadImage);
+        document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
+
+        // 初期化
+        generateSingle();
+    </script>
+</body>
+</html>
