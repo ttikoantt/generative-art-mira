@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Number Cascade - 数の滝</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            overflow: hidden;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            height: 70vh;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 20px;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+        }
+
+        .score {
+            color: #00ff88;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+
+        .level {
+            color: #00c8ff;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .overlay h2 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #00c8ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .overlay p {
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.6;
+        }
+
+        .overlay button {
+            background: linear-gradient(135deg, #00c8ff, #00ff88);
+            border: none;
+            color: #0f0c29;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        .overlay button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(0, 255, 136, 0.4);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .combo {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3rem;
+            font-weight: bold;
+            color: #ffff00;
+            text-shadow: 0 0 20px rgba(255, 255, 0, 0.8);
+            pointer-events: none;
+            animation: comboPop 0.5s ease-out forwards;
+        }
+
+        @keyframes comboPop {
+            0% {
+                transform: translate(-50%, -50%) scale(0);
+                opacity: 1;
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.3);
+            }
+            100% {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 0;
+            }
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            font-size: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div class="ui">
+            <div class="level">Lv.<span id="level">1</span></div>
+            <div class="score">スコア: <span id="score">0</span></div>
+        </div>
+
+        <div class="overlay" id="startOverlay">
+            <h2>🔢 Number Cascade</h2>
+            <p>
+                落ちてくる数字をタップして消そう！<br>
+                小さい数字から順番に消すと<br>
+                コンボボーナスが発生！
+            </p>
+            <button onclick="startGame()">スタート</button>
+        </div>
+
+        <div class="overlay hidden" id="gameOverOverlay">
+            <h2>ゲームオーバー</h2>
+            <p>
+                スコア: <span id="finalScore">0</span><br>
+                レベル: <span id="finalLevel">1</span><br>
+                最大コンボ: <span id="maxCombo">0</span>
+            </p>
+            <button onclick="startGame()">もう一度</button>
+        </div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let animationId;
+        let lastTime = 0;
+        let spawnTimer = 0;
+        let difficultyTimer = 0;
+
+        let score = 0;
+        let level = 1;
+        let combo = 0;
+        let maxCombo = 0;
+        let lastClickedValue = -1;
+        let isRunning = false;
+
+        let numbers = [];
+        let particles = [];
+
+        function resize() {
+            const container = canvas.parentElement;
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        class Number {
+            constructor() {
+                this.value = Math.floor(Math.random() * 10) + 1;
+                this.x = Math.random() * (canvas.width - 60) + 30;
+                this.y = -40;
+                this.radius = 25;
+                this.speed = 1 + level * 0.2;
+                this.hue = (this.value * 36) % 360;
+                this.scale = 0;
+                this.targetScale = 1;
+            }
+
+            update(deltaTime) {
+                this.y += this.speed;
+                this.scale += (this.targetScale - this.scale) * 0.1;
+
+                // Rotation effect
+                this.rotation = Math.sin(this.y * 0.05) * 0.1;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.scale(this.scale, this.scale);
+                ctx.rotate(this.rotation);
+
+                // Glow
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * 1.5);
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 60%, 0.3)`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 60%, 0)`);
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius * 1.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Circle
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${this.hue}, 70%, 50%)`;
+                ctx.fill();
+
+                // Border
+                ctx.strokeStyle = `hsl(${this.hue}, 100%, 70%)`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Number
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 24px "Segoe UI", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.value, 0, 0);
+
+                ctx.restore();
+            }
+
+            isClicked(x, y) {
+                const dx = x - this.x;
+                const dy = y - this.y;
+                return Math.sqrt(dx * dx + dy * dy) < this.radius;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.life = 1;
+                this.hue = hue;
+                this.size = Math.random() * 8 + 4;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.3;
+                this.life -= 0.02;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function createParticles(x, y, hue, count = 15) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, hue));
+            }
+        }
+
+        function showCombo(combo) {
+            const comboEl = document.createElement('div');
+            comboEl.className = 'combo';
+            comboEl.textContent = `${combo} COMBO!`;
+            canvas.parentElement.appendChild(comboEl);
+            setTimeout(() => comboEl.remove(), 500);
+        }
+
+        function spawnNumber() {
+            numbers.push(new Number());
+        }
+
+        function handleClick(e) {
+            if (!isRunning) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+
+            for (let i = numbers.length - 1; i >= 0; i--) {
+                if (numbers[i].isClicked(x, y)) {
+                    const num = numbers[i];
+
+                    // Combo check
+                    if (lastClickedValue === -1 || num.value > lastClickedValue) {
+                        combo++;
+                        if (combo > maxCombo) maxCombo = combo;
+
+                        const comboBonus = Math.floor(combo * 5 * (1 + level * 0.1));
+                        score += num.value * 10 + comboBonus;
+
+                        if (combo >= 3) {
+                            showCombo(combo);
+                        }
+
+                        lastClickedValue = num.value;
+                    } else {
+                        combo = 0;
+                        lastClickedValue = -1;
+                        score = Math.max(0, score - 50);
+                    }
+
+                    createParticles(num.x, num.y, num.hue, 20);
+                    numbers.splice(i, 1);
+
+                    updateUI();
+                    break;
+                }
+            }
+        }
+
+        canvas.addEventListener('click', handleClick);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleClick(e);
+        });
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('level').textContent = level;
+        }
+
+        function gameOver() {
+            isRunning = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalLevel').textContent = level;
+            document.getElementById('maxCombo').textContent = maxCombo;
+            document.getElementById('gameOverOverlay').classList.remove('hidden');
+        }
+
+        function startGame() {
+            score = 0;
+            level = 1;
+            combo = 0;
+            maxCombo = 0;
+            lastClickedValue = -1;
+            numbers = [];
+            particles = [];
+            isRunning = true;
+
+            document.getElementById('startOverlay').classList.add('hidden');
+            document.getElementById('gameOverOverlay').classList.add('hidden');
+            updateUI();
+
+            lastTime = performance.now();
+            gameLoop(lastTime);
+        }
+
+        function gameLoop(currentTime) {
+            if (!isRunning) return;
+
+            const deltaTime = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+
+            // Clear
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Spawn numbers
+            spawnTimer += deltaTime;
+            const spawnRate = Math.max(0.3, 1.5 - level * 0.1);
+            if (spawnTimer >= spawnRate) {
+                spawnNumber();
+                spawnTimer = 0;
+            }
+
+            // Increase difficulty
+            difficultyTimer += deltaTime;
+            if (difficultyTimer >= 10) {
+                level++;
+                difficultyTimer = 0;
+                updateUI();
+            }
+
+            // Update and draw numbers
+            for (let i = numbers.length - 1; i >= 0; i--) {
+                numbers[i].update(deltaTime);
+                numbers[i].draw();
+
+                // Game over check
+                if (numbers[i].y > canvas.height + 50) {
+                    gameOver();
+                    return;
+                }
+            }
+
+            // Update and draw particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
