@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fractal Garden - フラクタル・ガーデン</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            font-family: 'Arial', sans-serif;
+            overflow-x: hidden;
+        }
+
+        h1 {
+            color: #fff;
+            margin-bottom: 10px;
+            font-size: 1.8rem;
+            text-shadow: 0 0 20px rgba(100, 255, 150, 0.5);
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #2d5016 0%, #1a3009 100%);
+            color: #90ff90;
+            border: 1px solid #40ff40;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            box-shadow: 0 0 10px rgba(100, 255, 150, 0.3);
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #3d6026 0%, #2a4019 100%);
+            box-shadow: 0 0 20px rgba(100, 255, 150, 0.6);
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        #canvas-container {
+            position: relative;
+            border: 2px solid #30ff30;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(100, 255, 150, 0.4);
+        }
+
+        canvas {
+            display: block;
+            background: #000;
+        }
+
+        .info {
+            color: #666;
+            margin-top: 20px;
+            text-align: center;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: linear-gradient(135deg, #1a1a2e 0%, #2d2d4a 100%);
+            color: #fff;
+            border: 1px solid #888;
+            padding: 10px 20px;
+            border-radius: 20px;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.4rem;
+            }
+            .controls {
+                flex-direction: column;
+            }
+            button {
+                width: 100%;
+                max-width: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <h1>🌿 フラクタル・ガーデン</h1>
+    <p class="subtitle">L-systemで植物を生成</p>
+
+    <div class="controls">
+        <button onclick="generatePlant('fern')">🌿 シダ</button>
+        <button onclick="generatePlant('tree')">🌳 木</button>
+        <button onclick="generatePlant('bush')">🌳 低木</button>
+        <button onclick="generatePlant('weed')">🌱 雑草</button>
+        <button onclick="generateRandom()">🎲 ランダム</button>
+        <button onclick="animateGrowth()">✨ 成長アニメーション</button>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="canvas" width="800" height="600"></canvas>
+    </div>
+
+    <div class="info">
+        <p>L-systemは植物の成長パターンを数学的に表現したアルゴリズムです。</p>
+        <p>各ボタンで異なる植物種を生成できます。成長アニメーションでリアルタイムに植物が育つ様子をご覧ください。</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // L-systemルール定義
+        const plants = {
+            fern: {
+                axiom: 'X',
+                rules: {
+                    'X': 'F+[[X]-X]-F[-FX]+X',
+                    'F': 'FF'
+                },
+                angle: 25,
+                iterations: 5,
+                length: 5,
+                color: '#40ff40'
+            },
+            tree: {
+                axiom: 'F',
+                rules: {
+                    'F': 'FF+[+F-F-F]-[-F+F+F]'
+                },
+                angle: 25,
+                iterations: 4,
+                length: 8,
+                color: '#ff9940'
+            },
+            bush: {
+                axiom: 'F',
+                rules: {
+                    'F': 'FF-[-F+F+F]+[+F-F-F]'
+                },
+                angle: 22.5,
+                iterations: 4,
+                length: 7,
+                color: '#ff40ff'
+            },
+            weed: {
+                axiom: 'F',
+                rules: {
+                    'F': 'F[+F]F[-F]F'
+                },
+                angle: 25.7,
+                iterations: 5,
+                length: 4,
+                color: '#ffff40'
+            }
+        };
+
+        let currentString = '';
+        let currentAngle = 0;
+        let currentLength = 0;
+        let currentColor = '#40ff40';
+
+        // 文字列を生成
+        function generateString(axiom, rules, iterations) {
+            let result = axiom;
+            for (let i = 0; i < iterations; i++) {
+                let newString = '';
+                for (let char of result) {
+                    newString += rules[char] || char;
+                }
+                result = newString;
+            }
+            return result;
+        }
+
+        // タートルグラフィックスで描画
+        function drawPlant(string, angle, length, color, animate = false, speed = 1) {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const startX = canvas.width / 2;
+            const startY = canvas.height - 20;
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 10;
+
+            const stack = [];
+            let x = startX;
+            let y = startY;
+            let angleDeg = -90;
+
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+
+            const commands = animate ? string.split('') : null;
+            let currentIndex = 0;
+
+            if (animate && commands) {
+                function animateStep() {
+                    const batchSize = Math.ceil(speed * 100);
+                    for (let i = 0; i < batchSize && currentIndex < commands.length; i++) {
+                        const char = commands[currentIndex];
+                        executeCommand(char, angle, length);
+                        currentIndex++;
+                    }
+
+                    if (currentIndex < commands.length) {
+                        requestAnimationFrame(animateStep);
+                    } else {
+                        ctx.stroke();
+                    }
+                }
+
+                const turtle = {
+                    x, y, angle: angleDeg,
+                    stack: [],
+                    move(dx, dy) {
+                        this.x += dx;
+                        this.y += dy;
+                        ctx.lineTo(this.x, this.y);
+                    },
+                    turn(deg) {
+                        this.angle += deg;
+                    },
+                    save() {
+                        this.stack.push({
+                            x: this.x,
+                            y: this.y,
+                            angle: this.angle
+                        });
+                    },
+                    restore() {
+                        if (this.stack.length > 0) {
+                            const state = this.stack.pop();
+                            this.x = state.x;
+                            this.y = state.y;
+                            this.angle = state.angle;
+                            ctx.moveTo(this.x, this.y);
+                        }
+                    }
+                };
+
+                function executeCommand(char, angle, length) {
+                    const angleRad = turtle.angle * Math.PI / 180;
+                    switch (char) {
+                        case 'F':
+                        case 'X':
+                            const dx = Math.cos(angleRad) * length;
+                            const dy = Math.sin(angleRad) * length;
+                            turtle.move(dx, dy);
+                            break;
+                        case '+':
+                            turtle.turn(angle);
+                            break;
+                        case '-':
+                            turtle.turn(-angle);
+                            break;
+                        case '[':
+                            turtle.save();
+                            break;
+                        case ']':
+                            turtle.restore();
+                            break;
+                    }
+                }
+
+                animateStep();
+            } else {
+                // 即時描画
+                function executeCommand(char, angle, length) {
+                    const angleRad = angleDeg * Math.PI / 180;
+                    switch (char) {
+                        case 'F':
+                        case 'X':
+                            const dx = Math.cos(angleRad) * length;
+                            const dy = Math.sin(angleRad) * length;
+                            x += dx;
+                            y += dy;
+                            ctx.lineTo(x, y);
+                            break;
+                        case '+':
+                            angleDeg += angle;
+                            break;
+                        case '-':
+                            angleDeg -= angle;
+                            break;
+                        case '[':
+                            stack.push({ x, y, angle: angleDeg });
+                            break;
+                        case ']':
+                            if (stack.length > 0) {
+                                const state = stack.pop();
+                                x = state.x;
+                                y = state.y;
+                                angleDeg = state.angle;
+                                ctx.moveTo(x, y);
+                            }
+                            break;
+                    }
+                }
+
+                for (let char of string) {
+                    executeCommand(char, angle, length);
+                }
+
+                ctx.stroke();
+            }
+        }
+
+        // 植物を生成
+        function generatePlant(type) {
+            const plant = plants[type];
+            if (!plant) return;
+
+            currentString = generateString(plant.axiom, plant.rules, plant.iterations);
+            currentAngle = plant.angle;
+            currentLength = plant.length;
+            currentColor = plant.color;
+
+            drawPlant(currentString, currentAngle, currentLength, currentColor);
+        }
+
+        // ランダム生成
+        function generateRandom() {
+            const types = Object.keys(plants);
+            const randomType = types[Math.floor(Math.random() * types.length)];
+            generatePlant(randomType);
+        }
+
+        // 成長アニメーション
+        function animateGrowth() {
+            if (!currentString) {
+                generatePlant('fern');
+            }
+
+            const speed = Math.min(currentString.length / 1000, 5);
+            drawPlant(currentString, currentAngle, currentLength, currentColor, true, speed);
+        }
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // キャンバスサイズ調整
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container');
+            const maxWidth = Math.min(800, window.innerWidth - 40);
+            const aspectRatio = 600 / 800;
+
+            canvas.style.width = maxWidth + 'px';
+            canvas.style.height = (maxWidth * aspectRatio) + 'px';
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 初期表示
+        generatePlant('fern');
+    </script>
+</body>
+</html>
