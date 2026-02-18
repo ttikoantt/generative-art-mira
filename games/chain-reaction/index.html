@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chain Reaction - Puzzle Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            touch-action: manipulation;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .stats {
+            color: #fff;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .stats h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #ff6b6b, #feca57);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stats p {
+            font-size: 16px;
+            margin: 5px 0;
+            opacity: 0.9;
+        }
+
+        .stats .value {
+            font-weight: bold;
+            color: #feca57;
+        }
+
+        .message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #fff;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 20;
+        }
+
+        .message.show {
+            opacity: 1;
+        }
+
+        .message h2 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 4px 8px rgba(0,0,0,0.5);
+        }
+
+        .message p {
+            font-size: 20px;
+            opacity: 0.9;
+        }
+
+        .fullscreen {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+        }
+
+        .fullscreen button {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen button:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .start-hint {
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-size: 16px;
+            opacity: 0.8;
+            animation: pulse 2s infinite;
+            pointer-events: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="stats">
+            <h1>💥 Chain Reaction</h1>
+            <p>Level: <span class="value" id="level">1</span></p>
+            <p>Balls: <span class="value" id="balls">0</span> / <span class="value" id="total">0</span></p>
+            <p>Clicks: <span class="value" id="clicks">1</span></p>
+        </div>
+        <div class="fullscreen">
+            <button id="fullscreenBtn">⛶</button>
+        </div>
+    </div>
+
+    <div class="message" id="message">
+        <h2 id="messageTitle">Level Complete!</h2>
+        <p id="messageText">Tap to continue</p>
+    </div>
+
+    <div class="start-hint" id="startHint">Tap anywhere to start the chain reaction!</div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let balls = [];
+        let particles = [];
+        let level = 1;
+        let remainingClicks = 1;
+        let gamePhase = 'waiting'; // waiting, expanding, result
+        let startX = 0, startY = 0;
+
+        const colors = [
+            '#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3',
+            '#54a0ff', '#5f27cd', '#00d2d3', '#ff9f43'
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Ball {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 15 + Math.random() * 15;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.vx = (Math.random() - 0.5) * 3;
+                this.vy = (Math.random() - 0.5) * 3;
+                this.expanding = false;
+                this.expansionRadius = 0;
+                this.maxExpansionRadius = 80 + Math.random() * 40;
+                this.expanding = false;
+                this.exploded = false;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.02;
+            }
+
+            update() {
+                if (!this.exploded) {
+                    this.x += this.vx;
+                    this.y += this.vy;
+
+                    // Bounce off walls
+                    if (this.x - this.radius < 0 || this.x + this.radius > width) {
+                        this.vx *= -1;
+                        this.x = Math.max(this.radius, Math.min(width - this.radius, this.x));
+                    }
+                    if (this.y - this.radius < 0 || this.y + this.radius > height) {
+                        this.vy *= -1;
+                        this.y = Math.max(this.radius, Math.min(height - this.radius, this.y));
+                    }
+
+                    this.rotation += this.rotationSpeed;
+                }
+
+                if (this.expanding) {
+                    this.expansionRadius += 5;
+                    if (this.expansionRadius >= this.maxExpansionRadius) {
+                        this.expanding = false;
+                        this.exploded = true;
+                    }
+
+                    // Check collision with other balls
+                    balls.forEach(ball => {
+                        if (ball !== this && !ball.expanding && !ball.exploded) {
+                            const dist = Math.hypot(this.x - ball.x, this.y - ball.y);
+                            if (dist < this.expansionRadius + ball.radius) {
+                                ball.startExpanding();
+                            }
+                        }
+                    });
+                }
+            }
+
+            startExpanding() {
+                if (!this.expanding && !this.exploded) {
+                    this.expanding = true;
+                    this.exploded = true;
+                    this.createExplosion();
+                }
+            }
+
+            createExplosion() {
+                for (let i = 0; i < 20; i++) {
+                    const angle = (i / 20) * Math.PI * 2;
+                    const speed = 3 + Math.random() * 2;
+                    particles.push(new Particle(
+                        this.x, this.y,
+                        Math.cos(angle) * speed,
+                        Math.sin(angle) * speed,
+                        this.color
+                    ));
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+
+                if (this.exploding) {
+                    // Draw expanding circle
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.expansionRadius, 0, Math.PI * 2);
+                    const gradient = ctx.createRadialGradient(
+                        this.x, this.y, 0,
+                        this.x, this.y, this.expansionRadius
+                    );
+                    gradient.addColorStop(0, this.color + '80');
+                    gradient.addColorStop(1, this.color + '00');
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+                }
+
+                if (!this.exploded) {
+                    // Draw ball with gradient
+                    ctx.translate(this.x, this.y);
+                    ctx.rotate(this.rotation);
+
+                    const gradient = ctx.createRadialGradient(
+                        -this.radius * 0.3, -this.radius * 0.3, 0,
+                        0, 0, this.radius
+                    );
+                    gradient.addColorStop(0, '#fff');
+                    gradient.addColorStop(0.3, this.color);
+                    gradient.addColorStop(1, this.color + '80');
+
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+
+                    // Add shine
+                    ctx.beginPath();
+                    ctx.arc(-this.radius * 0.3, -this.radius * 0.3, this.radius * 0.2, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, vx, vy, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+                this.size = 3 + Math.random() * 4;
+                this.color = color;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+            }
+
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = this.color + Math.floor(this.life * 255).toString(16).padStart(2, '0');
+                ctx.fill();
+            }
+        }
+
+        function initLevel() {
+            balls = [];
+            particles = [];
+            remainingClicks = 1;
+            gamePhase = 'waiting';
+
+            const numBalls = 5 + level * 3;
+            const margin = 100;
+
+            for (let i = 0; i < numBalls; i++) {
+                const x = margin + Math.random() * (width - margin * 2);
+                const y = margin + Math.random() * (height - margin * 2);
+                balls.push(new Ball(x, y));
+            }
+
+            updateUI();
+            document.getElementById('startHint').style.display = 'block';
+        }
+
+        function updateUI() {
+            const exploded = balls.filter(b => b.exploded).length;
+            document.getElementById('level').textContent = level;
+            document.getElementById('balls').textContent = exploded;
+            document.getElementById('total').textContent = balls.length;
+            document.getElementById('clicks').textContent = remainingClicks;
+        }
+
+        function checkWinCondition() {
+            const exploded = balls.filter(b => b.exploded).length;
+            const allExploded = exploded === balls.length;
+
+            if (allExploded) {
+                setTimeout(() => {
+                    showMessage('Level Complete!', 'Tap to continue');
+                    gamePhase = 'result';
+                }, 1000);
+            } else if (!balls.some(b => b.expanding)) {
+                setTimeout(() => {
+                    showMessage('Game Over!', 'Tap to retry');
+                    gamePhase = 'result';
+                    level = 1;
+                }, 1000);
+            }
+        }
+
+        function showMessage(title, text) {
+            const message = document.getElementById('message');
+            document.getElementById('messageTitle').textContent = title;
+            document.getElementById('messageText').textContent = text;
+            message.classList.add('show');
+        }
+
+        function hideMessage() {
+            document.getElementById('message').classList.remove('show');
+        }
+
+        function handleTap(x, y) {
+            if (gamePhase === 'result') {
+                hideMessage();
+                initLevel();
+                return;
+            }
+
+            if (gamePhase === 'waiting' && remainingClicks > 0) {
+                remainingClicks--;
+                gamePhase = 'expanding';
+
+                // Find closest ball and start chain reaction
+                let closest = null;
+                let minDist = Infinity;
+
+                balls.forEach(ball => {
+                    const dist = Math.hypot(x - ball.x, y - ball.y);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closest = ball;
+                    }
+                });
+
+                if (closest && minDist < 150) {
+                    closest.startExpanding();
+                }
+
+                document.getElementById('startHint').style.display = 'none';
+                updateUI();
+
+                // Check win condition after expansion
+                setTimeout(() => {
+                    checkWinCondition();
+                }, 3000);
+            }
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw particles
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => {
+                p.update();
+                p.draw(ctx);
+            });
+
+            // Update and draw balls
+            balls.forEach(ball => {
+                ball.update();
+                ball.draw(ctx);
+            });
+
+            updateUI();
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        canvas.addEventListener('click', (e) => {
+            handleTap(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleTap(touch.clientX, touch.clientY);
+        });
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        window.addEventListener('resize', resize);
+
+        // Initialize
+        resize();
+        initLevel();
+        animate();
+    </script>
+</body>
+</html>
