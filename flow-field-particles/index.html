@@ -3,289 +3,224 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flow Field Particles - Generative Art</title>
+    <title>Flow Field Particles</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
+        
         body {
             background: #0a0a0a;
             overflow: hidden;
-            font-family: 'Courier New', monospace;
+            font-family: 'Arial', sans-serif;
         }
-
+        
         canvas {
             display: block;
         }
-
-        .info {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            color: #fff;
-            font-size: 14px;
-            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-            pointer-events: none;
-            z-index: 10;
-        }
-
-        .info h1 {
-            font-size: 24px;
-            margin-bottom: 5px;
-        }
-
-        .info p {
-            opacity: 0.8;
-            font-size: 12px;
-        }
-
+        
         .fullscreen-btn {
-            position: absolute;
+            position: fixed;
             top: 20px;
             right: 20px;
-            padding: 10px 20px;
+            padding: 12px 24px;
             background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: #fff;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
             cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
             transition: all 0.3s ease;
-            z-index: 10;
+            z-index: 1000;
         }
-
+        
         .fullscreen-btn:hover {
             background: rgba(255, 255, 255, 0.2);
-            transform: scale(1.05);
+            border-color: rgba(255, 255, 255, 0.5);
         }
-
-        .fullscreen-btn:active {
-            transform: scale(0.95);
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            z-index: 1000;
         }
-
-        @media (max-width: 600px) {
-            .info {
-                top: 10px;
-                left: 10px;
-                font-size: 12px;
-            }
-
-            .info h1 {
-                font-size: 18px;
-            }
-
-            .fullscreen-btn {
-                top: 10px;
-                right: 10px;
-                padding: 8px 16px;
-                font-size: 11px;
-            }
+        
+        .info p {
+            margin: 5px 0;
         }
     </style>
 </head>
 <body>
-    <div class="info">
-        <h1>Flow Field Particles</h1>
-        <p>Click to create burst • Move to influence flow</p>
-    </div>
-    <button class="fullscreen-btn" id="fullscreenBtn">⛶ Fullscreen</button>
     <canvas id="canvas"></canvas>
-
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    <div class="info">
+        <p>Flow Field Particles</p>
+        <p>クリックでリセット</p>
+    </div>
+    
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const fullscreenBtn = document.getElementById('fullscreenBtn');
-
+        
         let width, height;
         let particles = [];
-        let flowField = [];
-        let rows, cols;
-        const resolution = 20;
-        const noiseScale = 0.003;
-        let mouseX = 0, mouseY = 0;
-        let hue = 0;
-
-        function resize() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-            cols = Math.floor(width / resolution);
-            rows = Math.floor(height / resolution);
-            initFlowField();
-        }
-
-        function initFlowField() {
-            flowField = [];
-            for (let y = 0; y < rows; y++) {
-                for (let x = 0; x < cols; x++) {
-                    const angle = (Math.cos(x * 0.1) + Math.sin(y * 0.1)) * Math.PI;
-                    flowField.push(angle);
+        const particleCount = 2000;
+        const noiseScale = 0.01;
+        const noiseOffset = 0;
+        
+        // Perlin Noise implementation (simplified)
+        class PerlinNoise {
+            constructor() {
+                this.permutation = [];
+                for (let i = 0; i < 256; i++) {
+                    this.permutation[i] = Math.floor(Math.random() * 256);
                 }
+                this.p = [...this.permutation, ...this.permutation];
+            }
+            
+            fade(t) {
+                return t * t * t * (t * (t * 6 - 15) + 10);
+            }
+            
+            lerp(a, b, t) {
+                return a + t * (b - a);
+            }
+            
+            grad(hash, x, y) {
+                const h = hash & 3;
+                const u = h < 2 ? x : y;
+                const v = h < 2 ? y : x;
+                return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+            }
+            
+            noise(x, y) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+                
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+                
+                const u = this.fade(x);
+                const v = this.fade(y);
+                
+                const A = this.p[X] + Y;
+                const B = this.p[X + 1] + Y;
+                
+                return this.lerp(
+                    this.lerp(this.grad(this.p[A], x, y), this.grad(this.p[B], x - 1, y), u),
+                    this.lerp(this.grad(this.p[A + 1], x, y - 1), this.grad(this.p[B + 1], x - 1, y - 1), u),
+                    v
+                );
             }
         }
-
+        
+        const perlin = new PerlinNoise();
+        
         class Particle {
-            constructor(x, y, burst = false) {
-                this.x = x || Math.random() * width;
-                this.y = y || Math.random() * height;
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
                 this.vx = 0;
                 this.vy = 0;
-                this.ax = 0;
-                this.ay = 0;
-                this.maxSpeed = burst ? 4 : 2;
-                this.maxForce = 0.1;
-                this.size = burst ? 3 : 2;
-                this.life = burst ? 100 : Infinity;
-                this.hue = hue + Math.random() * 60;
-                this.burst = burst;
+                this.life = Math.random() * 200 + 100;
+                this.maxLife = this.life;
+                this.hue = Math.random() * 60 + 180; // Blue-cyan range
             }
-
-            follow() {
-                const x = Math.floor(this.x / resolution);
-                const y = Math.floor(this.y / resolution);
-                const index = x + y * cols;
-
-                if (index >= 0 && index < flowField.length) {
-                    const angle = flowField[index];
-                    this.ax += Math.cos(angle) * 0.5;
-                    this.ay += Math.sin(angle) * 0.5;
-                }
-            }
-
+            
             update() {
-                // Mouse influence
-                const dx = mouseX - this.x;
-                const dy = mouseY - this.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-
-                if (dist < 150) {
-                    const force = (150 - dist) / 150;
-                    this.ax += (dx / dist) * force * 0.3;
-                    this.ay += (dy / dist) * force * 0.3;
-                }
-
-                this.vx += this.ax;
-                this.vy += this.ay;
-
-                // Limit speed
-                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                if (speed > this.maxSpeed) {
-                    this.vx = (this.vx / speed) * this.maxSpeed;
-                    this.vy = (this.vy / speed) * this.maxSpeed;
-                }
-
+                // Get angle from noise field
+                const angle = perlin.noise(this.x * noiseScale, this.y * noiseScale) * Math.PI * 4;
+                
+                // Update velocity
+                this.vx += Math.cos(angle) * 0.1;
+                this.vy += Math.sin(angle) * 0.1;
+                
+                // Apply friction
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+                
+                // Update position
                 this.x += this.vx;
                 this.y += this.vy;
-                this.ax = 0;
-                this.ay = 0;
-
-                // Wrap around
-                if (this.x > width) this.x = 0;
+                
+                // Decrease life
+                this.life--;
+                
+                // Wrap around edges or reset
                 if (this.x < 0) this.x = width;
-                if (this.y > height) this.y = 0;
+                if (this.x > width) this.x = 0;
                 if (this.y < 0) this.y = height;
-
-                if (this.burst) {
-                    this.life--;
-                    this.size *= 0.98;
-                }
-
-                return this.burst && this.life <= 0;
+                if (this.y > height) this.y = 0;
+                if (this.life <= 0) this.reset();
             }
-
+            
             draw() {
-                const alpha = this.burst ? this.life / 100 : 0.6;
-                ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, ${alpha})`;
+                const alpha = (this.life / this.maxLife) * 0.8;
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, Math.min(speed * 2, 3), 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha})`;
                 ctx.fill();
             }
         }
-
+        
         function init() {
+            resize();
             particles = [];
-            for (let i = 0; i < 500; i++) {
+            for (let i = 0; i < particleCount; i++) {
                 particles.push(new Particle());
             }
         }
-
-        function createBurst(x, y) {
-            for (let i = 0; i < 50; i++) {
-                particles.push(new Particle(x, y, true));
-            }
-            hue += 30;
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
         }
-
+        
         function animate() {
+            // Fade effect
             ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
             ctx.fillRect(0, 0, width, height);
-
-            particles = particles.filter(p => {
-                const remove = p.update();
-                if (!remove) p.draw();
-                return !remove;
+            
+            // Update and draw particles
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
             });
-
-            // Maintain particle count
-            while (particles.length < 500) {
-                particles.push(new Particle());
-            }
-
+            
             requestAnimationFrame(animate);
         }
-
-        // Event listeners
-        window.addEventListener('resize', resize);
-
-        canvas.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-        });
-
-        canvas.addEventListener('click', (e) => {
-            createBurst(e.clientX, e.clientY);
-        });
-
-        // Touch support
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            mouseX = e.touches[0].clientX;
-            mouseY = e.touches[0].clientY;
-        }, { passive: false });
-
-        canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            const touch = e.touches[0];
-            createBurst(touch.clientX, touch.clientY);
-            mouseX = touch.clientX;
-            mouseY = touch.clientY;
-        }, { passive: false });
-
-        fullscreenBtn.addEventListener('click', () => {
+        
+        function reset() {
+            particles.forEach(p => p.reset());
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, width, height);
+        }
+        
+        function toggleFullscreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
-                fullscreenBtn.textContent = '✕ Exit';
             } else {
                 document.exitFullscreen();
-                fullscreenBtn.textContent = '⛶ Fullscreen';
             }
-        });
-
-        document.addEventListener('fullscreenchange', () => {
-            if (!document.fullscreenElement) {
-                fullscreenBtn.textContent = '⛶ Fullscreen';
-            }
-        });
-
-        // Initialize
-        resize();
+        }
+        
+        window.addEventListener('resize', resize);
+        canvas.addEventListener('click', reset);
+        
         init();
         animate();
-
-        // Initial burst
-        createBurst(width / 2, height / 2);
     </script>
 </body>
 </html>
