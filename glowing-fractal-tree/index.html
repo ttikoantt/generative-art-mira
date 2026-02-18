@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glowing Fractal Tree</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            padding: 12px 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        @media (max-width: 768px) {
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 10px 16px;
+                font-size: 12px;
+            }
+
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" id="fullscreenBtn">全画面</button>
+    <canvas id="canvas"></canvas>
+    <div class="info">Click or tap to grow a new tree</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let width, height;
+        let trees = [];
+        let animationFrame;
+        let time = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function hueFromDepth(depth, maxDepth) {
+            const hue = (time * 20 + depth * 30) % 360;
+            return hue;
+        }
+
+        function drawBranch(x, y, length, angle, depth, maxDepth) {
+            if (depth > maxDepth) return;
+
+            const hue = hueFromDepth(depth, maxDepth);
+            const lightness = 50 + depth * 3;
+            const glowIntensity = 20 - depth * 2;
+
+            // Branch glow
+            ctx.shadowBlur = glowIntensity;
+            ctx.shadowColor = `hsl(${hue}, 80%, ${lightness}%)`;
+
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.strokeStyle = `hsl(${hue}, 70%, ${lightness}%)`;
+            ctx.lineWidth = Math.max(1, (maxDepth - depth) * 1.5);
+            ctx.lineCap = 'round';
+
+            const endX = x + Math.cos(angle) * length;
+            const endY = y + Math.sin(angle) * length;
+
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+
+            // Animate growth
+            const growth = Math.min(1, (time * 2 + depth * 0.5) % 3 / 2);
+
+            if (growth > 0.3) {
+                const newLength = length * 0.7 * growth;
+                const angleOffset = 0.4 + Math.sin(time + depth) * 0.1;
+
+                drawBranch(endX, endY, newLength, angle - angleOffset, depth + 1, maxDepth);
+                drawBranch(endX, endY, newLength, angle + angleOffset, depth + 1, maxDepth);
+            }
+
+            ctx.shadowBlur = 0;
+        }
+
+        class Tree {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.startTime = time;
+                this.baseLength = 100 + Math.random() * 40;
+            }
+
+            draw() {
+                const age = time - this.startTime;
+                const growthProgress = Math.min(1, age / 3);
+                const sway = Math.sin(time * 0.5) * 0.05;
+
+                if (growthProgress > 0) {
+                    const currentLength = this.baseLength * growthProgress;
+                    drawBranch(
+                        this.x,
+                        this.y,
+                        currentLength,
+                        -Math.PI / 2 + sway,
+                        0,
+                        10
+                    );
+                }
+            }
+
+            isFinished() {
+                return time - this.startTime > 4;
+            }
+        }
+
+        function drawBackground() {
+            // Dark gradient background
+            const gradient = ctx.createRadialGradient(
+                width / 2, height / 2, 0,
+                width / 2, height / 2, Math.max(width, height)
+            );
+            gradient.addColorStop(0, '#1a1a2e');
+            gradient.addColorStop(1, '#0a0a1a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // Stars
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            for (let i = 0; i < 100; i++) {
+                const x = (i * 137.5) % width;
+                const y = (i * 89.3) % height;
+                const size = (Math.sin(time + i) + 1) * 0.5;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function animate() {
+            time += 0.016;
+
+            drawBackground();
+
+            // Draw trees
+            trees = trees.filter(tree => !tree.isFinished() || trees.length < 5);
+            trees.forEach(tree => tree.draw());
+
+            // Ambient tree
+            if (trees.length === 0 || trees[trees.length - 1].isFinished()) {
+                if (trees.length < 3) {
+                    trees.push(new Tree(
+                        width * (0.3 + Math.random() * 0.4),
+                        height * 0.8
+                    ));
+                }
+            }
+
+            animationFrame = requestAnimationFrame(animate);
+        }
+
+        function createTree(x, y) {
+            trees = trees.filter(tree => !tree.isFinished());
+            if (trees.length < 8) {
+                trees.push(new Tree(x, y));
+            }
+        }
+
+        // Event listeners
+        canvas.addEventListener('click', (e) => {
+            createTree(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            createTree(touch.clientX, touch.clientY);
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        window.addEventListener('resize', resize);
+
+        // Initialize
+        resize();
+        animate();
+    </script>
+</body>
+</html>
