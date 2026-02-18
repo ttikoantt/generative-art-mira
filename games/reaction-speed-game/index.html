@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reaction Speed Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        .game-container {
+            width: 100%;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.1s ease;
+            position: relative;
+            padding: 2rem;
+        }
+
+        .game-container.waiting {
+            background: #ce2636;
+        }
+
+        .game-container.ready {
+            background: #4bdb6a;
+        }
+
+        .game-container.too-soon {
+            background: #ce2636;
+        }
+
+        .content {
+            text-align: center;
+            color: white;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        p {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtext {
+            font-size: 1rem;
+            opacity: 0.8;
+        }
+
+        .result {
+            font-size: 4rem;
+            font-weight: bold;
+            margin: 1rem 0;
+        }
+
+        .rank {
+            font-size: 2rem;
+            margin: 0.5rem 0;
+            padding: 0.5rem 1rem;
+            display: inline-block;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .rank-S { color: #ffd700; }
+        .rank-A { color: #c0c0c0; }
+        .rank-B { color: #cd7f32; }
+        .rank-C { color: #ffffff; }
+        .rank-D { color: #ff9999; }
+
+        .stats {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+
+        .stats p {
+            font-size: 1.2rem;
+            margin: 0.5rem 0;
+        }
+
+        .best-time {
+            color: #ffd700;
+            font-weight: bold;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.5rem;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 1.2rem;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .back-btn {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 1rem;
+            z-index: 100;
+            text-decoration: none;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 2rem;
+            }
+            p {
+                font-size: 1.2rem;
+            }
+            .result {
+                font-size: 3rem;
+            }
+            .rank {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+    <a href="../index.html" class="back-btn">← 戻る</a>
+
+    <div class="game-container waiting" id="gameContainer">
+        <div class="content">
+            <h1 id="title">反応速度テスト</h1>
+            <p id="message">タップしてスタート</p>
+            <div id="result" class="result" style="display: none;"></div>
+            <div id="rank" class="rank" style="display: none;"></div>
+            <div id="stats" class="stats" style="display: none;">
+                <p>🏆 ベストタイム: <span id="bestTime" class="best-time">-</span></p>
+                <p>📊 平均: <span id="avgTime">-</span></p>
+                <p>🎮 試行回数: <span id="attempts">0</span></p>
+            </div>
+            <p class="subtext" id="subtext">画面が緑色になったらタップ！</p>
+        </div>
+    </div>
+
+    <script>
+        const container = document.getElementById('gameContainer');
+        const title = document.getElementById('title');
+        const message = document.getElementById('message');
+        const result = document.getElementById('result');
+        const rank = document.getElementById('rank');
+        const stats = document.getElementById('stats');
+        const bestTimeEl = document.getElementById('bestTime');
+        const avgTimeEl = document.getElementById('avgTime');
+        const attemptsEl = document.getElementById('attempts');
+        const subtext = document.getElementById('subtext');
+
+        let gameState = 'waiting'; // waiting, ready, result, tooSoon
+        let startTime = 0;
+        let timeoutId = null;
+        let attempts = 0;
+        let totalTime = 0;
+        let bestTime = localStorage.getItem('reactionBestTime') || null;
+
+        function getRank(ms) {
+            if (ms < 200) return { rank: 'S', class: 'rank-S', text: '神業！' };
+            if (ms < 250) return { rank: 'A', class: 'rank-A', text: '素晴らしい！' };
+            if (ms < 300) return { rank: 'B', class: 'rank-B', text: '良い！' };
+            if (ms < 400) return { rank: 'C', class: 'rank-C', text: '普通' };
+            return { rank: 'D', class: 'rank-D', text: 'もう一度！' };
+        }
+
+        function updateStats() {
+            bestTimeEl.textContent = bestTime ? `${bestTime}ms` : '-';
+            avgTimeEl.textContent = attempts > 0 ? `${Math.round(totalTime / attempts)}ms` : '-';
+            attemptsEl.textContent = attempts;
+        }
+
+        function showResult(ms) {
+            gameState = 'result';
+            container.className = 'game-container';
+            container.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+
+            const resultData = getRank(ms);
+            result.textContent = `${ms}ms`;
+            result.style.display = 'block';
+            rank.textContent = `Rank ${resultData.rank}`;
+            rank.className = `rank ${resultData.class}`;
+            rank.style.display = 'inline-block';
+            title.textContent = resultData.text;
+            message.textContent = 'タップでもう一度';
+            subtext.textContent = '';
+
+            attempts++;
+            totalTime += ms;
+            if (!bestTime || ms < bestTime) {
+                bestTime = ms;
+                localStorage.setItem('reactionBestTime', bestTime);
+            }
+            updateStats();
+            stats.style.display = 'block';
+        }
+
+        function startGame() {
+            gameState = 'ready';
+            container.className = 'game-container waiting';
+            container.style.background = '#ce2636';
+            title.textContent = '待機中...';
+            message.textContent = '緑色になったらタップ！';
+            result.style.display = 'none';
+            rank.style.display = 'none';
+            stats.style.display = 'none';
+            subtext.textContent = '画面が緑色になるのを待って...';
+
+            const delay = 1000 + Math.random() * 4000; // 1-5秒
+            timeoutId = setTimeout(() => {
+                gameState = 'ready';
+                container.className = 'game-container ready';
+                title.textContent = 'タップ！！';
+                message.textContent = '';
+                subtext.textContent = '';
+                startTime = Date.now();
+            }, delay);
+        }
+
+        function handleClick() {
+            if (gameState === 'waiting' || gameState === 'result' || gameState === 'tooSoon') {
+                startGame();
+            } else if (gameState === 'ready') {
+                // Check if it's actually green
+                if (container.classList.contains('ready')) {
+                    const reactionTime = Date.now() - startTime;
+                    showResult(reactionTime);
+                } else {
+                    // Too early!
+                    gameState = 'tooSoon';
+                    clearTimeout(timeoutId);
+                    container.className = 'game-container too-soon';
+                    title.textContent = '早すぎた！';
+                    message.textContent = 'タップしてリトライ';
+                    subtext.textContent = '緑色になってからタップしてね';
+                    result.style.display = 'none';
+                    rank.style.display = 'none';
+                    stats.style.display = 'none';
+                }
+            }
+        }
+
+        container.addEventListener('click', handleClick);
+        container.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleClick();
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Keyboard support
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                handleClick();
+            }
+        });
+
+        // Initialize stats
+        updateStats();
+    </script>
+</body>
+</html>
