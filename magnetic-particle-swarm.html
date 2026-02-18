@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magnetic Particle Swarm - Mira's Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        #canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 18px;
+            pointer-events: none;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="title">✨ Magnetic Particle Swarm</div>
+    <div class="info">マウスを動かしてパーティクルを操作</div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let mouse = { x: null, y: null, radius: 150 };
+        let animationId;
+
+        // パーティクルの設定
+        const PARTICLE_COUNT = 800;
+        const CONNECTION_DISTANCE = 100;
+        const MOUSE_FORCE = 0.03;
+        const FRICTION = 0.98;
+
+        // カラーパレット（磁力を感じさせる配色）
+        const colors = [
+            'rgba(138, 43, 226, 0.8)',   // 紫
+            'rgba(65, 105, 225, 0.8)',   // ロイヤルブルー
+            'rgba(0, 191, 255, 0.8)',    // ディープスカイブルー
+            'rgba(255, 20, 147, 0.8)',   // ディープピンク
+            'rgba(186, 85, 211, 0.8)'    // オーキッド
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 2 + 1;
+                this.baseRadius = this.radius;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.angle = Math.random() * Math.PI * 2;
+                this.angleSpeed = (Math.random() - 0.5) * 0.02;
+                this.orbitRadius = Math.random() * 50 + 30;
+            }
+
+            update() {
+                // マウスとの距離を計算
+                if (mouse.x !== null && mouse.y !== null) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < mouse.radius) {
+                        // 磁力のような吸引力
+                        const force = (mouse.radius - distance) / mouse.radius;
+                        const angle = Math.atan2(dy, dx);
+
+                        this.vx += Math.cos(angle) * force * MOUSE_FORCE * 10;
+                        this.vy += Math.sin(angle) * force * MOUSE_FORCE * 10;
+
+                        // 回転運動を追加
+                        this.angle += this.angleSpeed * 2;
+                        this.vx += Math.cos(this.angle + Math.PI / 2) * force * 0.5;
+                        this.vy += Math.sin(this.angle + Math.PI / 2) * force * 0.5;
+
+                        // サイズを大きく
+                        this.radius = this.baseRadius * (1 + force * 2);
+                    } else {
+                        this.radius = this.baseRadius;
+                    }
+                }
+
+                // 摩擦
+                this.vx *= FRICTION;
+                this.vy *= FRICTION;
+
+                // 自然な動きを追加
+                this.angle += this.angleSpeed;
+                this.vx += Math.cos(this.angle) * 0.01;
+                this.vy += Math.sin(this.angle) * 0.01;
+
+                // 位置を更新
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 境界チェック（跳ね返り）
+                if (this.x < 0 || this.x > width) {
+                    this.vx *= -0.8;
+                    this.x = Math.max(0, Math.min(width, this.x));
+                }
+                if (this.y < 0 || this.y > height) {
+                    this.vy *= -0.8;
+                    this.y = Math.max(0, Math.min(height, this.y));
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // グロー効果
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+            }
+        }
+
+        function init() {
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function drawConnections() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < CONNECTION_DISTANCE) {
+                        const opacity = (1 - distance / CONNECTION_DISTANCE) * 0.3;
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(138, 43, 226, ${opacity})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            // トレイル効果
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.shadowBlur = 0;
+
+            // 接続線を描画
+            drawConnections();
+
+            // パーティクルを更新・描画
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        // タッチ対応
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        window.addEventListener('resize', () => {
+            resize();
+            init();
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        resize();
+        init();
+        animate();
+    </script>
+</body>
+</html>
