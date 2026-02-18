@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaleidoscope Art - Mira's Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            border-radius: 50%;
+            box-shadow: 0 0 60px rgba(255, 255, 255, 0.3);
+        }
+
+        .info {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px 25px;
+            border-radius: 10px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .info h1 {
+            font-size: 1.2rem;
+            margin-bottom: 8px;
+            background: linear-gradient(45deg, #ff006e, #8338ec, #3a86ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .info p {
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                width: 90%;
+                padding: 12px 20px;
+            }
+
+            .info h1 {
+                font-size: 1rem;
+            }
+
+            .info p {
+                font-size: 0.75rem;
+            }
+
+            .controls {
+                top: auto;
+                bottom: 100px;
+                right: 10px;
+            }
+
+            .btn {
+                padding: 8px 12px;
+                font-size: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <canvas id="canvas"></canvas>
+        
+        <button class="fullscreen-btn" id="fullscreenBtn">⛶ 全画面</button>
+        
+        <div class="controls">
+            <button class="btn" id="newBtn">✨ 新規生成</button>
+            <button class="btn" id="saveBtn">💾 保存</button>
+        </div>
+        
+        <div class="info">
+            <h1>✨ Kaleidoscope Art</h1>
+            <p>マウス/タップで動きを変えて、対称的な美しさを楽しんでください</p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Responsive canvas sizing
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth, window.innerHeight) * 0.8;
+            canvas.width = size;
+            canvas.height = size;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            draw();
+        });
+
+        // Kaleidoscope parameters
+        let segments = 12; // Number of segments
+        let particles = [];
+        let hue = 0;
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let targetHue = Math.random() * 360;
+        let rotationSpeed = 0.002;
+
+        // Particle class
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * (canvas.width / 3);
+                this.x = canvas.width / 2 + Math.cos(angle) * distance;
+                this.y = canvas.height / 2 + Math.sin(angle) * distance;
+                this.size = Math.random() * 3 + 1;
+                this.speedX = (Math.random() - 0.5) * 0.5;
+                this.speedY = (Math.random() - 0.5) * 0.5;
+                this.hue = Math.random() * 60;
+                this.alpha = Math.random() * 0.5 + 0.5;
+                this.life = Math.random() * 200 + 100;
+                this.maxLife = this.life;
+            }
+
+            update() {
+                // Move towards mouse
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist > 50) {
+                    this.speedX += dx * 0.00005;
+                    this.speedY += dy * 0.00005;
+                }
+
+                this.x += this.speedX;
+                this.y += this.speedY;
+
+                // Decay
+                this.life--;
+                if (this.life <= 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const fadeAlpha = (this.life / this.maxLife) * this.alpha;
+                ctx.fillStyle = `hsla(${hue + this.hue}, 80%, 60%, ${fadeAlpha})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Initialize particles
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < 300; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        initParticles();
+
+        // Draw kaleidoscope
+        function drawKaleidoscope() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) / 2;
+
+            // Create offscreen canvas for one segment
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = canvas.width;
+            offCanvas.height = canvas.height;
+            const offCtx = offCanvas.getContext('2d');
+
+            // Draw particles on offscreen canvas
+            particles.forEach(p => p.update());
+            particles.forEach(p => p.draw());
+
+            // Draw segments on main canvas
+            for (let i = 0; i < segments; i++) {
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate((Math.PI * 2 * i) / segments);
+
+                // Draw segment
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.arc(0, 0, radius, -Math.PI / segments, Math.PI / segments);
+                ctx.closePath();
+                ctx.clip();
+
+                // Mirror every other segment
+                if (i % 2 === 1) {
+                    ctx.scale(1, -1);
+                }
+
+                ctx.drawImage(offCanvas, -centerX, -centerY);
+                ctx.restore();
+            }
+
+            // Add glow effect
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, radius * 0.5
+            );
+            gradient.addColorStop(0, `hsla(${hue}, 80%, 60%, 0.1)`);
+            gradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Main draw function
+        function draw() {
+            // Fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update hue gradually
+            hue += (targetHue - hue) * 0.01;
+
+            drawKaleidoscope();
+
+            requestAnimationFrame(draw);
+        }
+
+        draw();
+
+        // Mouse/Touch interaction
+        function updateMousePosition(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            mouseX = (clientX - rect.left) * (canvas.width / rect.width);
+            mouseY = (clientY - rect.top) * (canvas.height / rect.height);
+        }
+
+        canvas.addEventListener('mousemove', updateMousePosition);
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            updateMousePosition(e);
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            updateMousePosition(e);
+            targetHue = Math.random() * 360;
+        }, { passive: false });
+
+        // Controls
+        document.getElementById('newBtn').addEventListener('click', () => {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            targetHue = Math.random() * 360;
+            segments = Math.floor(Math.random() * 8) + 8;
+            initParticles();
+        });
+
+        document.getElementById('saveBtn').addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = `kaleidoscope-${Date.now()}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+    </script>
+</body>
+</html>
