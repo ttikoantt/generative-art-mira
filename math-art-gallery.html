@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Math Art Gallery - 数式の美</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0f;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+
+        #canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(10, 10, 15, 0.85);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 320px;
+            backdrop-filter: blur(10px);
+        }
+
+        .info h1 {
+            font-size: 1.4em;
+            margin-bottom: 5px;
+            background: linear-gradient(135deg, #ff6b6b, #4ecdc4, #ffe66d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .info .subtitle {
+            font-size: 0.85em;
+            color: #888;
+            margin-bottom: 15px;
+        }
+
+        .info .formula {
+            font-size: 1em;
+            color: #4ecdc4;
+            margin: 10px 0;
+            padding: 8px;
+            background: rgba(78, 205, 196, 0.1);
+            border-radius: 5px;
+            border-left: 3px solid #4ecdc4;
+        }
+
+        .info .controls {
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .info .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .info label {
+            font-size: 0.8em;
+            color: #aaa;
+            min-width: 80px;
+        }
+
+        .info input[type="range"] {
+            flex: 1;
+            accent-color: #4ecdc4;
+        }
+
+        .info .value {
+            font-size: 0.8em;
+            color: #4ecdc4;
+            min-width: 40px;
+            text-align: right;
+        }
+
+        .info .hint {
+            font-size: 0.75em;
+            color: #666;
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(78, 205, 196, 0.2);
+            color: #4ecdc4;
+            border: 1px solid #4ecdc4;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.85em;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(78, 205, 196, 0.4);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                top: 10px;
+                left: 10px;
+                right: 10px;
+                max-width: none;
+                padding: 15px;
+            }
+
+            .info h1 {
+                font-size: 1.2em;
+            }
+
+            .info .formula {
+                font-size: 0.9em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <h1>Math Art Gallery</h1>
+        <div class="subtitle">数式の美を可視化</div>
+
+        <div class="formula">
+            z = z² + c
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>Pattern</label>
+                <input type="range" id="pattern" min="0" max="3" value="0" step="1">
+                <span class="value" id="patternValue">Mandelbrot</span>
+            </div>
+
+            <div class="control-group">
+                <label>Zoom</label>
+                <input type="range" id="zoom" min="50" max="500" value="100">
+                <span class="value" id="zoomValue">1.0x</span>
+            </div>
+
+            <div class="control-group">
+                <label>Colors</label>
+                <input type="range" id="colors" min="1" max="5" value="3" step="1">
+                <span class="value" id="colorsValue">3</span>
+            </div>
+
+            <div class="control-group">
+                <label>Speed</label>
+                <input type="range" id="speed" min="1" max="10" value="5">
+                <span class="value" id="speedValue">5</span>
+            </div>
+        </div>
+
+        <div class="hint">
+            💡 マウスを動かすとパターンが変化<br>
+            クリックで色相をシフト
+        </div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let hueShift = 0;
+        let time = 0;
+
+        // Settings
+        let patternType = 0;
+        let zoom = 1;
+        let colorScheme = 3;
+        let speed = 5;
+
+        const patternNames = ['Mandelbrot', 'Julia', 'Spiral', 'Waves'];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function drawMandelbrot(px, py, maxIter = 50) {
+            const x0 = (px - width / 2) / (150 * zoom) + mouseX / width * 0.5 - 0.5;
+            const y0 = (py - height / 2) / (150 * zoom) + mouseY / height * 0.5;
+
+            let x = 0, y = 0;
+            let iter = 0;
+
+            while (x * x + y * y <= 4 && iter < maxIter) {
+                const xtemp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = xtemp;
+                iter++;
+            }
+
+            return iter;
+        }
+
+        function drawJulia(px, py, maxIter = 50) {
+            let x = (px - width / 2) / (150 * zoom);
+            let y = (py - height / 2) / (150 * zoom);
+
+            const cx = (mouseX / width - 0.5) * 2;
+            const cy = (mouseY / height - 0.5) * 2;
+
+            let iter = 0;
+
+            while (x * x + y * y <= 4 && iter < maxIter) {
+                const xtemp = x * x - y * y + cx;
+                y = 2 * x * y + cy;
+                x = xtemp;
+                iter++;
+            }
+
+            return iter;
+        }
+
+        function drawSpiral(px, py) {
+            const dx = px - width / 2;
+            const dy = py - height / 2;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx);
+
+            const spiralValue = Math.sin(dist / (20 / zoom) - angle * 3 + time * 0.02 * speed);
+            const pattern = Math.sin(spiralValue * Math.PI * 2) * 0.5 + 0.5;
+
+            return Math.floor(pattern * 50);
+        }
+
+        function drawWaves(px, py) {
+            const x = px / (50 / zoom);
+            const y = py / (50 / zoom);
+
+            const wave1 = Math.sin(x * 0.5 + time * 0.02 * speed);
+            const wave2 = Math.cos(y * 0.5 + time * 0.03 * speed);
+            const wave3 = Math.sin((x + y) * 0.3 + mouseX / width * Math.PI * 2);
+
+            const combined = (wave1 + wave2 + wave3) / 3;
+            return Math.floor((combined + 1) * 25);
+        }
+
+        function getHues(iter, maxIter = 50) {
+            const schemes = {
+                1: [(iter / maxIter) * 360],
+                2: [(iter / maxIter) * 180, (iter / maxIter) * 180 + 180],
+                3: [
+                    (iter / maxIter) * 360,
+                    ((iter / maxIter) * 360 + 120) % 360,
+                    ((iter / maxIter) * 360 + 240) % 360
+                ],
+                4: [
+                    (iter / maxIter) * 90,
+                    (iter / maxIter) * 90 + 90,
+                    (iter / maxIter) * 90 + 180,
+                    (iter / maxIter) * 90 + 270
+                ],
+                5: [
+                    hueShift + iter * 10,
+                    hueShift + iter * 15 + 72,
+                    hueShift + iter * 20 + 144,
+                    hueShift + iter * 10 + 216,
+                    hueShift + iter * 15 + 288
+                ]
+            };
+
+            return schemes[colorScheme] || schemes[3];
+        }
+
+        function draw() {
+            const imageData = ctx.createImageData(width, height);
+            const data = imageData.data;
+
+            for (let py = 0; py < height; py += 2) {
+                for (let px = 0; px < width; px += 2) {
+                    let iter;
+
+                    switch (patternType) {
+                        case 0:
+                            iter = drawMandelbrot(px, py);
+                            break;
+                        case 1:
+                            iter = drawJulia(px, py);
+                            break;
+                        case 2:
+                            iter = drawSpiral(px, py);
+                            break;
+                        case 3:
+                            iter = drawWaves(px, py);
+                            break;
+                    }
+
+                    const hues = getHues(iter);
+                    const hue = hues[iter % hues.length];
+                    const saturation = 80 + iter * 2;
+                    const lightness = iter === 50 ? 0 : 30 + iter * 3;
+
+                    const rgb = hslToRgb(hue / 360, saturation / 100, lightness / 100);
+
+                    for (let dy = 0; dy < 2; dy++) {
+                        for (let dx = 0; dx < 2; dx++) {
+                            const idx = ((py + dy) * width + (px + dx)) * 4;
+                            data[idx] = rgb[0];
+                            data[idx + 1] = rgb[1];
+                            data[idx + 2] = rgb[2];
+                            data[idx + 3] = 255;
+                        }
+                    }
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+
+            return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+        }
+
+        function animate() {
+            time++;
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('click', () => {
+            hueShift = (hueShift + 30) % 360;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        // Controls
+        document.getElementById('pattern').addEventListener('input', (e) => {
+            patternType = parseInt(e.target.value);
+            document.getElementById('patternValue').textContent = patternNames[patternType];
+        });
+
+        document.getElementById('zoom').addEventListener('input', (e) => {
+            zoom = parseInt(e.target.value) / 100;
+            document.getElementById('zoomValue').textContent = zoom.toFixed(1) + 'x';
+        });
+
+        document.getElementById('colors').addEventListener('input', (e) => {
+            colorScheme = parseInt(e.target.value);
+            document.getElementById('colorsValue').textContent = colorScheme;
+        });
+
+        document.getElementById('speed').addEventListener('input', (e) => {
+            speed = parseInt(e.target.value);
+            document.getElementById('speedValue').textContent = speed;
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Initialize
+        window.addEventListener('resize', resize);
+        resize();
+        animate();
+    </script>
+</body>
+</html>
