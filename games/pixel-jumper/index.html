@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Jumper</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a2e;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Press Start 2P', monospace;
+            overflow: hidden;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            aspect-ratio: 3/4;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            border: 4px solid #4a4a6a;
+            border-radius: 8px;
+        }
+
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        .score {
+            color: #ffd700;
+            font-size: 16px;
+            text-shadow: 2px 2px #000;
+        }
+
+        .high-score {
+            color: #ff6b6b;
+            font-size: 12px;
+            text-shadow: 2px 2px #000;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            display: none;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 16px;
+            border: 4px solid #ffd700;
+        }
+
+        .game-over.active {
+            display: block;
+        }
+
+        .game-over h2 {
+            color: #ff6b6b;
+            font-size: 24px;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px #000;
+        }
+
+        .game-over p {
+            color: #ffd700;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        .restart-btn {
+            background: #ffd700;
+            border: none;
+            color: #1a1a2e;
+            padding: 15px 30px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+        }
+
+        @media (max-width: 768px) {
+            .score {
+                font-size: 12px;
+            }
+            .high-score {
+                font-size: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ 全画面</button>
+
+    <div class="game-container">
+        <canvas id="canvas"></canvas>
+
+        <div class="ui-overlay">
+            <div class="score" id="score">SCORE: 0</div>
+            <div class="high-score" id="highScore">HIGH: 0</div>
+        </div>
+
+        <div class="game-over" id="gameOver">
+            <h2>GAME OVER</h2>
+            <p id="finalScore">SCORE: 0</p>
+            <button class="restart-btn" onclick="restart()">RESTART</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 設定
+        const GAME_WIDTH = 300;
+        const GAME_HEIGHT = 400;
+        const PIXEL_SIZE = 3;
+        const GRAVITY = 0.5;
+        const JUMP_FORCE = -8;
+        const PLATFORM_WIDTH = 50;
+        const PLATFORM_HEIGHT = 10;
+        const PLAYER_SIZE = 12;
+
+        let width, height;
+        let player, platforms, score, highScore, gameOver;
+        let cameraY, targetCameraY;
+
+        // プレイヤークラス
+        class Player {
+            constructor() {
+                this.x = GAME_WIDTH / 2;
+                this.y = GAME_HEIGHT - 100;
+                this.vx = 0;
+                this.vy = 0;
+                this.width = PLAYER_SIZE;
+                this.height = PLAYER_SIZE;
+                this.onGround = false;
+                this.jumpCooldown = 0;
+                this.frame = 0;
+                this.frameTimer = 0;
+            }
+
+            update() {
+                // 重力
+                this.vy += GRAVITY;
+                this.y += this.vy;
+                this.x += this.vx;
+
+                // 摩擦
+                this.vx *= 0.9;
+
+                // ジャンプクールダウン
+                if (this.jumpCooldown > 0) this.jumpCooldown--;
+
+                // アニメーション
+                this.frameTimer++;
+                if (this.frameTimer > 10) {
+                    this.frame = (this.frame + 1) % 2;
+                    this.frameTimer = 0;
+                }
+
+                // 落下判定
+                if (this.y > cameraY + GAME_HEIGHT + 50) {
+                    endGame();
+                }
+            }
+
+            jump() {
+                if (this.onGround && this.jumpCooldown === 0) {
+                    this.vy = JUMP_FORCE;
+                    this.onGround = false;
+                    this.jumpCooldown = 10;
+                }
+            }
+
+            draw() {
+                const screenY = this.y - cameraY;
+
+                // ピクセルアートのキャラクター
+                ctx.fillStyle = '#00ff88';
+                ctx.fillRect(Math.floor(this.x), Math.floor(screenY), this.width, this.height);
+
+                // 目
+                ctx.fillStyle = '#000';
+                if (this.frame === 0) {
+                    ctx.fillRect(Math.floor(this.x) + 2, Math.floor(screenY) + 3, 2, 2);
+                    ctx.fillRect(Math.floor(this.x) + 8, Math.floor(screenY) + 3, 2, 2);
+                } else {
+                    ctx.fillRect(Math.floor(this.x) + 3, Math.floor(screenY) + 3, 2, 2);
+                    ctx.fillRect(Math.floor(this.x) + 7, Math.floor(screenY) + 3, 2, 2);
+                }
+
+                // 口
+                if (this.vy < 0) {
+                    ctx.fillRect(Math.floor(this.x) + 4, Math.floor(screenY) + 8, 4, 2);
+                } else {
+                    ctx.fillRect(Math.floor(this.x) + 3, Math.floor(screenY) + 8, 6, 1);
+                }
+            }
+        }
+
+        // プラットフォームクラス
+        class Platform {
+            constructor(x, y, moving = false) {
+                this.x = x;
+                this.y = y;
+                this.width = PLATFORM_WIDTH;
+                this.height = PLATFORM_HEIGHT;
+                this.moving = moving;
+                this.startX = x;
+                this.moveSpeed = 2;
+                this.moveRange = 50;
+                this.moveDirection = 1;
+                this.color = this.getRandomColor();
+            }
+
+            getRandomColor() {
+                const colors = ['#ff6b6b', '#ffd700', '#4ecdc4', '#a855f7', '#3b82f6'];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update() {
+                if (this.moving) {
+                    this.x += this.moveSpeed * this.moveDirection;
+                    if (Math.abs(this.x - this.startX) > this.moveRange) {
+                        this.moveDirection *= -1;
+                    }
+                }
+            }
+
+            draw() {
+                const screenY = this.y - cameraY;
+
+                // プラットフォーム
+                ctx.fillStyle = this.color;
+                ctx.fillRect(
+                    Math.floor(this.x),
+                    Math.floor(screenY),
+                    this.width,
+                    this.height
+                );
+
+                // ハイライト
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.fillRect(
+                    Math.floor(this.x),
+                    Math.floor(screenY),
+                    this.width,
+                    3
+                );
+            }
+        }
+
+        // 初期化
+        function init() {
+            width = canvas.width = GAME_WIDTH;
+            height = canvas.height = GAME_HEIGHT;
+
+            highScore = parseInt(localStorage.getItem('pixelJumperHighScore')) || 0;
+            document.getElementById('highScore').textContent = `HIGH: ${highScore}`;
+
+            restart();
+        }
+
+        function restart() {
+            player = new Player();
+            platforms = [];
+            score = 0;
+            gameOver = false;
+            cameraY = 0;
+            targetCameraY = 0;
+
+            // 初期プラットフォーム
+            for (let i = 0; i < 6; i++) {
+                const y = GAME_HEIGHT - 50 - i * 70;
+                const x = Math.random() * (GAME_WIDTH - PLATFORM_WIDTH);
+                const moving = i > 2 && Math.random() > 0.5;
+                platforms.push(new Platform(x, y, moving));
+            }
+
+            document.getElementById('gameOver').classList.remove('active');
+            document.getElementById('score').textContent = 'SCORE: 0';
+        }
+
+        function endGame() {
+            gameOver = true;
+            document.getElementById('gameOver').classList.add('active');
+            document.getElementById('finalScore').textContent = `SCORE: ${score}`;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('pixelJumperHighScore', highScore);
+                document.getElementById('highScore').textContent = `HIGH: ${highScore}`;
+            }
+        }
+
+        // プラットフォーム生成
+        function generatePlatforms() {
+            const highestPlatform = Math.min(...platforms.map(p => p.y));
+            if (highestPlatform > cameraY - 100) {
+                const y = highestPlatform - 60 - Math.random() * 30;
+                const x = Math.random() * (GAME_WIDTH - PLATFORM_WIDTH);
+                const moving = score > 5 && Math.random() > 0.6;
+                platforms.push(new Platform(x, y, moving));
+
+                // 古いプラットフォームを削除
+                platforms = platforms.filter(p => p.y < cameraY + GAME_HEIGHT + 100);
+            }
+        }
+
+        // 衝突判定
+        function checkCollision(player, platform) {
+            return player.x < platform.x + platform.width &&
+                   player.x + player.width > platform.x &&
+                   player.y < platform.y + platform.height &&
+                   player.y + player.height > platform.y;
+        }
+
+        // 更新
+        function update() {
+            if (gameOver) return;
+
+            player.update();
+            platforms.forEach(p => p.update());
+
+            // プラットフォームとの衝突
+            player.onGround = false;
+            platforms.forEach(platform => {
+                if (checkCollision(player, platform)) {
+                    if (player.vy > 0 && player.y < platform.y) {
+                        player.y = platform.y - player.height;
+                        player.vy = 0;
+                        player.onGround = true;
+                    }
+                }
+            });
+
+            // カメラ更新
+            if (player.y < cameraY + GAME_HEIGHT * 0.4) {
+                targetCameraY = player.y - GAME_HEIGHT * 0.4;
+            }
+            cameraY += (targetCameraY - cameraY) * 0.1;
+
+            // スコア更新
+            const currentScore = Math.floor(-cameraY / 10);
+            if (currentScore > score) {
+                score = currentScore;
+                document.getElementById('score').textContent = `SCORE: ${score}`;
+            }
+
+            // プラットフォーム生成
+            generatePlatforms();
+        }
+
+        // 描画
+        function draw() {
+            // 背景
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#1a1a2e');
+            gradient.addColorStop(1, '#0a0a15');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // グリッド
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            const gridSize = 30;
+            const offset = Math.floor(cameraY) % gridSize;
+            for (let x = 0; x < width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            for (let y = -offset; y < height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            // プラットフォーム描画
+            platforms.forEach(platform => {
+                if (platform.y - cameraY > -50 && platform.y - cameraY < height + 50) {
+                    platform.draw();
+                }
+            });
+
+            // プレイヤー描画
+            player.draw();
+        }
+
+        // ゲームループ
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 入力処理
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                e.preventDefault();
+                if (gameOver) {
+                    restart();
+                } else {
+                    player.jump();
+                }
+            }
+            if (e.code === 'ArrowLeft') player.vx = -3;
+            if (e.code === 'ArrowRight') player.vx = 3;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowLeft' && player.vx < 0) player.vx = 0;
+            if (e.code === 'ArrowRight' && player.vx > 0) player.vx = 0;
+        });
+
+        canvas.addEventListener('click', () => {
+            if (!gameOver) player.jump();
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!gameOver) {
+                const touchX = e.touches[0].clientX;
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = GAME_WIDTH / rect.width;
+                const x = (touchX - rect.left) * scaleX;
+
+                if (x < GAME_WIDTH / 2) {
+                    player.vx = -3;
+                } else {
+                    player.vx = 3;
+                }
+                player.jump();
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            player.vx = 0;
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 開始
+        init();
+        gameLoop();
+    </script>
+</body>
+</html>
