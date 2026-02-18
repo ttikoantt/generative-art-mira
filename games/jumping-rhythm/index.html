@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Jumping Rhythm - タイミングジャンプ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: #1a1a2e;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            background: linear-gradient(180deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+        }
+
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .score-board {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            border-radius: 20px;
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            z-index: 100;
+            text-align: center;
+        }
+
+        .score-board .combo {
+            font-size: 16px;
+            margin-top: 5px;
+            color: #ffd700;
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(20px);
+            padding: 40px;
+            border-radius: 30px;
+            color: #fff;
+            text-align: center;
+            z-index: 200;
+            display: none;
+        }
+
+        .game-over h2 {
+            font-size: 32px;
+            margin-bottom: 20px;
+            color: #ff6b6b;
+        }
+
+        .game-over p {
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            color: #fff;
+            padding: 15px 40px;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            touch-action: manipulation;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 12px;
+            border-radius: 50%;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 10px 20px;
+            border-radius: 15px;
+            color: #fff;
+            font-size: 14px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="canvas"></canvas>
+
+        <div class="score-board">
+            <div id="score">Score: 0</div>
+            <div id="combo" class="combo">Combo: 0</div>
+        </div>
+
+        <div class="instructions">
+            タップまたはスペースキーでジャンプ
+        </div>
+
+        <div class="game-over" id="gameOver">
+            <h2>Game Over!</h2>
+            <p id="finalScore">Score: 0</p>
+            <button class="btn" onclick="restartGame()">リスタート</button>
+        </div>
+
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const comboEl = document.getElementById('combo');
+        const gameOverEl = document.getElementById('gameOver');
+        const finalScoreEl = document.getElementById('finalScore');
+
+        let player, platforms, particles;
+        let score, combo, maxCombo;
+        let gameRunning, animationId;
+        let groundY;
+        let gravity = 0.6;
+        let jumpForce = -12;
+        let platformSpeed = 3;
+        let spawnTimer = 0;
+        let bgHue = 220;
+
+        // キャンバスサイズ設定
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            groundY = canvas.height - 100;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // プレイヤークラス
+        class Player {
+            constructor() {
+                this.width = 40;
+                this.height = 40;
+                this.x = 100;
+                this.y = groundY - this.height;
+                this.velocityY = 0;
+                this.isJumping = false;
+                this.rotation = 0;
+                this.trail = [];
+            }
+
+            jump() {
+                if (!this.isJumping) {
+                    this.velocityY = jumpForce;
+                    this.isJumping = true;
+                    createParticles(this.x + this.width / 2, this.y + this.height, 10);
+                }
+            }
+
+            update() {
+                this.velocityY += gravity;
+                this.y += this.velocityY;
+
+                // 回転
+                if (this.isJumping) {
+                    this.rotation += 0.1;
+                } else {
+                    this.rotation = 0;
+                }
+
+                // トレイル
+                this.trail.push({ x: this.x, y: this.y, alpha: 0.5 });
+                if (this.trail.length > 10) {
+                    this.trail.shift();
+                }
+
+                // 地面判定
+                if (this.y + this.height > groundY) {
+                    this.y = groundY - this.height;
+                    this.velocityY = 0;
+                    this.isJumping = false;
+                    this.rotation = 0;
+                }
+            }
+
+            draw(ctx) {
+                // トレイル
+                for (let i = 0; i < this.trail.length; i++) {
+                    const t = this.trail[i];
+                    ctx.fillStyle = `rgba(102, 126, 234, ${t.alpha * (i / this.trail.length)})`;
+                    ctx.fillRect(t.x, t.y, this.width, this.height);
+                }
+
+                // プレイヤー
+                ctx.save();
+                ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+                ctx.rotate(this.rotation);
+
+                const gradient = ctx.createLinearGradient(-this.width / 2, -this.height / 2, this.width / 2, this.height / 2);
+                gradient.addColorStop(0, '#667eea');
+                gradient.addColorStop(1, '#764ba2');
+
+                ctx.fillStyle = gradient;
+                ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+
+                // 光沢
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height / 3);
+
+                ctx.restore();
+            }
+        }
+
+        // プラットフォームクラス
+        class Platform {
+            constructor(x, y, width, height) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.passed = false;
+            }
+
+            update() {
+                this.x -= platformSpeed;
+            }
+
+            draw(ctx) {
+                const gradient = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.height);
+                gradient.addColorStop(0, '#4ecdc4');
+                gradient.addColorStop(1, '#44a08d');
+
+                ctx.fillStyle = gradient;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+
+                // 光沢
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.fillRect(this.x, this.y, this.width, this.height / 3);
+            }
+
+            checkCollision(player) {
+                return player.x < this.x + this.width &&
+                       player.x + player.width > this.x &&
+                       player.y < this.y + this.height &&
+                       player.y + player.height > this.y;
+            }
+        }
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.velocityX = (Math.random() - 0.5) * 10;
+                this.velocityY = (Math.random() - 0.5) * 10;
+                this.radius = 3 + Math.random() * 3;
+                this.alpha = 1;
+                this.hue = bgHue + Math.random() * 60;
+            }
+
+            update() {
+                this.x += this.velocityX;
+                this.y += this.velocityY;
+                this.alpha -= 0.02;
+            }
+
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, ${this.alpha})`;
+                ctx.fill();
+            }
+        }
+
+        // パーティクル生成
+        function createParticles(x, y, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y));
+            }
+        }
+
+        // プラットフォーム生成
+        function spawnPlatform() {
+            const width = 100 + Math.random() * 200;
+            const height = 30 + Math.random() * 30;
+            const x = canvas.width;
+            const y = groundY - height + (Math.random() - 0.5) * 100;
+
+            platforms.push(new Platform(x, y, width, height));
+        }
+
+        // 衝突判定
+        function checkCollisions() {
+            for (const platform of platforms) {
+                if (platform.checkCollision(player)) {
+                    gameOver();
+                    return;
+                }
+            }
+        }
+
+        // ゲームオーバー
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+            finalScoreEl.textContent = `Score: ${score}`;
+            gameOverEl.style.display = 'block';
+        }
+
+        // リスタート
+        function restartGame() {
+            gameOverEl.style.display = 'none';
+            initGame();
+        }
+
+        // ゲーム初期化
+        function initGame() {
+            player = new Player();
+            platforms = [];
+            particles = [];
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            gameRunning = true;
+            spawnTimer = 0;
+
+            updateScore();
+            animate();
+        }
+
+        // スコア更新
+        function updateScore() {
+            scoreEl.textContent = `Score: ${score}`;
+            comboEl.textContent = `Combo: ${combo}`;
+        }
+
+        // アニメーションループ
+        function animate() {
+            if (!gameRunning) return;
+
+            // 背景クリア
+            bgHue = (bgHue + 0.1) % 360;
+            ctx.fillStyle = `hsla(${bgHue}, 30%, 10%, 0.3)`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 地面描画
+            const groundGradient = ctx.createLinearGradient(0, groundY, 0, canvas.height);
+            groundGradient.addColorStop(0, '#2d3436');
+            groundGradient.addColorStop(1, '#1a1a2e');
+            ctx.fillStyle = groundGradient;
+            ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+
+            // プラットフォーム生成
+            spawnTimer++;
+            if (spawnTimer > 100) {
+                spawnPlatform();
+                spawnTimer = 0;
+            }
+
+            // プラットフォーム更新
+            for (let i = platforms.length - 1; i >= 0; i--) {
+                const platform = platforms[i];
+                platform.update();
+                platform.draw(ctx);
+
+                // スコア加算
+                if (!platform.passed && platform.x + platform.width < player.x) {
+                    platform.passed = true;
+                    score += 10 + combo;
+                    combo++;
+                    if (combo > maxCombo) maxCombo = combo;
+                    updateScore();
+                }
+
+                // 画面外に出たら削除
+                if (platform.x + platform.width < 0) {
+                    platforms.splice(i, 1);
+                }
+            }
+
+            // プレイヤー更新
+            player.update();
+            player.draw(ctx);
+
+            // パーティクル更新
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const particle = particles[i];
+                particle.update();
+                particle.draw(ctx);
+
+                if (particle.alpha <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            // 衝突判定
+            checkCollisions();
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // ジャンプ処理
+        function handleJump() {
+            if (gameRunning) {
+                player.jump();
+            }
+        }
+
+        // キーボードイベント
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                handleJump();
+            }
+        });
+
+        // タッチイベント
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleJump();
+        });
+
+        // クリックイベント
+        canvas.addEventListener('click', (e) => {
+            handleJump();
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // ゲーム開始
+        initGame();
+    </script>
+</body>
+</html>
