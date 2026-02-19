@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎵 Rhythm Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            padding: 20px;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 30px;
+            font-size: 1em;
+        }
+
+        #visualizer {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 20px;
+            box-shadow: 0 0 40px rgba(255, 255, 255, 0.1);
+            margin: 20px auto;
+            max-width: 100%;
+        }
+
+        .controls {
+            margin-top: 30px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1em;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+        }
+
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .visualizer-mode {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .mode-btn {
+            padding: 10px 20px;
+            font-size: 0.9em;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .mode-btn.active {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            border-color: transparent;
+        }
+
+        .info {
+            color: #666;
+            margin-top: 20px;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2em;
+            }
+
+            button {
+                padding: 12px 24px;
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Rhythm Visualizer</h1>
+        <p class="subtitle">音楽を再生してリズムを感じてみよう</p>
+
+        <canvas id="visualizer" width="700" height="400"></canvas>
+
+        <div class="controls">
+            <button id="startBtn">🎵 マイクで開始</button>
+            <button id="demoBtn">🎹 デモモード</button>
+        </div>
+
+        <div class="visualizer-mode">
+            <button class="mode-btn active" data-mode="bars">📊 バー</button>
+            <button class="mode-btn" data-mode="wave">🌊 波形</button>
+            <button class="mode-btn" data-mode="circle">⭕ サークル</button>
+        </div>
+
+        <p class="info">マウスまたはタッチでインタラクション</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const demoBtn = document.getElementById('demoBtn');
+        const modeBtns = document.querySelectorAll('.mode-btn');
+
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let source;
+        let animationId;
+        let visualMode = 'bars';
+        let isDemo = false;
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+
+        // Canvasサイズ調整
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const maxWidth = Math.min(700, container.clientWidth - 40);
+            canvas.width = maxWidth;
+            canvas.height = maxWidth * 0.57;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // マウス/タッチイベント
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.touches[0].clientX - rect.left;
+            mouseY = e.touches[0].clientY - rect.top;
+        });
+
+        // モード切り替え
+        modeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                modeBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                visualMode = btn.dataset.mode;
+            });
+        });
+
+        // マイクで開始
+        startBtn.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                source = audioContext.createMediaStreamSource(stream);
+
+                analyser.fftSize = 256;
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                source.connect(analyser);
+
+                isDemo = false;
+                startBtn.disabled = true;
+                demoBtn.disabled = true;
+
+                visualize();
+            } catch (err) {
+                alert('マイクのアクセスが許可されていません');
+                console.error(err);
+            }
+        });
+
+        // デモモード
+        demoBtn.addEventListener('click', () => {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+
+            analyser.fftSize = 256;
+            const bufferLength = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+
+            isDemo = true;
+            startBtn.disabled = true;
+            demoBtn.disabled = true;
+
+            visualize();
+        });
+
+        // デモデータ生成
+        function generateDemoData() {
+            const time = Date.now() / 1000;
+            for (let i = 0; i < dataArray.length; i++) {
+                const base = Math.sin(time * 3 + i * 0.1) * 50 + 100;
+                const beat = Math.sin(time * 6) * 30;
+                const noise = Math.random() * 20;
+                dataArray[i] = Math.max(0, Math.min(255, base + beat + noise));
+            }
+        }
+
+        // ビジュアライズ
+        function visualize() {
+            animationId = requestAnimationFrame(visualize);
+
+            if (isDemo) {
+                generateDemoData();
+            } else {
+                analyser.getByteFrequencyData(dataArray);
+            }
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            switch(visualMode) {
+                case 'bars':
+                    drawBars();
+                    break;
+                case 'wave':
+                    drawWave();
+                    break;
+                case 'circle':
+                    drawCircle();
+                    break;
+            }
+        }
+
+        // バーモード
+        function drawBars() {
+            const barWidth = canvas.width / dataArray.length * 2.5;
+            let x = 0;
+
+            for (let i = 0; i < dataArray.length; i++) {
+                const barHeight = (dataArray[i] / 255) * canvas.height * 0.8;
+                const hue = (i / dataArray.length) * 360;
+                const saturation = 70 + (dataArray[i] / 255) * 30;
+                const lightness = 50 + (dataArray[i] / 255) * 20;
+
+                ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+                ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+
+                // グロー効果
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+
+                x += barWidth + 1;
+            }
+
+            // マウス追従
+            drawMouseGlow();
+        }
+
+        // 波形モード
+        function drawWave() {
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#00ff88';
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#00ff88';
+
+            ctx.beginPath();
+
+            const sliceWidth = canvas.width / dataArray.length;
+            let x = 0;
+
+            for (let i = 0; i < dataArray.length; i++) {
+                const y = (dataArray[i] / 255) * canvas.height;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            ctx.stroke();
+
+            // 複数の波形
+            ctx.strokeStyle = '#ff0088';
+            ctx.shadowColor = '#ff0088';
+            ctx.beginPath();
+
+            x = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                const y = canvas.height - (dataArray[i] / 255) * canvas.height;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            ctx.stroke();
+            drawMouseGlow();
+        }
+
+        // サークルモード
+        function drawCircle() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) * 0.25;
+
+            for (let i = 0; i < dataArray.length; i++) {
+                const angle = (i / dataArray.length) * Math.PI * 2;
+                const barHeight = (dataArray[i] / 255) * 100;
+                const hue = (i / dataArray.length) * 360;
+
+                const x1 = centerX + Math.cos(angle) * radius;
+                const y1 = centerY + Math.sin(angle) * radius;
+                const x2 = centerX + Math.cos(angle) * (radius + barHeight);
+                const y2 = centerY + Math.sin(angle) * (radius + barHeight);
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = `hsl(${hue}, 70%, 60%)`;
+                ctx.lineWidth = 2;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsl(${hue}, 70%, 60%)`;
+                ctx.stroke();
+            }
+
+            // 中心の円
+            const avgFreq = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius * 0.3 + avgFreq / 10, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${avgFreq / 255})`;
+            ctx.fill();
+        }
+
+        // マウスグロー
+        function drawMouseGlow() {
+            const gradient = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, 100);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+    </script>
+</body>
+</html>
