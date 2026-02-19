@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pi Visualizer - 円周率の可視化</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0f;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #canvas {
+            flex: 1;
+            display: block;
+        }
+        
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .info h1 {
+            font-size: 18px;
+            margin-bottom: 5px;
+            color: #a855f7;
+        }
+        
+        .info p {
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .stats {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(168, 85, 247, 0.3);
+            border: 1px solid rgba(168, 85, 247, 0.5);
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+        
+        .fullscreen-btn:hover {
+            background: rgba(168, 85, 247, 0.5);
+        }
+        
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="info">
+        <h1>🔢 Pi Visualizer</h1>
+        <p>円周率をパーティクルで可視化</p>
+    </div>
+    
+    <div class="stats" id="stats">
+        数字: <span id="digitCount">0</span> | 粒子: <span id="particleCount">0</span>
+    </div>
+    
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height, centerX, centerY;
+        let particles = [];
+        let piDigits = [];
+        let currentDigit = 0;
+        let angle = 0;
+        
+        // 円周率の最初の1000桁
+        const PI_STRING = "31415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679821480865132823066470938446095505822317253594081284811174502841027019385211055596446229489549303819644288109756659334461284756482337867831652712019091456485669234603486104543266482133936072602491412737245870066063155881748815209209628292540917153643678925903600113305305488204665213841469519415116094330572703657595919530921861173819326117931051185480744623799627495673518857527248912279381830119491298336733624406566430860213949463952247371907021798609437027705392171762931767523846748184676694051320005681271452635608277857713427577896091736371787214684409012249534301465495853710507922796892589235420199561121290219608640344181598136297747713099605187072113499999983729780499510597317328160963185950244594553469083026425223082533446850352619311881710100031378387528865875332083814206171776691473035982534904287554687311595628638823537875937519577818577805321712268066130019278766111959092164201989";
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+        
+        class Particle {
+            constructor(digit, x, y) {
+                this.digit = digit;
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 20 + 15;
+                this.baseSize = this.size;
+                this.color = this.getColor(digit);
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.02;
+                this.pulse = 0;
+                this.pulseSpeed = Math.random() * 0.05 + 0.02;
+                this.alpha = 1;
+                this.fadeIn = true;
+            }
+            
+            getColor(digit) {
+                const colors = [
+                    '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4',
+                    '#3b82f6', '#8b5cf6', '#ec4899', '#f43f5e', '#6366f1'
+                ];
+                return colors[digit];
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.rotation += this.rotationSpeed;
+                
+                // 脈動アニメーション
+                this.pulse += this.pulseSpeed;
+                this.size = this.baseSize + Math.sin(this.pulse) * 5;
+                
+                // フェードイン
+                if (this.fadeIn) {
+                    this.alpha = Math.min(1, this.alpha + 0.05);
+                }
+                
+                // 画面外に出たら反対側から
+                if (this.x < -50) this.x = width + 50;
+                if (this.x > width + 50) this.x = -50;
+                if (this.y < -50) this.y = height + 50;
+                if (this.y > height + 50) this.y = -50;
+            }
+            
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.globalAlpha = this.alpha * 0.8;
+                
+                // グロー効果
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 20;
+                
+                // 円を描画
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                
+                // 数字を描画
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#fff';
+                ctx.font = `bold ${this.size * 0.8}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.digit, 0, 0);
+                
+                ctx.restore();
+            }
+        }
+        
+        function addParticle() {
+            if (currentDigit >= PI_STRING.length) return;
+            
+            const digit = parseInt(PI_STRING[currentDigit]);
+            const radius = 100 + currentDigit * 0.3;
+            angle += 0.1;
+            
+            const x = centerX + Math.cos(angle) * radius;
+            const y = centerY + Math.sin(angle) * radius;
+            
+            particles.push(new Particle(digit, x, y));
+            currentDigit++;
+            
+            document.getElementById('digitCount').textContent = currentDigit;
+            document.getElementById('particleCount').textContent = particles.length;
+        }
+        
+        function connectParticles() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < 100 && particles[i].digit === particles[j].digit) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = particles[i].color;
+                        ctx.globalAlpha = 0.3 * (1 - dist / 100);
+                        ctx.lineWidth = 1;
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+        
+        function animate() {
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 新しい粒子を追加
+            if (particles.length < 150) {
+                addParticle();
+            }
+            
+            // 粒子を更新・描画
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            
+            // 同じ数字同士を線で結ぶ
+            connectParticles();
+            
+            requestAnimationFrame(animate);
+        }
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        animate();
+    </script>
+</body>
+</html>
