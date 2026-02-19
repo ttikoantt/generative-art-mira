@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liquid Simulation - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            padding: 20px;
+        }
+
+        h1 {
+            color: white;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            color: rgba(255,255,255,0.8);
+            font-size: 1rem;
+            margin-bottom: 20px;
+        }
+
+        #canvas {
+            background: rgba(0,0,0,0.3);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            touch-action: none;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.1);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.7);
+            font-size: 0.9rem;
+            text-align: center;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="fullscreen-btn" onclick="toggleFullscreen()">⛶</div>
+
+    <div class="container">
+        <h1>💧 Liquid Simulation</h1>
+        <p class="subtitle">Click or drag to add liquid particles</p>
+        <canvas id="canvas"></canvas>
+
+        <div class="controls">
+            <button onclick="reset()">🔄 Reset</button>
+            <button onclick="changeGravity()">🌍 Toggle Gravity</button>
+            <button onclick="changeColor()">🎨 Change Color</button>
+        </div>
+    </div>
+
+    <p class="info">Drag to create • Double tap to reset</p>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Responsive canvas
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 250, 600);
+            canvas.width = size;
+            canvas.height = size;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Particle class
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.radius = Math.random() * 8 + 4;
+                this.life = 1;
+                this.decay = 0.001;
+            }
+
+            update() {
+                // Gravity
+                if (gravityEnabled) {
+                    this.vy += 0.3;
+                }
+
+                // Damping
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Bounce off walls
+                if (this.x - this.radius < 0) {
+                    this.x = this.radius;
+                    this.vx *= -0.7;
+                }
+                if (this.x + this.radius > canvas.width) {
+                    this.x = canvas.width - this.radius;
+                    this.vx *= -0.7;
+                }
+                if (this.y - this.radius < 0) {
+                    this.y = this.radius;
+                    this.vy *= -0.7;
+                }
+                if (this.y + this.radius > canvas.height) {
+                    this.y = canvas.height - this.radius;
+                    this.vy *= -0.7;
+                }
+
+                // Decay
+                this.life -= this.decay;
+            }
+
+            draw() {
+                const alpha = this.life;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+
+                // Gradient
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius
+                );
+                gradient.addColorStop(0, `hsla(${hue}, 70%, 60%, ${alpha})`);
+                gradient.addColorStop(1, `hsla(${hue + 30}, 70%, 40%, ${alpha * 0.5})`);
+
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+
+        let particles = [];
+        let gravityEnabled = true;
+        let hue = 200;
+        const colorSchemes = [200, 0, 120, 280, 45];
+
+        // Add particles on mouse/touch
+        let isDragging = false;
+
+        function addParticle(x, y) {
+            const rect = canvas.getBoundingClientRect();
+            const px = x - rect.left;
+            const py = y - rect.top;
+
+            for (let i = 0; i < 3; i++) {
+                particles.push(new Particle(px, py));
+            }
+
+            // Limit particles
+            if (particles.length > 200) {
+                particles.splice(0, particles.length - 200);
+            }
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            addParticle(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                addParticle(e.clientX, e.clientY);
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            isDragging = true;
+            addParticle(touch.clientX, touch.clientY);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isDragging) {
+                const touch = e.touches[0];
+                addParticle(touch.clientX, touch.clientY);
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+
+        // Double tap to reset
+        let lastTap = 0;
+        canvas.addEventListener('touchend', (e) => {
+            const now = Date.now();
+            if (now - lastTap < 300) {
+                reset();
+            }
+            lastTap = now;
+        });
+
+        // Controls
+        function reset() {
+            particles = [];
+        }
+
+        function changeGravity() {
+            gravityEnabled = !gravityEnabled;
+        }
+
+        function changeColor() {
+            hue = colorSchemes[Math.floor(Math.random() * colorSchemes.length)];
+        }
+
+        // Fullscreen
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            // Semi-transparent clear for trails
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw particles
+            particles = particles.filter(p => p.life > 0);
+
+            // Particle interaction
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[j].x - particles[i].x;
+                    const dy = particles[j].y - particles[i].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const minDist = particles[i].radius + particles[j].radius;
+
+                    if (dist < minDist && dist > 0) {
+                        const force = (minDist - dist) / dist * 0.03;
+                        const fx = dx * force;
+                        const fy = dy * force;
+
+                        particles[i].vx -= fx;
+                        particles[i].vy -= fy;
+                        particles[j].vx += fx;
+                        particles[j].vy += fy;
+                    }
+                }
+
+                particles[i].update();
+                particles[i].draw();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        // Auto-add some particles initially
+        setTimeout(() => {
+            for (let i = 0; i < 20; i++) {
+                addParticle(
+                    canvas.width / 2 + (Math.random() - 0.5) * 100,
+                    canvas.height / 3 + (Math.random() - 0.5) * 50
+                );
+            }
+        }, 500);
+    </script>
+</body>
+</html>
