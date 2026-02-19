@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bouncing Balls - ボールを弾ませてバースト！</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #fff;
+            touch-action: manipulation;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+            text-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .game-info {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .game-info span {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px 25px;
+            border-radius: 25px;
+            backdrop-filter: blur(10px);
+        }
+
+        .canvas-container {
+            position: relative;
+            background: rgba(15, 15, 35, 0.9);
+            border-radius: 20px;
+            padding: 10px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+        }
+
+        canvas {
+            display: block;
+            border-radius: 15px;
+            cursor: pointer;
+            background: radial-gradient(circle at center, #1a1a3e 0%, #0f0f23 100%);
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 15, 35, 0.95);
+            border-radius: 15px;
+            transition: opacity 0.3s;
+        }
+
+        .overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .overlay h2 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #f093fb, #f5576c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .overlay p {
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            color: #a0a0a0;
+            text-align: center;
+            max-width: 400px;
+        }
+
+        button {
+            padding: 15px 40px;
+            border: none;
+            border-radius: 30px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            color: #fff;
+            box-shadow: 0 10px 30px rgba(240, 147, 251, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(240, 147, 251, 0.5);
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 1.3rem;
+            box-shadow: none;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+            box-shadow: none;
+        }
+
+        .info {
+            margin-top: 20px;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.95rem;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .game-info {
+                gap: 15px;
+                font-size: 1rem;
+            }
+
+            .overlay h2 {
+                font-size: 2rem;
+            }
+
+            button {
+                padding: 12px 30px;
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🏀 Bouncing Balls</h1>
+
+    <div class="game-info">
+        <span>Score: <span id="score">0</span></span>
+        <span>Balls: <span id="balls">3</span></span>
+        <span>Level: <span id="level">1</span></span>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="canvas" width="600" height="600"></canvas>
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+        <div id="startOverlay" class="overlay">
+            <h2>Bouncing Balls</h2>
+            <p>ボールをクリックしてバーストさせよう！<br>ボールが画面外に出ると失くなるよ</p>
+            <button onclick="startGame()">Start Game</button>
+        </div>
+
+        <div id="gameOverOverlay" class="overlay hidden">
+            <h2>Game Over</h2>
+            <p>Score: <span id="finalScore">0</span></p>
+            <button onclick="startGame()">Play Again</button>
+        </div>
+    </div>
+
+    <div class="info">
+        <p>🎯 ボールをクリックしてスコアを稼ごう！色によって得点が違うよ</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let score = 0;
+        let ballsRemaining = 3;
+        let level = 1;
+        let balls = [];
+        let particles = [];
+        let gameRunning = false;
+        let animationId = null;
+        let lastBallTime = 0;
+
+        const ballTypes = {
+            red: { color: '#ff6b6b', points: 10, radius: 25 },
+            blue: { color: '#4ecdc4', points: 20, radius: 20 },
+            green: { color: '#45b7d1', points: 30, radius: 18 },
+            yellow: { color: '#ffd93d', points: 50, radius: 15 }
+        };
+
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const size = Math.min(600, window.innerWidth - 40);
+            canvas.width = size;
+            canvas.height = size;
+        }
+
+        function createBall() {
+            const types = Object.keys(ballTypes);
+            const type = types[Math.floor(Math.random() * types.length)];
+            const ballData = ballTypes[type];
+
+            const ball = {
+                x: Math.random() * (canvas.width - ballData.radius * 2) + ballData.radius,
+                y: canvas.height + ballData.radius,
+                vx: (Math.random() - 0.5) * 8,
+                vy: -(Math.random() * 5 + 8),
+                radius: ballData.radius,
+                color: ballData.color,
+                points: ballData.points,
+                gravity: 0.25,
+                bounceCount: 0
+            };
+
+            return ball;
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                const angle = (Math.PI * 2 / 15) * i;
+                const speed = Math.random() * 5 + 3;
+
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    radius: Math.random() * 4 + 2,
+                    color: color,
+                    alpha: 1
+                });
+            }
+        }
+
+        function update() {
+            // Spawn balls based on level
+            const spawnInterval = Math.max(1000, 3000 - level * 200);
+            if (Date.now() - lastBallTime > spawnInterval) {
+                balls.push(createBall());
+                lastBallTime = Date.now();
+            }
+
+            // Update balls
+            balls = balls.filter(ball => {
+                ball.vy += ball.gravity;
+                ball.x += ball.vx;
+                ball.y += ball.vy;
+
+                // Bounce off walls
+                if (ball.x - ball.radius < 0 || ball.x + ball.radius > canvas.width) {
+                    ball.vx *= -0.8;
+                    ball.x = Math.max(ball.radius, Math.min(canvas.width - ball.radius, ball.x));
+                }
+
+                // Bounce off floor
+                if (ball.y + ball.radius > canvas.height) {
+                    if (ball.vy > 2) {
+                        ball.vy *= -0.7;
+                        ball.y = canvas.height - ball.radius;
+                        ball.bounceCount++;
+                    } else {
+                        return false; // Remove ball if it's rolling on floor
+                    }
+                }
+
+                // Check if ball is out of bounds (left/right)
+                if (ball.x + ball.radius < 0 || ball.x - ball.radius > canvas.width) {
+                    ballsRemaining--;
+                    updateUI();
+                    return false;
+                }
+
+                return true;
+            });
+
+            // Update particles
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.1;
+                p.alpha -= 0.02;
+
+                return p.alpha > 0;
+            });
+
+            // Check game over
+            if (ballsRemaining <= 0 && balls.length === 0) {
+                gameOver();
+            }
+
+            // Level up
+            const newLevel = Math.floor(score / 200) + 1;
+            if (newLevel > level) {
+                level = newLevel;
+                updateUI();
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw particles
+            particles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.alpha;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            });
+
+            // Draw balls
+            balls.forEach(ball => {
+                // Glow effect
+                const gradient = ctx.createRadialGradient(
+                    ball.x, ball.y, 0,
+                    ball.x, ball.y, ball.radius * 1.5
+                );
+                gradient.addColorStop(0, ball.color);
+                gradient.addColorStop(1, 'transparent');
+
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, ball.radius * 1.5, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.globalAlpha = 0.3;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // Ball
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+                ctx.fillStyle = ball.color;
+                ctx.fill();
+
+                // Highlight
+                ctx.beginPath();
+                ctx.arc(ball.x - ball.radius * 0.3, ball.y - ball.radius * 0.3, ball.radius * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.fill();
+            });
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            update();
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('balls').textContent = ballsRemaining;
+            document.getElementById('level').textContent = level;
+        }
+
+        function handleClick(e) {
+            if (!gameRunning) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            balls = balls.filter(ball => {
+                const dx = x - ball.x;
+                const dy = y - ball.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < ball.radius) {
+                    score += ball.points;
+                    createParticles(ball.x, ball.y, ball.color);
+                    updateUI();
+                    return false;
+                }
+
+                return true;
+            });
+        }
+
+        function startGame() {
+            score = 0;
+            ballsRemaining = 3;
+            level = 1;
+            balls = [];
+            particles = [];
+            gameRunning = true;
+            lastBallTime = Date.now();
+
+            updateUI();
+
+            document.getElementById('startOverlay').classList.add('hidden');
+            document.getElementById('gameOverOverlay').classList.add('hidden');
+
+            // Create initial ball
+            balls.push(createBall());
+
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOverOverlay').classList.remove('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Initialize
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        canvas.addEventListener('click', handleClick);
+
+        // Also support touch for mobile
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('click', {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            handleClick(mouseEvent);
+        });
+    </script>
+</body>
+</html>
