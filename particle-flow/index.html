@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Particle Flow Visualization</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Particle Flow Art - ジェネレーティブパーティクルアート</title>
     <style>
         * {
             margin: 0;
@@ -12,57 +12,67 @@
         }
 
         body {
-            background: #0a0a0a;
+            background: #000;
             overflow: hidden;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Courier New', monospace;
         }
 
         canvas {
             display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
         }
 
         .info {
             position: fixed;
-            top: 20px;
+            bottom: 20px;
             left: 20px;
             color: rgba(255, 255, 255, 0.7);
-            font-size: 14px;
+            font-size: 12px;
+            z-index: 100;
             pointer-events: none;
-            z-index: 10;
         }
 
         .fullscreen-btn {
             position: fixed;
-            bottom: 20px;
+            top: 20px;
             right: 20px;
             background: rgba(255, 255, 255, 0.1);
-            color: white;
             border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
             padding: 10px 20px;
-            border-radius: 8px;
-            cursor: pointer;
             font-size: 14px;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
+            cursor: pointer;
             z-index: 100;
+            border-radius: 5px;
+            transition: all 0.3s;
         }
 
         .fullscreen-btn:hover {
             background: rgba(255, 255, 255, 0.2);
-            transform: scale(1.05);
         }
 
-        .fullscreen-btn:active {
-            transform: scale(0.95);
+        @media (max-width: 768px) {
+            .info {
+                font-size: 10px;
+                bottom: 10px;
+                left: 10px;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="info">
-        🌊 Touch and drag to create flow
-    </div>
-    <button class="fullscreen-btn" id="fullscreenBtn">⛶ Fullscreen</button>
     <canvas id="canvas"></canvas>
+    <div class="info">Particle Flow Art | Touch/Move to interact</div>
+    <button class="fullscreen-btn" id="fullscreenBtn">全画面</button>
 
     <script>
         const canvas = document.getElementById('canvas');
@@ -71,8 +81,8 @@
 
         let width, height;
         let particles = [];
+        let mouse = { x: 0, y: 0, active: false };
         let hue = 0;
-        let mouse = { x: null, y: null, active: false };
 
         function resize() {
             width = canvas.width = window.innerWidth;
@@ -82,80 +92,97 @@
         window.addEventListener('resize', resize);
         resize();
 
+        // Particle class
         class Particle {
-            constructor(x, y) {
-                this.x = x;
-                this.y = y;
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.life = Math.random() * 200 + 100;
+                this.maxLife = this.life;
                 this.size = Math.random() * 3 + 1;
-                this.speedX = Math.random() * 3 - 1.5;
-                this.speedY = Math.random() * 3 - 1.5;
-                this.hue = hue;
-                this.life = 1;
-                this.decay = Math.random() * 0.01 + 0.005;
+                this.hue = Math.random() * 60 - 30; // Color variation
             }
 
             update() {
-                this.x += this.speedX;
-                this.y += this.speedY;
-                this.speedX *= 0.99;
-                this.speedY *= 0.99;
-                this.life -= this.decay;
+                // Flow field based on position
+                const scale = 0.005;
+                const angle = (Math.cos(this.x * scale) + Math.sin(this.y * scale)) * Math.PI * 2;
 
-                if (this.size > 0.2) {
-                    this.size -= 0.02;
+                // Add mouse influence
+                if (mouse.active) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 150) {
+                        const force = (150 - dist) / 150;
+                        this.vx += (dx / dist) * force * 0.5;
+                        this.vy += (dy / dist) * force * 0.5;
+                    }
+                }
+
+                // Flow field force
+                this.vx += Math.cos(angle) * 0.1;
+                this.vy += Math.sin(angle) * 0.1;
+
+                // Apply velocity with damping
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+
+                // Update life
+                this.life--;
+
+                // Wrap around edges
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+
+                // Reset if dead
+                if (this.life <= 0) {
+                    this.reset();
                 }
             }
 
             draw() {
-                ctx.save();
-                ctx.globalAlpha = this.life;
-                ctx.fillStyle = `hsl(${this.hue}, 100%, 60%)`;
+                const alpha = (this.life / this.maxLife) * 0.8;
+                const particleHue = (hue + this.hue) % 360;
+
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${particleHue}, 70%, 60%, ${alpha})`;
                 ctx.fill();
-                ctx.restore();
             }
         }
 
-        function handleInput(x, y) {
-            mouse.x = x;
-            mouse.y = y;
+        // Create particles
+        const particleCount = 800;
+        for (let i = 0; i < particleCount; i++) {
+            particles.push(new Particle());
+        }
+
+        // Mouse/touch events
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
             mouse.active = true;
-
-            for (let i = 0; i < 5; i++) {
-                particles.push(new Particle(x, y));
-            }
-        }
-
-        // Touch events
-        canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            const touch = e.touches[0];
-            handleInput(touch.clientX, touch.clientY);
         });
 
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            const touch = e.touches[0];
-            handleInput(touch.clientX, touch.clientY);
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            mouse.active = true;
         });
 
         canvas.addEventListener('touchend', () => {
-            mouse.active = false;
-        });
-
-        // Mouse events
-        canvas.addEventListener('mousedown', (e) => {
-            handleInput(e.clientX, e.clientY);
-        });
-
-        canvas.addEventListener('mousemove', (e) => {
-            if (mouse.active) {
-                handleInput(e.clientX, e.clientY);
-            }
-        });
-
-        canvas.addEventListener('mouseup', () => {
             mouse.active = false;
         });
 
@@ -167,35 +194,25 @@
         fullscreenBtn.addEventListener('click', () => {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
-                fullscreenBtn.textContent = '✕ Exit';
             } else {
                 document.exitFullscreen();
-                fullscreenBtn.textContent = '⛶ Fullscreen';
             }
         });
 
+        // Animation loop
         function animate() {
-            ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
+            // Fade effect for trails
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
             ctx.fillRect(0, 0, width, height);
 
+            // Update hue
             hue += 0.5;
 
-            // Auto-generate particles occasionally
-            if (Math.random() < 0.1) {
-                const x = Math.random() * width;
-                const y = Math.random() * height;
-                particles.push(new Particle(x, y));
-            }
-
-            for (let i = 0; i < particles.length; i++) {
-                particles[i].update();
-                particles[i].draw();
-
-                if (particles[i].life <= 0 || particles[i].size <= 0.2) {
-                    particles.splice(i, 1);
-                    i--;
-                }
-            }
+            // Update and draw particles
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
 
             requestAnimationFrame(animate);
         }
