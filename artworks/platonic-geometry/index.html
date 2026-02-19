@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Platonic Geometry - プラトン立体の動的変形</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0e27;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            cursor: grab;
+        }
+
+        canvas:active {
+            cursor: grabbing;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #00ffff;
+            font-size: 12px;
+            background: rgba(10, 14, 39, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .controls h3 {
+            margin-bottom: 10px;
+            font-size: 14px;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .shape-btn {
+            display: block;
+            width: 100%;
+            margin: 5px 0;
+            padding: 8px 12px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            color: #00ffff;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 11px;
+            transition: all 0.3s;
+        }
+
+        .shape-btn:hover {
+            background: rgba(0, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .shape-btn.active {
+            background: rgba(0, 255, 255, 0.4);
+            border-color: #00ffff;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(0, 255, 255, 0.7);
+            font-size: 11px;
+            background: rgba(10, 14, 39, 0.8);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 255, 255, 0.2);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid rgba(0, 255, 255, 0.4);
+            color: #00ffff;
+            cursor: pointer;
+            border-radius: 8px;
+            font-size: 12px;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.4);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <h3>🔮 プラトン立体</h3>
+        <button class="shape-btn active" data-shape="tetrahedron">正四面体 (4面)</button>
+        <button class="shape-btn" data-shape="cube">立方体 (6面)</button>
+        <button class="shape-btn" data-shape="octahedron">正八面体 (8面)</button>
+        <button class="shape-btn" data-shape="dodecahedron">正十二面体 (12面)</button>
+        <button class="shape-btn" data-shape="icosahedron">正二十面体 (20面)</button>
+    </div>
+
+    <div class="info">
+        🖱️ ドラッグで回転 | ホイールでズーム | タッチ操作対応
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let rotationX = 0;
+        let rotationY = 0;
+        let rotationZ = 0;
+        let zoom = 1;
+        let autoRotate = true;
+        let time = 0;
+        let currentShape = 'tetrahedron';
+
+        // マウス操作
+        let isDragging = false;
+        let lastX, lastY;
+        let velocityX = 0;
+        let velocityY = 0;
+
+        // タッチ操作
+        let lastTouchDistance = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // プラトン立体の頂点と面
+        const shapes = {
+            tetrahedron: {
+                vertices: [
+                    [1, 1, 1],
+                    [-1, -1, 1],
+                    [-1, 1, -1],
+                    [1, -1, -1]
+                ],
+                faces: [
+                    [0, 1, 2],
+                    [0, 3, 1],
+                    [0, 2, 3],
+                    [1, 3, 2]
+                ]
+            },
+            cube: {
+                vertices: [
+                    [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
+                    [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]
+                ],
+                faces: [
+                    [0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4],
+                    [2, 3, 7, 6], [0, 3, 7, 4], [1, 2, 6, 5]
+                ]
+            },
+            octahedron: {
+                vertices: [
+                    [1, 0, 0], [-1, 0, 0], [0, 1, 0],
+                    [0, -1, 0], [0, 0, 1], [0, 0, -1]
+                ],
+                faces: [
+                    [0, 2, 4], [0, 4, 3], [0, 3, 5], [0, 5, 2],
+                    [1, 2, 5], [1, 5, 3], [1, 3, 4], [1, 4, 2]
+                ]
+            },
+            dodecahedron: {
+                vertices: (() => {
+                    const phi = (1 + Math.sqrt(5)) / 2;
+                    const vertices = [];
+                    const a = 1 / phi;
+                    
+                    // 立方体の頂点
+                    for (let i = -1; i <= 1; i += 2) {
+                        for (let j = -1; j <= 1; j += 2) {
+                            for (let k = -1; k <= 1; k += 2) {
+                                vertices.push([i, j, k]);
+                            }
+                        }
+                    }
+                    
+                    // 長方形の中心
+                    for (let i = -1; i <= 1; i += 2) {
+                        vertices.push([0, i * phi, i / phi]);
+                        vertices.push([i / phi, 0, i * phi]);
+                        vertices.push([i * phi, i / phi, 0]);
+                    }
+                    
+                    return vertices;
+                })(),
+                faces: (() => {
+                    // 簡略化のため、外接円を描画
+                    return [];
+                })()
+            },
+            icosahedron: {
+                vertices: (() => {
+                    const phi = (1 + Math.sqrt(5)) / 2;
+                    const vertices = [];
+                    
+                    for (let i = -1; i <= 1; i += 2) {
+                        for (let j = -1; j <= 1; j += 2) {
+                            vertices.push([0, i, j * phi]);
+                            vertices.push([i, j * phi, 0]);
+                            vertices.push([j * phi, 0, i]);
+                        }
+                    }
+                    
+                    return vertices;
+                })(),
+                faces: []
+            }
+        };
+
+        // 3D投影
+        function project(x, y, z) {
+            const scale = 150 * zoom;
+            const perspective = 500;
+            const factor = perspective / (perspective + z);
+
+            return {
+                x: width / 2 + x * scale * factor,
+                y: height / 2 + y * scale * factor,
+                scale: factor,
+                z: z
+            };
+        }
+
+        // 回転行列
+        function rotate(x, y, z) {
+            // X軸回転
+            let y1 = y * Math.cos(rotationX) - z * Math.sin(rotationX);
+            let z1 = y * Math.sin(rotationX) + z * Math.cos(rotationX);
+            y = y1;
+            z = z1;
+
+            // Y軸回転
+            let x1 = x * Math.cos(rotationY) + z * Math.sin(rotationY);
+            z1 = -x * Math.sin(rotationY) + z * Math.cos(rotationY);
+            x = x1;
+            z = z1;
+
+            // Z軸回転
+            x1 = x * Math.cos(rotationZ) - y * Math.sin(rotationZ);
+            y1 = x * Math.sin(rotationZ) + y * Math.cos(rotationZ);
+            x = x1;
+            y = y1;
+
+            return { x, y, z };
+        }
+
+        // 色彩生成
+        function getColor(index, total, alpha) {
+            const hue = (index / total * 360 + time * 20) % 360;
+            return `hsla(${hue}, 80%, 60%, ${alpha})`;
+        }
+
+        // 描画
+        function draw() {
+            ctx.fillStyle = 'rgba(10, 14, 39, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            const shape = shapes[currentShape];
+            const vertices = shape.vertices.map((v, i) => {
+                // 動的変形
+                const deform = Math.sin(time * 2 + i * 0.5) * 0.15;
+                const x = v[0] * (1 + deform);
+                const y = v[1] * (1 + deform);
+                const z = v[2] * (1 + deform);
+
+                const rotated = rotate(x, y, z);
+                return project(rotated.x, rotated.y, rotated.z);
+            });
+
+            // エッジ描画
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+            ctx.lineWidth = 1;
+            
+            for (let i = 0; i < vertices.length; i++) {
+                for (let j = i + 1; j < vertices.length; j++) {
+                    const dist = Math.sqrt(
+                        Math.pow(shape.vertices[i][0] - shape.vertices[j][0], 2) +
+                        Math.pow(shape.vertices[i][1] - shape.vertices[j][1], 2) +
+                        Math.pow(shape.vertices[i][2] - shape.vertices[j][2], 2)
+                    );
+
+                    // 隣接する頂点のみ接続
+                    if (dist < 2.5) {
+                        ctx.beginPath();
+                        ctx.moveTo(vertices[i].x, vertices[i].y);
+                        ctx.lineTo(vertices[j].x, vertices[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // 頂点描画
+            vertices.forEach((v, i) => {
+                const size = (8 + Math.sin(time * 3 + i) * 3) * v.scale * zoom;
+                const gradient = ctx.createRadialGradient(v.x, v.y, 0, v.x, v.y, size);
+                
+                gradient.addColorStop(0, getColor(i, vertices.length, 1));
+                gradient.addColorStop(0.5, getColor(i, vertices.length, 0.5));
+                gradient.addColorStop(1, getColor(i, vertices.length, 0));
+
+                ctx.beginPath();
+                ctx.arc(v.x, v.y, size, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // グロー
+                ctx.shadowColor = getColor(i, vertices.length, 1);
+                ctx.shadowBlur = 20;
+                ctx.beginPath();
+                ctx.arc(v.x, v.y, size * 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = getColor(i, vertices.length, 1);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // 放射線
+            vertices.forEach((v, i) => {
+                const rays = 8;
+                for (let r = 0; r < rays; r++) {
+                    const angle = (r / rays) * Math.PI * 2 + time + i;
+                    const length = 50 + Math.sin(time * 4 + r) * 20;
+                    const endX = v.x + Math.cos(angle) * length * v.scale;
+                    const endY = v.y + Math.sin(angle) * length * v.scale;
+
+                    ctx.beginPath();
+                    ctx.moveTo(v.x, v.y);
+                    ctx.lineTo(endX, endY);
+                    ctx.strokeStyle = getColor(i, vertices.length, 0.2);
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            });
+
+            // 自動回転
+            if (autoRotate) {
+                rotationY += 0.005;
+                rotationX += 0.002;
+            }
+
+            // 慣性
+            rotationY += velocityX;
+            rotationX += velocityY;
+            velocityX *= 0.95;
+            velocityY *= 0.95;
+
+            time += 0.016;
+            requestAnimationFrame(draw);
+        }
+
+        // マウスイベント
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            autoRotate = false;
+            lastX = e.clientX;
+            lastY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            
+            const deltaX = e.clientX - lastX;
+            const deltaY = e.clientY - lastY;
+            
+            velocityX = deltaX * 0.01;
+            velocityY = deltaY * 0.01;
+            
+            rotationY += deltaX * 0.01;
+            rotationX += deltaY * 0.01;
+            
+            lastX = e.clientX;
+            lastY = e.clientY;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            zoom *= e.deltaY > 0 ? 0.95 : 1.05;
+            zoom = Math.max(0.3, Math.min(3, zoom));
+        });
+
+        // タッチイベント
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                isDragging = true;
+                autoRotate = false;
+                lastX = e.touches[0].clientX;
+                lastY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                lastTouchDistance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            
+            if (e.touches.length === 1 && isDragging) {
+                const deltaX = e.touches[0].clientX - lastX;
+                const deltaY = e.touches[0].clientY - lastY;
+                
+                rotationY += deltaX * 0.01;
+                rotationX += deltaY * 0.01;
+                
+                lastX = e.touches[0].clientX;
+                lastY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                const distance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                
+                zoom *= distance / lastTouchDistance;
+                zoom = Math.max(0.3, Math.min(3, zoom));
+                lastTouchDistance = distance;
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+
+        // シェイプ切り替え
+        document.querySelectorAll('.shape-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentShape = btn.dataset.shape;
+            });
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        draw();
+    </script>
+</body>
+</html>
