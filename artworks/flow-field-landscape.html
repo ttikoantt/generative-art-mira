@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow Field Landscape</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            padding: 20px;
+        }
+
+        .container {
+            text-align: center;
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #fff;
+            margin-bottom: 10px;
+            font-size: 1.8rem;
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+
+        canvas {
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 255, 255, 0.2);
+            max-width: 100%;
+            cursor: pointer;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            color: #666;
+            margin-top: 15px;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌊 Flow Field Landscape</h1>
+        <p class="subtitle">流れ場が織りなす風景的パターン</p>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="controls">
+            <button onclick="regenerate()">🎲 新しい風景</button>
+            <button onclick="toggleAnimation()">⏯️ 一時停止/再生</button>
+            <button onclick="download()">💾 保存</button>
+        </div>
+
+        <p class="info">クリックで干渉 | 自然な流れを模した風景的フローフィールド</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 設定
+        let width, height;
+        let particles = [];
+        let flowField = [];
+        let animationId;
+        let isAnimating = true;
+        let scale = 15;
+        let rows, cols;
+        let zOff = 0;
+        let hueOffset = 0;
+
+        // パーティクル
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.history = [];
+                this.maxHistory = 15;
+                this.speed = Math.random() * 2 + 1;
+                this.hue = Math.random() * 60 + hueOffset;
+            }
+
+            update() {
+                // フローフィールドから角度を取得
+                let x = Math.floor(this.x / scale);
+                let y = Math.floor(this.y / scale);
+                let index = x + y * cols;
+
+                if (flowField[index]) {
+                    let angle = flowField[index];
+                    this.vx = Math.cos(angle) * this.speed;
+                    this.vy = Math.sin(angle) * this.speed;
+                }
+
+                // 履歴を記録
+                this.history.push({ x: this.x, y: this.y });
+                if (this.history.length > this.maxHistory) {
+                    this.history.shift();
+                }
+
+                // 移動
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 色を少しずつ変化
+                this.hue += 0.1;
+
+                // 画面外に出たらリセット
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.reset();
+                }
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.history = [];
+                this.hue = Math.random() * 60 + hueOffset;
+            }
+
+            draw() {
+                if (this.history.length < 2) return;
+
+                ctx.beginPath();
+                ctx.moveTo(this.history[0].x, this.history[0].y);
+
+                for (let i = 1; i < this.history.length; i++) {
+                    ctx.lineTo(this.history[i].x, this.history[i].y);
+                }
+
+                let alpha = (this.history.length / this.maxHistory) * 0.6;
+                ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${alpha})`;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+        }
+
+        // 初期化
+        function init() {
+            width = Math.min(800, window.innerWidth - 40);
+            height = Math.min(600, window.innerHeight - 200);
+
+            canvas.width = width;
+            canvas.height = height;
+
+            cols = Math.floor(width / scale) + 1;
+            rows = Math.floor(height / scale) + 1;
+
+            flowField = new Array(cols * rows);
+            particles = [];
+
+            // パーティクル作成
+            for (let i = 0; i < 800; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        // Perlin風ノイズ（簡易版）
+        function noise(x, y, z) {
+            let p = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
+            return p - Math.floor(p);
+        }
+
+        // フローフィールド更新
+        function updateFlowField() {
+            let yOff = 0;
+            for (let y = 0; y < rows; y++) {
+                let xOff = 0;
+                for (let x = 0; x < cols; x++) {
+                    let index = x + y * cols;
+
+                    // 複数のノイズレイヤーを重ねて自然な流れに
+                    let n1 = noise(xOff * 0.1, yOff * 0.1, zOff) * Math.PI * 4;
+                    let n2 = noise(xOff * 0.05 + 100, yOff * 0.05 + 100, zOff * 0.5) * Math.PI * 2;
+                    let angle = n1 + n2;
+
+                    flowField[index] = angle;
+                    xOff += 0.1;
+                }
+                yOff += 0.1;
+            }
+            zOff += 0.003;
+        }
+
+        // アニメーション
+        function animate() {
+            if (!isAnimating) return;
+
+            // 薄いトレイル効果
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.03)';
+            ctx.fillRect(0, 0, width, height);
+
+            updateFlowField();
+            hueOffset += 0.05;
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // 再生成
+        function regenerate() {
+            cancelAnimationFrame(animationId);
+
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, width, height);
+
+            zOff = Math.random() * 1000;
+            hueOffset = Math.random() * 360;
+
+            particles.forEach(p => p.reset());
+
+            isAnimating = true;
+            animate();
+        }
+
+        // アニメーショントグル
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+            if (isAnimating) {
+                animate();
+            }
+        }
+
+        // 保存
+        function download() {
+            const link = document.createElement('a');
+            link.download = 'flow-field-landscape.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
+        // クリックで干渉
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // クリック位置近くのパーティクルを誘導
+            particles.forEach(p => {
+                let dx = x - p.x;
+                let dy = y - p.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 150) {
+                    p.vx += dx * 0.05;
+                    p.vy += dy * 0.05;
+                    p.hue = Math.random() * 60 + 180; // 青系に変化
+                }
+            });
+        });
+
+        // 開始
+        init();
+        animate();
+    </script>
+</body>
+</html>
