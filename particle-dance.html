@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>粒子の踊り - Particle Dance</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            touch-action: none;
+        }
+
+        #canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .controls button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .controls button:active {
+            transform: scale(0.95);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            pointer-events: none;
+            text-align: center;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-wrap: wrap;
+                justify-content: center;
+                padding: 0 20px;
+            }
+
+            .controls button {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        マウス/タッチで粒子を誘導
+    </div>
+
+    <div class="controls">
+        <button onclick="changeMode('dance')">ダンス</button>
+        <button onclick="changeMode('explosion')">爆発</button>
+        <button onclick="changeMode('vortex')">渦</button>
+        <button onclick="changeMode('wave')">波</button>
+        <button onclick="resetParticles()">リセット</button>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let mouse = { x: 0, y: 0, active: false };
+        let mode = 'dance';
+        let time = 0;
+
+        // Color palettes
+        const palettes = {
+            dance: ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff'],
+            explosion: ['#ff6348', '#ff4757', '#ffa502', '#ff6348', '#ff7f50'],
+            vortex: ['#5f27cd', '#341f97', '#8e44ad', '#9b59b6', '#be2edd'],
+            wave: ['#00d2d3', '#01a3a4', '#00cec9', '#81ecec', '#74b9ff']
+        };
+
+        let currentPalette = palettes.dance;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.originX = this.x;
+                this.originY = this.y;
+                this.size = Math.random() * 4 + 2;
+                this.baseSize = this.size;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.speedY = (Math.random() - 0.5) * 2;
+                this.color = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+                this.alpha = Math.random() * 0.5 + 0.5;
+                this.angle = Math.random() * Math.PI * 2;
+                this.angleSpeed = (Math.random() - 0.5) * 0.1;
+                this.orbitRadius = Math.random() * 50 + 20;
+                this.phase = Math.random() * Math.PI * 2;
+            }
+
+            update() {
+                this.phase += 0.02;
+
+                switch(mode) {
+                    case 'dance':
+                        this.dance();
+                        break;
+                    case 'explosion':
+                        this.explosion();
+                        break;
+                    case 'vortex':
+                        this.vortex();
+                        break;
+                    case 'wave':
+                        this.wave();
+                        break;
+                }
+
+                // Mouse attraction
+                if (mouse.active) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 150) {
+                        const force = (150 - dist) / 150;
+                        this.x += dx * force * 0.05;
+                        this.y += dy * force * 0.05;
+                    }
+                }
+
+                // Wrap around
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+            }
+
+            dance() {
+                this.angle += this.angleSpeed;
+                const offsetX = Math.cos(this.angle + this.phase) * this.orbitRadius;
+                const offsetY = Math.sin(this.angle + this.phase) * this.orbitRadius;
+
+                this.x += (this.originX + offsetX - this.x) * 0.02;
+                this.y += (this.originY + offsetY - this.y) * 0.02;
+
+                this.size = this.baseSize + Math.sin(this.phase) * 2;
+            }
+
+            explosion() {
+                const centerX = width / 2;
+                const centerY = height / 2;
+
+                const angle = Math.atan2(this.y - centerY, this.x - centerX);
+                const dist = Math.sqrt((this.x - centerX) ** 2 + (this.y - centerY) ** 2);
+
+                const speed = Math.sin(this.phase) * 3;
+                this.x += Math.cos(angle) * speed;
+                this.y += Math.sin(angle) * speed;
+
+                this.size = this.baseSize + Math.sin(this.phase * 2) * 3;
+
+                // Gradually return to explosion center
+                this.x += (centerX - this.x) * 0.001;
+                this.y += (centerY - this.y) * 0.001;
+            }
+
+            vortex() {
+                const centerX = width / 2;
+                const centerY = height / 2;
+
+                const dx = this.x - centerX;
+                const dy = this.y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx);
+
+                const spiralAngle = angle + 0.02;
+                const spiralRadius = dist * 0.999;
+
+                this.x = centerX + Math.cos(spiralAngle) * spiralRadius;
+                this.y = centerY + Math.sin(spiralAngle) * spiralRadius;
+
+                this.size = this.baseSize + Math.sin(this.phase + dist * 0.01) * 2;
+
+                // Reset if too close to center
+                if (dist < 10) {
+                    this.x = Math.random() * width;
+                    this.y = Math.random() * height;
+                }
+            }
+
+            wave() {
+                const waveHeight = 50;
+                const waveSpeed = 0.02;
+                const waveY = height / 2 + Math.sin(this.x * 0.01 + time * waveSpeed) * waveHeight;
+
+                this.x += this.speedX;
+                this.y += (waveY - this.y) * 0.05;
+
+                this.size = this.baseSize + Math.sin(this.x * 0.02 + this.phase) * 2;
+
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            const particleCount = Math.floor((width * height) / 8000);
+
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            time++;
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // Draw connections
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.lineWidth = 0.5;
+
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 80) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function changeMode(newMode) {
+            mode = newMode;
+            currentPalette = palettes[newMode];
+            particles.forEach(p => {
+                p.color = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+            });
+        }
+
+        function resetParticles() {
+            initParticles();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Event listeners
+        window.addEventListener('resize', () => {
+            resize();
+            initParticles();
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.active = false;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.active = false;
+        });
+
+        // Initialize
+        resize();
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>
