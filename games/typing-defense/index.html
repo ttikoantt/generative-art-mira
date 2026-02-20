@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Typing Defense</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a2a 0%, #1a1a4a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+        }
+
+        canvas {
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(255, 100, 100, 0.2);
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            color: #ff6b6b;
+            margin-bottom: 20px;
+            font-size: 2rem;
+            text-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
+        }
+
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            color: #ffd700;
+            font-size: 1.2rem;
+        }
+
+        .stat {
+            background: rgba(255, 215, 0, 0.1);
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: 1px solid rgba(255, 215, 0, 0.3);
+        }
+
+        .controls {
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 1rem;
+            background: linear-gradient(135deg, #ff4444 0%, #ff6666 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Courier New', monospace;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(255, 68, 68, 0.5);
+        }
+
+        .info {
+            color: #ffccaa;
+            margin-top: 15px;
+            font-size: 0.9rem;
+            max-width: 500px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px;
+            background: rgba(255, 68, 68, 0.8);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            z-index: 1000;
+        }
+
+        .game-over {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 10px;
+            border: 2px solid #ff6b6b;
+            z-index: 100;
+        }
+
+        .game-over.show {
+            display: block;
+        }
+
+        .game-over h2 {
+            color: #ff6b6b;
+            margin-bottom: 20px;
+        }
+
+        .game-over p {
+            color: #ffd700;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <div class="container">
+        <h1>⌨️ Typing Defense</h1>
+        <canvas id="canvas" width="800" height="600"></canvas>
+        <div class="stats">
+            <div class="stat">スコア: <span id="score">0</span></div>
+            <div class="stat">ライフ: <span id="lives">5</span></div>
+            <div class="stat">レベル: <span id="level">1</span></div>
+        </div>
+        <div class="controls">
+            <button onclick="startGame()">🎮 スタート</button>
+        </div>
+        <p class="info">単語をタイプしてエネミーを撃退！ | 落ちてくるエネミーを防衛</p>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <h2>💀 ゲームオーバー</h2>
+        <p>最終スコア: <span id="finalScore">0</span></p>
+        <button onclick="startGame()">🔄 リプレイ</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let gameRunning = false;
+        let animationId;
+        let score = 0;
+        let lives = 5;
+        let level = 1;
+        let enemies = [];
+        let spawnRate = 3000;
+        let lastSpawn = 0;
+        let currentInput = '';
+
+        const words = [
+            'fire', 'jump', 'run', 'code', 'game', 'play', 'fast', 'slow',
+            'type', 'key', 'mouse', 'screen', 'pixel', 'color', 'sound',
+            'music', 'rhythm', 'dance', 'sport', 'swim', 'climb', 'walk',
+            'dream', 'think', 'learn', 'teach', 'read', 'write', 'speak',
+            'listen', 'watch', 'create', 'build', 'design', 'draw', 'paint',
+            'photo', 'video', 'camera', 'phone', 'laptop', 'desktop', 'server',
+            'cloud', 'data', 'file', 'folder', 'document', 'image', 'audio'
+        ];
+
+        class Enemy {
+            constructor() {
+                this.word = words[Math.floor(Math.random() * words.length)];
+                this.x = Math.random() * (canvas.width - 100) + 50;
+                this.y = -30;
+                this.speed = 1 + level * 0.2;
+                this.radius = 25;
+                this.color = `hsl(${Math.random() * 60 + 330}, 70%, 50%)`;
+                this.typed = '';
+                this.markedForDeletion = false;
+                this.particles = [];
+            }
+
+            update() {
+                this.y += this.speed;
+                
+                if (this.y > canvas.height - 30) {
+                    this.markedForDeletion = true;
+                    lives--;
+                    updateStats();
+                    
+                    if (lives <= 0) {
+                        gameOver();
+                    }
+                }
+            }
+
+            draw(ctx) {
+                // 敵を描画
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 光る効果
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius + 5, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // 単語を描画
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 16px Courier New';
+                ctx.textAlign = 'center';
+                
+                const displayWord = this.word;
+                const typedText = this.typed;
+                const remainingText = this.word.slice(this.typed.length);
+                
+                // 入力済み部分（緑）
+                ctx.fillStyle = '#00ff00';
+                ctx.fillText(typedText, this.x, this.y - 35);
+                
+                // 未入力部分（白）
+                ctx.fillStyle = '#ffffff';
+                const typedWidth = ctx.measureText(typedText).width;
+                ctx.fillText(remainingText, this.x + typedWidth / 2, this.y - 35);
+            }
+
+            checkInput(char) {
+                const nextChar = this.word[this.typed.length];
+                if (char === nextChar) {
+                    this.typed += char;
+                    
+                    if (this.typed === this.word) {
+                        this.markedForDeletion = true;
+                        score += 10 * level;
+                        
+                        // レベルアップ
+                        if (score > 0 && score % 100 === 0) {
+                            level++;
+                            spawnRate = Math.max(500, 3000 - level * 200);
+                        }
+                        
+                        updateStats();
+                    }
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            lives = 5;
+            level = 1;
+            enemies = [];
+            spawnRate = 3000;
+            currentInput = '';
+            
+            document.getElementById('gameOver').classList.remove('show');
+            updateStats();
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+            
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').classList.add('show');
+        }
+
+        function spawnEnemy() {
+            const now = Date.now();
+            if (now - lastSpawn > spawnRate) {
+                enemies.push(new Enemy());
+                lastSpawn = now;
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('lives').textContent = lives;
+            document.getElementById('level').textContent = level;
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            // クリア
+            ctx.fillStyle = 'rgba(10, 10, 42, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // エネミーをスポーン
+            spawnEnemy();
+
+            // エネミーを更新・描画
+            enemies = enemies.filter(enemy => !enemy.markedForDeletion);
+            enemies.forEach(enemy => {
+                enemy.update();
+                enemy.draw(ctx);
+            });
+
+            // 地面を描画
+            ctx.fillStyle = '#ff4444';
+            ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // キーボード入力
+        document.addEventListener('keydown', (e) => {
+            if (!gameRunning) return;
+            
+            const key = e.key.toLowerCase();
+            
+            if (key.length === 1 && key >= 'a' && key <= 'z') {
+                // 入力済み文字があるエネミーを優先
+                let targetEnemy = enemies.find(en => en.typed.length > 0);
+                
+                if (!targetEnemy) {
+                    // 新しいエネミーを探す
+                    targetEnemy = enemies.find(en => en.word.startsWith(key));
+                }
+                
+                if (targetEnemy) {
+                    targetEnemy.checkInput(key);
+                }
+            }
+        });
+
+        // 初期描画
+        ctx.fillStyle = '#0a0a2a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = '#ff6b6b';
+        ctx.font = 'bold 24px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('スタートボタンを押して開始！', canvas.width / 2, canvas.height / 2);
+    </script>
+</body>
+</html>
