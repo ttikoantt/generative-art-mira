@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Reaction Speed - 反応速度ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+            overflow: hidden;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.3s ease;
+        }
+
+        .waiting {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .ready {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .go {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .early {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+
+        .result {
+            background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+            cursor: default;
+        }
+
+        #message {
+            font-size: clamp(28px, 8vw, 64px);
+            font-weight: bold;
+            color: white;
+            text-align: center;
+            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.3);
+            margin-bottom: 20px;
+            padding: 0 20px;
+        }
+
+        #sub-message {
+            font-size: clamp(16px, 4vw, 24px);
+            color: rgba(255, 255, 255, 0.9);
+            text-align: center;
+            padding: 0 20px;
+        }
+
+        #time-display {
+            font-size: clamp(48px, 15vw, 120px);
+            font-weight: bold;
+            color: white;
+            text-shadow: 3px 3px 12px rgba(0, 0, 0, 0.3);
+            margin: 20px 0;
+        }
+
+        #stats {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px 24px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            font-size: clamp(14px, 3vw, 18px);
+            color: #333;
+        }
+
+        #best-time {
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .button {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 15px 40px;
+            font-size: clamp(18px, 5vw, 24px);
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 20px;
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .button:active {
+            transform: translateY(0);
+        }
+
+        #rank {
+            font-size: clamp(20px, 5vw, 32px);
+            font-weight: bold;
+            color: #667eea;
+            margin: 10px 0;
+        }
+
+        #rank-emoji {
+            font-size: clamp(48px, 12vw, 80px);
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container" class="waiting">
+        <div id="message">反応速度ゲーム</div>
+        <div id="sub-message">タップしてスタート</div>
+        <div id="time-display" style="display: none;">0ms</div>
+        <div id="rank" style="display: none;"></div>
+        <div id="rank-emoji" style="display: none;"></div>
+        <button id="retry-button" class="button" style="display: none;">もう一度</button>
+    </div>
+
+    <div id="stats">
+        ベスト: <span id="best-time">--</span>
+    </div>
+
+    <script>
+        const container = document.getElementById('game-container');
+        const message = document.getElementById('message');
+        const subMessage = document.getElementById('sub-message');
+        const timeDisplay = document.getElementById('time-display');
+        const rankDisplay = document.getElementById('rank');
+        const rankEmoji = document.getElementById('rank-emoji');
+        const retryButton = document.getElementById('retry-button');
+        const bestTimeDisplay = document.getElementById('best-time');
+
+        let state = 'start'; // start, waiting, ready, go, early, result
+        let startTime = 0;
+        let timeout = null;
+        let bestTime = localStorage.getItem('reactionBest') || null;
+        let reactionTime = 0;
+
+        // ベストタイムを表示
+        if (bestTime) {
+            bestTimeDisplay.textContent = bestTime + 'ms';
+        }
+
+        function getRank(time) {
+            if (time < 150) return { text: '超人的！', emoji: '🚀' };
+            if (time < 200) return { text: '素晴らしい！', emoji: '⚡' };
+            if (time < 250) return { text: 'とても速い！', emoji: '🔥' };
+            if (time < 300) return { text: '速い！', emoji: '💨' };
+            if (time < 400) return { text: '平均的', emoji: '😊' };
+            if (time < 500) return { text: 'もう少し！', emoji: '💪' };
+            return { text: '練習が必要', emoji: '🎯' };
+        }
+
+        function setState(newState) {
+            state = newState;
+            container.className = newState;
+
+            if (timeout) {
+                clearTimeout(timeout);
+                timeout = null;
+            }
+
+            switch (newState) {
+                case 'start':
+                    message.textContent = '反応速度ゲーム';
+                    subMessage.textContent = 'タップしてスタート';
+                    subMessage.style.display = 'block';
+                    timeDisplay.style.display = 'none';
+                    rankDisplay.style.display = 'none';
+                    rankEmoji.style.display = 'none';
+                    retryButton.style.display = 'none';
+                    break;
+
+                case 'waiting':
+                    message.textContent = '待って...';
+                    subMessage.textContent = '青くなったらタップ！';
+                    subMessage.style.display = 'block';
+                    timeDisplay.style.display = 'none';
+                    rankDisplay.style.display = 'none';
+                    rankEmoji.style.display = 'none';
+                    retryButton.style.display = 'none';
+
+                    // ランダムな時間（2-5秒）待つ
+                    const waitTime = Math.random() * 3000 + 2000;
+                    timeout = setTimeout(() => {
+                        setState('go');
+                    }, waitTime);
+                    break;
+
+                case 'go':
+                    message.textContent = '！！！');
+                    subMessage.style.display = 'none';
+                    startTime = Date.now();
+                    break;
+
+                case 'early':
+                    message.textContent = '早すぎる！';
+                    subMessage.textContent = '青くなってからタップしてね';
+                    subMessage.style.display = 'block';
+                    timeDisplay.style.display = 'none';
+                    rankDisplay.style.display = 'none';
+                    rankEmoji.style.display = 'none';
+                    retryButton.style.display = 'none';
+                    break;
+
+                case 'result':
+                    reactionTime = Date.now() - startTime;
+                    message.textContent = reactionTime + 'ms';
+                    subMessage.style.display = 'none';
+
+                    const rank = getRank(reactionTime);
+                    rankDisplay.textContent = rank.text;
+                    rankDisplay.style.display = 'block';
+                    rankEmoji.textContent = rank.emoji;
+                    rankEmoji.style.display = 'block';
+                    retryButton.style.display = 'block';
+
+                    // ベストタイム更新
+                    if (!bestTime || reactionTime < parseInt(bestTime)) {
+                        bestTime = reactionTime;
+                        localStorage.setItem('reactionBest', bestTime);
+                        bestTimeDisplay.textContent = bestTime + 'ms';
+
+                        // 新記録エフェクト
+                        message.textContent = reactionTime + 'ms 🏆';
+                        rankDisplay.textContent = '新記録！';
+                    }
+                    break;
+            }
+        }
+
+        function handleClick() {
+            switch (state) {
+                case 'start':
+                case 'early':
+                case 'result':
+                    setState('waiting');
+                    break;
+
+                case 'waiting':
+                    setState('early');
+                    break;
+
+                case 'go':
+                    setState('result');
+                    break;
+            }
+        }
+
+        // イベントリスナー
+        container.addEventListener('click', handleClick);
+        container.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleClick();
+        });
+
+        retryButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            setState('waiting');
+        });
+
+        retryButton.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            setState('waiting');
+        });
+
+        // キーボード対応（スペースでタップ）
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                handleClick();
+            }
+        });
+
+        // 初期状態
+        setState('start');
+    </script>
+</body>
+</html>

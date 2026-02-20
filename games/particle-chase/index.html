@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Particle Chase - パーティクル・チェイス</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #ffffff;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .game-container {
+            text-align: center;
+            width: 100%;
+            max-width: 600px;
+            padding: 10px;
+        }
+
+        h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+            background: linear-gradient(45deg, #4aff9f, #4cc9ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .score-display {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            color: #a0a0c0;
+        }
+
+        .score-display span {
+            color: #4aff9f;
+            font-weight: bold;
+        }
+
+        #gameCanvas {
+            display: block;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(74, 255, 159, 0.2);
+            border: 2px solid rgba(74, 255, 159, 0.3);
+            max-width: 100%;
+            touch-action: none;
+        }
+
+        .controls {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            background: linear-gradient(135deg, #4aff9f, #4cc9ff);
+            color: #0a0a1a;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(74, 255, 159, 0.3);
+            min-width: 100px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(74, 255, 159, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 16px;
+            background: rgba(74, 255, 159, 0.2);
+            border: 1px solid rgba(74, 255, 159, 0.4);
+            backdrop-filter: blur(10px);
+            color: #4aff9f;
+            z-index: 1000;
+            font-size: 0.9em;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(74, 255, 159, 0.3);
+        }
+
+        .instructions {
+            margin-top: 10px;
+            color: #8080a0;
+            font-size: 0.85em;
+            line-height: 1.4;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            display: none;
+            border: 2px solid #ff6b9d;
+            box-shadow: 0 0 30px rgba(255, 107, 157, 0.5);
+        }
+
+        .game-over h2 {
+            color: #ff6b9d;
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .game-over p {
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5em;
+            }
+
+            .score-display {
+                font-size: 1em;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 0.9em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="game-container">
+        <h1>✨ Particle Chase</h1>
+        <div class="score-display">
+            スコア: <span id="score">0</span> |
+            ハイスコア: <span id="highScore">0</span>
+        </div>
+
+        <div style="position: relative;">
+            <canvas id="gameCanvas" width="500" height="500"></canvas>
+
+            <div class="game-over" id="gameOver">
+                <h2>💥 ゲームオーバー!</h2>
+                <p>スコア: <span id="finalScore">0</span></p>
+                <button onclick="restartGame()">再挑戦</button>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="restartGame()">リスタート</button>
+            <button onclick="togglePause()">一時停止</button>
+        </div>
+
+        <p class="instructions">
+            👆 画面をタップして緑のパーティクルを動かす<br>
+            ⭐ 青いターゲットを集めてスコアアップ!<br>
+            ⚠️ 赤い障害物に当たるとゲームオーバー!
+        </p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let animationId;
+        let isPaused = false;
+        let isGameOver = false;
+        let score = 0;
+        let highScore = localStorage.getItem('particleChaseHighScore') || 0;
+
+        document.getElementById('highScore').textContent = highScore;
+
+        // プレイヤーのパーティクル
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            size: 15,
+            color: '#4aff9f',
+            trail: []
+        };
+
+        // ターゲット
+        let targets = [];
+        let obstacles = [];
+
+        function resizeCanvas() {
+            const container = document.querySelector('.game-container');
+            const maxWidth = Math.min(500, window.innerWidth - 20);
+            canvas.width = maxWidth;
+            canvas.height = maxWidth;
+        }
+
+        function createTarget() {
+            const target = {
+                x: Math.random() * (canvas.width - 40) + 20,
+                y: Math.random() * (canvas.height - 40) + 20,
+                size: 10,
+                color: '#4cc9ff',
+                pulse: 0
+            };
+            targets.push(target);
+        }
+
+        function createObstacle() {
+            const side = Math.floor(Math.random() * 4);
+            let x, y, vx, vy;
+
+            switch (side) {
+                case 0: // 上
+                    x = Math.random() * canvas.width;
+                    y = -20;
+                    vx = (Math.random() - 0.5) * 4;
+                    vy = Math.random() * 2 + 1;
+                    break;
+                case 1: // 右
+                    x = canvas.width + 20;
+                    y = Math.random() * canvas.height;
+                    vx = -(Math.random() * 2 + 1);
+                    vy = (Math.random() - 0.5) * 4;
+                    break;
+                case 2: // 下
+                    x = Math.random() * canvas.width;
+                    y = canvas.height + 20;
+                    vx = (Math.random() - 0.5) * 4;
+                    vy = -(Math.random() * 2 + 1);
+                    break;
+                case 3: // 左
+                    x = -20;
+                    y = Math.random() * canvas.height;
+                    vx = Math.random() * 2 + 1;
+                    vy = (Math.random() - 0.5) * 4;
+                    break;
+            }
+
+            obstacles.push({
+                x, y, vx, vy,
+                size: Math.random() * 15 + 10,
+                color: '#ff6b9d'
+            });
+        }
+
+        function updatePlayer() {
+            // トレイルを追加
+            player.trail.push({ x: player.x, y: player.y });
+            if (player.trail.length > 20) {
+                player.trail.shift();
+            }
+        }
+
+        function updateTargets() {
+            targets.forEach((target, index) => {
+                target.pulse += 0.1;
+
+                // プレイヤーとの衝突判定
+                const dx = player.x - target.x;
+                const dy = player.y - target.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < player.size + target.size) {
+                    // ターゲットをキャッチ
+                    score += 10;
+                    document.getElementById('score').textContent = score;
+                    targets.splice(index, 1);
+                    createTarget();
+
+                    // 新しいターゲットを追加
+                    if (targets.length < 3) {
+                        createTarget();
+                    }
+                }
+            });
+        }
+
+        function updateObstacles() {
+            obstacles.forEach((obstacle, index) => {
+                obstacle.x += obstacle.vx;
+                obstacle.y += obstacle.vy;
+
+                // 画面外に出たら削除
+                if (obstacle.x < -50 || obstacle.x > canvas.width + 50 ||
+                    obstacle.y < -50 || obstacle.y > canvas.height + 50) {
+                    obstacles.splice(index, 1);
+                    return;
+                }
+
+                // プレイヤーとの衝突判定
+                const dx = player.x - obstacle.x;
+                const dy = player.y - obstacle.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < player.size + obstacle.size) {
+                    gameOver();
+                }
+            });
+        }
+
+        function drawPlayer() {
+            // トレイルを描画
+            player.trail.forEach((point, index) => {
+                const alpha = index / player.trail.length;
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, player.size * 0.5 * alpha, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(74, 255, 159, ${alpha * 0.5})`;
+                ctx.fill();
+            });
+
+            // プレイヤーを描画
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+            const gradient = ctx.createRadialGradient(
+                player.x, player.y, 0,
+                player.x, player.y, player.size
+            );
+            gradient.addColorStop(0, '#4aff9f');
+            gradient.addColorStop(1, '#4cc9ff');
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // 光る効果
+            ctx.shadowColor = '#4aff9f';
+            ctx.shadowBlur = 20;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function drawTargets() {
+            targets.forEach(target => {
+                const pulseSize = target.size + Math.sin(target.pulse) * 3;
+
+                ctx.beginPath();
+                ctx.arc(target.x, target.y, pulseSize, 0, Math.PI * 2);
+                ctx.fillStyle = target.color;
+                ctx.fill();
+
+                // 光る効果
+                ctx.shadowColor = target.color;
+                ctx.shadowBlur = 15;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+        }
+
+        function drawObstacles() {
+            obstacles.forEach(obstacle => {
+                ctx.beginPath();
+                ctx.arc(obstacle.x, obstacle.y, obstacle.size, 0, Math.PI * 2);
+                ctx.fillStyle = obstacle.color;
+                ctx.fill();
+
+                // 光る効果
+                ctx.shadowColor = obstacle.color;
+                ctx.shadowBlur = 15;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+        }
+
+        function draw() {
+            if (isPaused || isGameOver) return;
+
+            // 背景
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            updatePlayer();
+            updateTargets();
+            updateObstacles();
+
+            drawTargets();
+            drawObstacles();
+            drawPlayer();
+
+            // 定期的に障害物を追加
+            if (Math.random() < 0.02 + score * 0.0001) {
+                createObstacle();
+            }
+
+            animationId = requestAnimationFrame(draw);
+        }
+
+        function handleInput(e) {
+            if (isPaused || isGameOver) return;
+
+            e.preventDefault();
+
+            const rect = canvas.getBoundingClientRect();
+            let clientX, clientY;
+
+            if (e.touches) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+
+            // スムーズな移動
+            const dx = x - player.x;
+            const dy = y - player.y;
+            player.x += dx * 0.3;
+            player.y += dy * 0.3;
+
+            // 画面内に制限
+            player.x = Math.max(player.size, Math.min(canvas.width - player.size, player.x));
+            player.y = Math.max(player.size, Math.min(canvas.height - player.size, player.y));
+        }
+
+        function gameOver() {
+            isGameOver = true;
+            cancelAnimationFrame(animationId);
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').style.display = 'block';
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('particleChaseHighScore', highScore);
+                document.getElementById('highScore').textContent = highScore;
+            }
+        }
+
+        function restartGame() {
+            isGameOver = false;
+            isPaused = false;
+            score = 0;
+            document.getElementById('score').textContent = score;
+            document.getElementById('gameOver').style.display = 'none';
+
+            player.x = canvas.width / 2;
+            player.y = canvas.height / 2;
+            player.trail = [];
+
+            targets = [];
+            obstacles = [];
+
+            for (let i = 0; i < 3; i++) {
+                createTarget();
+            }
+
+            draw();
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            const btn = event.target;
+
+            if (isPaused) {
+                btn.textContent = '再生';
+                cancelAnimationFrame(animationId);
+            } else {
+                btn.textContent = '一時停止';
+                draw();
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('touchstart', handleInput, { passive: false });
+        canvas.addEventListener('touchmove', handleInput, { passive: false });
+        canvas.addEventListener('click', handleInput);
+        canvas.addEventListener('mousemove', (e) => {
+            if (e.buttons === 1) {
+                handleInput(e);
+            }
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // 初期化
+        resizeCanvas();
+        restartGame();
+    </script>
+</body>
+</html>
