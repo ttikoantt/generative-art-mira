@@ -10,63 +10,146 @@
             padding: 0;
             box-sizing: border-box;
         }
+
         body {
-            background: #000;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2e 100%);
+            min-height: 100vh;
             overflow: hidden;
-            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
+
         canvas {
             display: block;
+            cursor: crosshair;
         }
+
         .info {
             position: fixed;
-            bottom: 20px;
+            top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            color: rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 25px;
+            color: white;
             font-size: 14px;
             text-align: center;
             pointer-events: none;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: opacity 0.3s;
         }
+
+        .info.hidden {
+            opacity: 0;
+        }
+
         .fullscreen-btn {
             position: fixed;
-            top: 20px;
+            bottom: 20px;
             right: 20px;
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.3);
             color: white;
-            padding: 10px 20px;
-            border-radius: 25px;
+            padding: 12px 20px;
+            border-radius: 20px;
             cursor: pointer;
             font-size: 14px;
-            transition: all 0.3s ease;
-            z-index: 1000;
+            transition: all 0.3s;
+            z-index: 100;
         }
+
         .fullscreen-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
         }
-        .fullscreen-btn:active {
-            transform: scale(0.95);
+
+        .stats {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 10px 15px;
+            border-radius: 15px;
+            color: white;
+            font-size: 12px;
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
+    <div class="info" id="info">🌊 タップして波紋を作成</div>
     <canvas id="canvas"></canvas>
-    <div class="info">Tap or click anywhere to create ripples</div>
-    <button class="fullscreen-btn" id="fullscreenBtn">⛶ Fullscreen</button>
+    <button class="fullscreen-btn" id="fullscreen">全画面</button>
+    <div class="stats" id="stats">粒子: 0</div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const info = document.getElementById('info');
+        const fullscreenBtn = document.getElementById('fullscreen');
+        const stats = document.getElementById('stats');
 
-        let width, height;
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+        let particles = [];
         let ripples = [];
-        let hue = 0;
+        let infoHidden = false;
 
-        function resize() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
+        // 色のパレット
+        const colorSchemes = [
+            ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3'],
+            ['#a29bfe', '#fd79a8', '#fdcb6e', '#00b894'],
+            ['#74b9ff', '#dfe6e9', '#ffeaa7', '#fab1a0'],
+            ['#e17055', '#00cec9', '#6c5ce7', '#fd79a8'],
+            ['#55efc4', '#81ecec', '#74b9ff', '#a29bfe']
+        ];
+
+        class Particle {
+            constructor(x, y, angle, speed, hue) {
+                this.x = x;
+                this.y = y;
+                this.originX = x;
+                this.originY = y;
+                this.angle = angle;
+                this.speed = speed;
+                this.hue = hue;
+                this.radius = Math.random() * 2 + 1;
+                this.life = 1;
+                this.decay = Math.random() * 0.008 + 0.005;
+                this.wobble = Math.random() * Math.PI * 2;
+                this.wobbleSpeed = Math.random() * 0.1 + 0.05;
+            }
+
+            update() {
+                this.wobble += this.wobbleSpeed;
+                this.speed *= 0.99;
+
+                this.x += Math.cos(this.angle + Math.sin(this.wobble) * 0.3) * this.speed;
+                this.y += Math.sin(this.angle + Math.sin(this.wobble) * 0.3) * this.speed;
+
+                this.life -= this.decay;
+                this.radius *= 0.998;
+            }
+
+            draw() {
+                if (this.life <= 0) return;
+
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                const saturation = 70 + Math.sin(this.wobble) * 20;
+                const lightness = 50 + this.life * 30;
+                ctx.fillStyle = `hsl(${this.hue}, ${saturation}%, ${lightness}%)`;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsl(${this.hue}, 80%, 60%)`;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
         }
 
         class Ripple {
@@ -74,77 +157,128 @@
                 this.x = x;
                 this.y = y;
                 this.radius = 0;
-                this.maxRadius = Math.max(width, height) * 0.5;
-                this.hue = hue;
-                this.speed = 3 + Math.random() * 2;
-                this.alpha = 1;
-                this.lineWidth = 3 + Math.random() * 2;
+                this.maxRadius = Math.min(width, height) * 0.3;
+                this.life = 1;
+                this.decay = 0.008;
+                this.colorScheme = colorSchemes[Math.floor(Math.random() * colorSchemes.length)];
+                this.baseHue = Math.random() * 360;
+                this.particleCount = 0;
+                this.maxParticles = 50;
             }
 
             update() {
-                this.radius += this.speed;
-                this.alpha = 1 - (this.radius / this.maxRadius);
-                return this.alpha > 0;
+                this.radius += 3;
+                this.life -= this.decay;
+
+                // 粒子を生成
+                if (this.particleCount < this.maxParticles && this.life > 0.5) {
+                    for (let i = 0; i < 3; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const speed = 2 + Math.random() * 3;
+                        const hue = this.baseHue + Math.random() * 60 - 30;
+                        particles.push(new Particle(
+                            this.x + Math.cos(angle) * this.radius,
+                            this.y + Math.sin(angle) * this.radius,
+                            angle,
+                            speed,
+                            hue
+                        ));
+                        this.particleCount++;
+                    }
+                }
             }
 
             draw() {
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${this.alpha})`;
-                ctx.lineWidth = this.lineWidth * this.alpha;
-                ctx.stroke();
+                if (this.life <= 0) return;
 
-                // Secondary ring
-                if (this.radius > 20) {
-                    ctx.beginPath();
-                    ctx.arc(this.x, this.y, this.radius - 15, 0, Math.PI * 2);
-                    ctx.strokeStyle = `hsla(${this.hue + 30}, 70%, 50%, ${this.alpha * 0.5})`;
-                    ctx.lineWidth = this.lineWidth * 0.5 * this.alpha;
-                    ctx.stroke();
+                ctx.save();
+                ctx.globalAlpha = this.life * 0.3;
+
+                // 波紋の輪
+                for (let i = 3; i >= 0; i--) {
+                    const r = this.radius - i * 15;
+                    if (r > 0) {
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+                        ctx.strokeStyle = `hsla(${this.baseHue + i * 10}, 70%, 60%, ${0.5 - i * 0.1})`;
+                        ctx.lineWidth = 2 - i * 0.4;
+                        ctx.stroke();
+                    }
                 }
 
-                // Tertiary ring
-                if (this.radius > 40) {
-                    ctx.beginPath();
-                    ctx.arc(this.x, this.y, this.radius - 30, 0, Math.PI * 2);
-                    ctx.strokeStyle = `hsla(${this.hue + 60}, 60%, 40%, ${this.alpha * 0.3})`;
-                    ctx.lineWidth = this.lineWidth * 0.3 * this.alpha;
-                    ctx.stroke();
-                }
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.life <= 0;
             }
         }
 
         function createRipple(x, y) {
             ripples.push(new Ripple(x, y));
-            hue = (hue + 15) % 360;
+
+            // 最初の爆発粒子
+            const scheme = colorSchemes[Math.floor(Math.random() * colorSchemes.length)];
+            const baseHue = Math.random() * 360;
+
+            for (let i = 0; i < 30; i++) {
+                const angle = (i / 30) * Math.PI * 2;
+                const speed = 3 + Math.random() * 4;
+                particles.push(new Particle(x, y, angle, speed, baseHue + Math.random() * 40));
+            }
         }
 
         function animate() {
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            // トレイル効果
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.15)';
             ctx.fillRect(0, 0, width, height);
 
+            // 波紋を更新
             ripples = ripples.filter(ripple => {
+                ripple.update();
                 ripple.draw();
-                return ripple.update();
+                return !ripple.isDead();
             });
+
+            // 粒子を更新
+            particles = particles.filter(p => {
+                p.update();
+                p.draw();
+                return p.life > 0;
+            });
+
+            // 統計更新
+            stats.textContent = `波紋: ${ripples.length} | 粒子: ${particles.length}`;
 
             requestAnimationFrame(animate);
         }
 
-        // Event listeners
-        canvas.addEventListener('click', (e) => {
-            createRipple(e.clientX, e.clientY);
-        });
-
-        canvas.addEventListener('touchstart', (e) => {
+        // イベントハンドラー
+        function handleInteraction(e) {
             e.preventDefault();
-            for (let touch of e.touches) {
-                createRipple(touch.clientX, touch.clientY);
+            const rect = canvas.getBoundingClientRect();
+            let x, y;
+
+            if (e.touches) {
+                x = e.touches[0].clientX - rect.left;
+                y = e.touches[0].clientY - rect.top;
+            } else {
+                x = e.clientX - rect.left;
+                y = e.clientY - rect.top;
             }
-        });
 
-        window.addEventListener('resize', resize);
+            createRipple(x, y);
 
+            if (!infoHidden) {
+                infoHidden = true;
+                info.classList.add('hidden');
+            }
+        }
+
+        canvas.addEventListener('click', handleInteraction);
+        canvas.addEventListener('touchstart', handleInteraction);
+
+        // 全画面切り替え
         fullscreenBtn.addEventListener('click', () => {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
@@ -153,19 +287,23 @@
             }
         });
 
-        // Initialize
-        resize();
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // アニメーション開始
         animate();
 
-        // Auto create ripples periodically
-        setInterval(() => {
-            if (ripples.length < 3) {
-                createRipple(
-                    Math.random() * width,
-                    Math.random() * height
-                );
+        // 自動デモ（初回のみ）
+        setTimeout(() => {
+            if (ripples.length === 0) {
+                const cx = width / 2;
+                const cy = height / 2;
+                createRipple(cx, cy);
             }
-        }, 2000);
+        }, 1000);
     </script>
 </body>
 </html>
