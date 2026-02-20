@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Waveform Visualizer - 音声波形ビジュアライザー</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            padding: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: clamp(1.5rem, 5vw, 2.5rem);
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: clamp(0.8rem, 2vw, 1rem);
+            margin-bottom: 30px;
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            box-shadow: 0 5px 20px rgba(245, 87, 108, 0.4);
+        }
+
+        button.secondary:hover {
+            box-shadow: 0 8px 30px rgba(245, 87, 108, 0.6);
+        }
+
+        .mode-selector {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .mode-btn {
+            padding: 10px 20px;
+            font-size: 0.9rem;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: none;
+        }
+
+        .mode-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .status {
+            color: #888;
+            margin-top: 20px;
+            font-size: 0.9rem;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        @media (max-width: 768px) {
+            .canvas-container {
+                aspect-ratio: 4/3;
+            }
+
+            button {
+                padding: 12px 24px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Waveform Visualizer</h1>
+        <p class="subtitle">音声の波形を美しく可視化</p>
+
+        <div class="canvas-container">
+            <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全画面表示">⛶</button>
+            <canvas id="visualizer"></canvas>
+        </div>
+
+        <div class="controls">
+            <button id="startBtn" onclick="startAudio()">🎤 マイクを開始</button>
+            <button id="stopBtn" class="secondary" onclick="stopAudio()" style="display: none;">⏹️ 停止</button>
+        </div>
+
+        <div class="mode-selector">
+            <button class="mode-btn active" onclick="setMode('wave')">🌊 波形</button>
+            <button class="mode-btn" onclick="setMode('bars')">📊 バー</button>
+            <button class="mode-btn" onclick="setMode('circle')">⭕ 円形</button>
+            <button class="mode-btn" onclick="setMode('particles')">✨ パーティクル</button>
+        </div>
+
+        <p class="status" id="status">クリックしてマイクを開始してください</p>
+    </div>
+
+    <script>
+        let audioContext;
+        let analyser;
+        let microphone;
+        let animationId;
+        let currentMode = 'wave';
+        let particles = [];
+
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            canvas.width = container.clientWidth * window.devicePixelRatio;
+            canvas.height = container.clientHeight * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function setMode(mode) {
+            currentMode = mode;
+            particles = [];
+
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+        }
+
+        async function startAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                microphone = audioContext.createMediaStreamSource(stream);
+
+                analyser.fftSize = 2048;
+                microphone.connect(analyser);
+
+                document.getElementById('startBtn').style.display = 'none';
+                document.getElementById('stopBtn').style.display = 'inline-block';
+                document.getElementById('status').textContent = '🎵 音声を可視化中...';
+
+                animate();
+            } catch (err) {
+                document.getElementById('status').textContent = '❌ マイクへのアクセスが拒否されました';
+                console.error(err);
+            }
+        }
+
+        function stopAudio() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            if (microphone) {
+                microphone.disconnect();
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+
+            document.getElementById('startBtn').style.display = 'inline-block';
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('status').textContent = '停止しました';
+
+            // Clear canvas with fade effect
+            ctx.fillStyle = 'rgba(12, 12, 12, 0.3)';
+            ctx.fillRect(0, 0, canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio);
+        }
+
+        function animate() {
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            const width = canvas.width / window.devicePixelRatio;
+            const height = canvas.height / window.devicePixelRatio;
+
+            ctx.fillStyle = 'rgba(12, 12, 12, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            switch (currentMode) {
+                case 'wave':
+                    drawWave(dataArray, bufferLength, width, height);
+                    break;
+                case 'bars':
+                    drawBars(dataArray, bufferLength, width, height);
+                    break;
+                case 'circle':
+                    drawCircle(dataArray, bufferLength, width, height);
+                    break;
+                case 'particles':
+                    drawParticles(dataArray, bufferLength, width, height);
+                    break;
+            }
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function drawWave(dataArray, bufferLength, width, height) {
+            analyser.getByteTimeDomainData(dataArray);
+
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+
+            const sliceWidth = width / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * height) / 2;
+
+                const gradient = ctx.createLinearGradient(0, 0, width, 0);
+                gradient.addColorStop(0, `hsl(${i / bufferLength * 360}, 80%, 60%)`);
+                gradient.addColorStop(0.5, `hsl(${(i / bufferLength * 360 + 180) % 360}, 80%, 60%)`);
+                gradient.addColorStop(1, `hsl(${(i / bufferLength * 360 + 90) % 360}, 80%, 60%)`);
+
+                ctx.strokeStyle = gradient;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            ctx.lineTo(width, height / 2);
+            ctx.stroke();
+        }
+
+        function drawBars(dataArray, bufferLength, width, height) {
+            analyser.getByteFrequencyData(dataArray);
+
+            const barCount = 64;
+            const barWidth = width / barCount;
+            const gap = 2;
+
+            for (let i = 0; i < barCount; i++) {
+                const dataIndex = Math.floor(i * bufferLength / barCount);
+                const barHeight = (dataArray[dataIndex] / 255) * height * 0.8;
+
+                const hue = (i / barCount) * 360;
+                const gradient = ctx.createLinearGradient(0, height - barHeight, 0, height);
+                gradient.addColorStop(0, `hsla(${hue}, 80%, 60%, 1)`);
+                gradient.addColorStop(1, `hsla(${hue + 30}, 80%, 40%, 0.5)`);
+
+                ctx.fillStyle = gradient;
+
+                const x = i * barWidth;
+                const y = height - barHeight;
+
+                ctx.beginPath();
+                ctx.roundRect(x + gap / 2, y, barWidth - gap, barHeight, [5, 5, 0, 0]);
+                ctx.fill();
+            }
+        }
+
+        function drawCircle(dataArray, bufferLength, width, height) {
+            analyser.getByteFrequencyData(dataArray);
+
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const radius = Math.min(width, height) * 0.3;
+
+            for (let i = 0; i < bufferLength; i += 4) {
+                const amplitude = dataArray[i] / 255;
+                const angle = (i / bufferLength) * Math.PI * 2;
+
+                const innerRadius = radius;
+                const outerRadius = radius + amplitude * 100;
+
+                const x1 = centerX + Math.cos(angle) * innerRadius;
+                const y1 = centerY + Math.sin(angle) * innerRadius;
+                const x2 = centerX + Math.cos(angle) * outerRadius;
+                const y2 = centerY + Math.sin(angle) * outerRadius;
+
+                const hue = (i / bufferLength) * 360;
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${amplitude})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        function drawParticles(dataArray, bufferLength, width, height) {
+            analyser.getByteFrequencyData(dataArray);
+
+            // Calculate average amplitude
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                sum += dataArray[i];
+            }
+            const averageAmplitude = sum / bufferLength;
+
+            // Create new particles based on amplitude
+            if (averageAmplitude > 50) {
+                const hue = (Date.now() / 20) % 360;
+                for (let i = 0; i < Math.floor(averageAmplitude / 30); i++) {
+                    particles.push({
+                        x: Math.random() * width,
+                        y: Math.random() * height,
+                        vx: (Math.random() - 0.5) * 4,
+                        vy: (Math.random() - 0.5) * 4,
+                        size: Math.random() * 5 + 2,
+                        hue: hue + Math.random() * 60,
+                        life: 1
+                    });
+                }
+            }
+
+            // Update and draw particles
+            particles = particles.filter(p => p.life > 0);
+
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.01;
+                p.size *= 0.99;
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${p.hue}, 80%, 60%, ${p.life})`;
+                ctx.fill();
+            });
+
+            // Limit particle count
+            if (particles.length > 500) {
+                particles = particles.slice(-500);
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (audioContext) {
+                    stopAudio();
+                } else {
+                    startAudio();
+                }
+            }
+            if (e.code === 'KeyF') {
+                toggleFullscreen();
+            }
+        });
+    </script>
+</body>
+</html>
