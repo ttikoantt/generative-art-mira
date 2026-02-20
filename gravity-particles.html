@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>重力粒子 - Gravity Particles</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            text-align: center;
+            z-index: 10;
+            background: linear-gradient(to bottom, rgba(10, 10, 26, 0.9), transparent);
+        }
+
+        h1 {
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            font-weight: 700;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: clamp(0.75rem, 2vw, 1rem);
+            color: #94a3b8;
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            display: block;
+            background: radial-gradient(ellipse at center, #0f0f2a 0%, #0a0a1a 100%);
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 0 20px;
+        }
+
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 25px;
+            font-size: clamp(0.8rem, 2vw, 1rem);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
+        }
+
+        .btn-secondary {
+            background: rgba(148, 163, 184, 0.2);
+            color: #e2e8f0;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(148, 163, 184, 0.3);
+        }
+
+        .info {
+            position: fixed;
+            top: 50%;
+            left: 20px;
+            transform: translateY(-50%);
+            font-size: clamp(0.7rem, 1.5vw, 0.85rem);
+            color: #64748b;
+            line-height: 1.8;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(148, 163, 184, 0.2);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            color: #e2e8f0;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 20;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(148, 163, 184, 0.3);
+            transform: scale(1.1);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                display: none;
+            }
+
+            .controls {
+                bottom: 10px;
+                padding: 0 10px;
+            }
+
+            button {
+                padding: 10px 16px;
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌌 重力粒子</h1>
+        <p class="subtitle">Gravity Particles - N-Body Simulation</p>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="info">
+        <div id="particleCount">粒子: 0</div>
+        <div id="fps">FPS: 0</div>
+    </div>
+
+    <div class="controls">
+        <button class="btn-primary" onclick="resetParticles()">🔄 リセット</button>
+        <button class="btn-secondary" onclick="addParticle()">➕ 粒子追加</button>
+        <button class="btn-secondary" onclick="toggleTrails()">✨ 軌跡</button>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let showTrails = true;
+        let lastTime = 0;
+        let frameCount = 0;
+        let fps = 0;
+
+        const G = 0.5; // 重力定数
+        const SOFTENING = 50; // ソフトニング係数（衝突回避）
+        const TRAIL_LENGTH = 50;
+
+        class Particle {
+            constructor(x, y, vx = 0, vy = 0, mass = 1) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.mass = mass;
+                this.radius = Math.sqrt(mass) * 3;
+                this.trail = [];
+                this.hue = Math.random() * 60 + 200; // 青〜紫系
+            }
+
+            update(dt) {
+                // 軌跡を保存
+                if (showTrails) {
+                    this.trail.push({ x: this.x, y: this.y });
+                    if (this.trail.length > TRAIL_LENGTH) {
+                        this.trail.shift();
+                    }
+                }
+
+                // 位置を更新
+                this.x += this.vx * dt;
+                this.y += this.vy * dt;
+
+                // 境界チェック（反転）
+                if (this.x < 0 || this.x > width) {
+                    this.vx *= -0.8;
+                    this.x = Math.max(0, Math.min(width, this.x));
+                }
+                if (this.y < 0 || this.y > height) {
+                    this.vy *= -0.8;
+                    this.y = Math.max(0, Math.min(height, this.y));
+                }
+            }
+
+            draw() {
+                // 軌跡を描画
+                if (showTrails && this.trail.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.trail[0].x, this.trail[0].y);
+                    for (let i = 1; i < this.trail.length; i++) {
+                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    }
+                    ctx.strokeStyle = `hsla(${this.hue}, 70%, 60%, 0.3)`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+
+                // 粒子を描画
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 80%, 70%, 1)`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 70%, 50%, 0.8)`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 60%, 30%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // 光沢
+                ctx.beginPath();
+                ctx.arc(this.x - this.radius * 0.3, this.y - this.radius * 0.3, this.radius * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.fill();
+            }
+        }
+
+        function initParticles(count = 8) {
+            particles = [];
+            for (let i = 0; i < count; i++) {
+                const angle = (i / count) * Math.PI * 2;
+                const radius = Math.min(width, height) * 0.25;
+                const x = width / 2 + Math.cos(angle) * radius;
+                const y = height / 2 + Math.sin(angle) * radius;
+
+                // 接線方向の初速度（軌道を形成）
+                const speed = 1.5;
+                const vx = -Math.sin(angle) * speed + (Math.random() - 0.5) * 0.5;
+                const vy = Math.cos(angle) * speed + (Math.random() - 0.5) * 0.5;
+
+                const mass = 1 + Math.random() * 2;
+                particles.push(new Particle(x, y, vx, vy, mass));
+            }
+            updateInfo();
+        }
+
+        function calculateGravity() {
+            // N体問題の重力計算
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = 0; j < particles.length; j++) {
+                    if (i === j) continue;
+
+                    const p1 = particles[i];
+                    const p2 = particles[j];
+
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const distSq = dx * dx + dy * dy + SOFTENING;
+                    const dist = Math.sqrt(distSq);
+
+                    // 重力 F = G * m1 * m2 / r^2
+                    const force = G * p1.mass * p2.mass / distSq;
+
+                    // 加速度 a = F / m
+                    const ax = force * dx / dist / p1.mass;
+                    const ay = force * dy / dist / p1.mass;
+
+                    p1.vx += ax;
+                    p1.vy += ay;
+                }
+            }
+        }
+
+        function animate(currentTime) {
+            const dt = 0.5; // 固定タイムステップ
+
+            // 背景をフェード（軌跡効果）
+            if (showTrails) {
+                ctx.fillStyle = 'rgba(10, 10, 26, 0.05)';
+            } else {
+                ctx.fillStyle = 'rgba(10, 10, 26, 1)';
+            }
+            ctx.fillRect(0, 0, width, height);
+
+            // 重力を計算
+            for (let step = 0; step < 2; step++) {
+                calculateGravity();
+            }
+
+            // 粒子を更新・描画
+            for (const particle of particles) {
+                particle.update(dt);
+                particle.draw();
+            }
+
+            // 接続線（近い粒子同士）
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const p1 = particles[i];
+                    const p2 = particles[j];
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 150) {
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        const alpha = (1 - dist / 150) * 0.15;
+                        ctx.strokeStyle = `rgba(148, 163, 184, ${alpha})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // FPS計算
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+                document.getElementById('fps').textContent = `FPS: ${fps}`;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function resetParticles() {
+            initParticles(8);
+        }
+
+        function addParticle() {
+            const x = Math.random() * width;
+            const y = Math.random() * height;
+            const vx = (Math.random() - 0.5) * 2;
+            const vy = (Math.random() - 0.5) * 2;
+            const mass = 1 + Math.random() * 2;
+            particles.push(new Particle(x, y, vx, vy, mass));
+            updateInfo();
+        }
+
+        function toggleTrails() {
+            showTrails = !showTrails;
+            if (!showTrails) {
+                for (const p of particles) {
+                    p.trail = [];
+                }
+            }
+        }
+
+        function updateInfo() {
+            document.getElementById('particleCount').textContent = `粒子: ${particles.length}`;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // タッチで粒子追加
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const mass = 1 + Math.random() * 2;
+            particles.push(new Particle(touch.clientX, touch.clientY, 0, 0, mass));
+            updateInfo();
+        });
+
+        canvas.addEventListener('click', (e) => {
+            const mass = 1 + Math.random() * 2;
+            particles.push(new Particle(e.clientX, e.clientY, 0, 0, mass));
+            updateInfo();
+        });
+
+        // 初期化
+        window.addEventListener('resize', resize);
+        resize();
+        initParticles(8);
+        animate(0);
+    </script>
+</body>
+</html>
