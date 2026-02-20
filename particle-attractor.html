@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>パーティクル・アトラクタ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #fff;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #00f5ff, #ff00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 0.9rem;
+            border: none;
+            border-radius: 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .canvas-container {
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        canvas {
+            display: block;
+            background: radial-gradient(ellipse at center, #0a0a0a 0%, #000 100%);
+            border-radius: 20px;
+            max-width: 100%;
+            height: auto;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px 15px;
+            font-size: 0.8rem;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .stats {
+            margin-top: 20px;
+            padding: 15px 25px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+        }
+
+        .stats p {
+            margin: 5px 0;
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            button {
+                padding: 8px 15px;
+                font-size: 0.8rem;
+            }
+
+            .stats {
+                padding: 10px 15px;
+            }
+
+            .stats p {
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌀 パーティクル・アトラクタ</h1>
+        <p style="opacity: 0.7; font-size: 0.9rem;">アトラクタの周りを美しい軌道を描くパーティクル</p>
+    </div>
+
+    <div class="controls">
+        <button onclick="changeAttractor('lorenz')">ローレンツ</button>
+        <button onclick="changeAttractor('aizawa')">アイザワ</button>
+        <button onclick="changeAttractor('thomas')">トーマス</button>
+        <button onclick="changeAttractor('chen')">チェン</button>
+        <button onclick="changeAttractor('rossler')">レスラー</button>
+        <button onclick="resetParticles()">リセット</button>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="canvas" width="800" height="600"></canvas>
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    </div>
+
+    <div class="stats">
+        <p><strong>現在のアトラクタ:</strong> <span id="attractorName">ローレンツ</span></p>
+        <p><strong>パーティクル数:</strong> <span id="particleCount">2000</span></p>
+        <p><strong>操作:</strong> マウスドラッグで回転、スクロールでズーム</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width;
+        let height = canvas.height;
+
+        let particles = [];
+        const PARTICLE_COUNT = 2000;
+
+        let attractorType = 'lorenz';
+        let attractorName = 'ローレンツ';
+
+        let rotationX = 0;
+        let rotationY = 0;
+        let zoom = 1;
+
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+
+        // カラーパレット
+        const colorPalettes = {
+            lorenz: ['#00f5ff', '#0099ff', '#6600ff', '#ff00ff'],
+            aizawa: ['#ff6b6b', '#ff8e53', '#feca57', '#48dbfb'],
+            thomas: ['#26de81', '#20bf6b', '#0fb9b1', '#2bcbba'],
+            chen: ['#fd79a8', '#e84393', '#a29bfe', '#6c5ce7'],
+            rossler: ['#ffeaa7', '#fdcb6e', '#f39c12', '#e17055']
+        };
+
+        class Particle {
+            constructor() {
+                this.reset();
+                // ランダムな位置から開始
+                this.x = (Math.random() - 0.5) * 50;
+                this.y = (Math.random() - 0.5) * 50;
+                this.z = (Math.random() - 0.5) * 50;
+            }
+
+            reset() {
+                this.history = [];
+                this.maxHistory = 50;
+                this.colorIndex = Math.floor(Math.random() * 4);
+            }
+
+            update() {
+                this.history.push({ x: this.x, y: this.y, z: this.z });
+                if (this.history.length > this.maxHistory) {
+                    this.history.shift();
+                }
+
+                let dx, dy, dz;
+                const dt = 0.005;
+
+                switch (attractorType) {
+                    case 'lorenz':
+                        dx = 10 * (this.y - this.x);
+                        dy = this.x * (28 - this.z) - this.y;
+                        dz = this.x * this.y - 8/3 * this.z;
+                        break;
+                    case 'aizawa':
+                        dx = (this.z - 0.7) * this.x - 3 * this.y;
+                        dy = 3 * this.x + (this.z - 0.7) * this.y;
+                        dz = 0.5 + 0.95 * this.z - this.z * this.z * this.z / 3 - (this.x * this.x + this.y * this.y) * (1 + 0.25 * this.z) + 0.1 * this.z * this.x * this.x * this.x;
+                        break;
+                    case 'thomas':
+                        dx = Math.sin(this.y) - 0.208186 * this.x;
+                        dy = Math.sin(this.z) - 0.208186 * this.y;
+                        dz = Math.sin(this.x) - 0.208186 * this.z;
+                        break;
+                    case 'chen':
+                        dx = 40 * (this.y - this.x);
+                        dy = 45 * this.x - this.x * this.z + 5 * this.y;
+                        dz = this.x * this.y - 2 * this.z;
+                        break;
+                    case 'rossler':
+                        dx = -this.y - this.z;
+                        dy = this.x + 0.2 * this.y;
+                        dz = 0.2 + this.z * (this.x - 5.7);
+                        break;
+                }
+
+                this.x += dx * dt;
+                this.y += dy * dt;
+                this.z += dz * dt;
+            }
+
+            draw() {
+                if (this.history.length < 2) return;
+
+                const palette = colorPalettes[attractorType];
+
+                ctx.beginPath();
+                ctx.strokeStyle = palette[this.colorIndex];
+                ctx.lineWidth = 0.5;
+
+                for (let i = 0; i < this.history.length - 1; i++) {
+                    const p1 = this.project(this.history[i]);
+                    const p2 = this.project(this.history[i + 1]);
+
+                    if (i === 0) {
+                        ctx.moveTo(p1.x, p1.y);
+                    }
+                    ctx.lineTo(p2.x, p2.y);
+                }
+
+                ctx.stroke();
+            }
+
+            project(point) {
+                // 回転
+                let x = point.x;
+                let y = point.y;
+                let z = point.z;
+
+                // Y軸回転
+                const cosY = Math.cos(rotationY);
+                const sinY = Math.sin(rotationY);
+                const tempX = x * cosY - z * sinY;
+                const tempZ = x * sinY + z * cosY;
+                x = tempX;
+                z = tempZ;
+
+                // X軸回転
+                const cosX = Math.cos(rotationX);
+                const sinX = Math.sin(rotationX);
+                const tempY = y * cosX - z * sinX;
+                z = y * sinX + z * cosX;
+                y = tempY;
+
+                // 投影（簡易的な透視投影）
+                const scale = 300 / (300 + z * 0.5) * zoom;
+                const screenX = width / 2 + x * scale;
+                const screenY = height / 2 - y * scale;
+
+                return { x: screenX, y: screenY };
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+            document.getElementById('particleCount').textContent = PARTICLE_COUNT;
+        }
+
+        function changeAttractor(type) {
+            attractorType = type;
+
+            const names = {
+                lorenz: 'ローレンツ',
+                aizawa: 'アイザワ',
+                thomas: 'トーマス',
+                chen: 'チェン',
+                rossler: 'レスラー'
+            };
+
+            attractorName = names[type];
+            document.getElementById('attractorName').textContent = attractorName;
+
+            resetParticles();
+        }
+
+        function resetParticles() {
+            particles.forEach(p => p.reset());
+        }
+
+        function animate() {
+            // 半透明の背景でトレイル効果
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // マウス操作
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - lastMouseX;
+                const deltaY = e.clientY - lastMouseY;
+
+                rotationY += deltaX * 0.01;
+                rotationX += deltaY * 0.01;
+
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            zoom += e.deltaY * -0.001;
+            zoom = Math.max(0.1, Math.min(5, zoom));
+        });
+
+        // タッチ操作
+        let touchStartDistance = 0;
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                isDragging = true;
+                lastMouseX = e.touches[0].clientX;
+                lastMouseY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                touchStartDistance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+
+            if (e.touches.length === 1 && isDragging) {
+                const deltaX = e.touches[0].clientX - lastMouseX;
+                const deltaY = e.touches[0].clientY - lastMouseY;
+
+                rotationY += deltaX * 0.01;
+                rotationX += deltaY * 0.01;
+
+                lastMouseX = e.touches[0].clientX;
+                lastMouseY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                const currentDistance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+
+                zoom *= currentDistance / touchStartDistance;
+                zoom = Math.max(0.1, Math.min(5, zoom));
+
+                touchStartDistance = currentDistance;
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            const container = document.querySelector('.canvas-container');
+
+            if (!document.fullscreenElement) {
+                container.requestFullscreen().catch(err => {
+                    console.log('全画面エラー:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            const container = document.querySelector('.canvas-container');
+            const rect = container.getBoundingClientRect();
+
+            if (document.fullscreenElement) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            } else {
+                canvas.width = Math.min(800, window.innerWidth - 40);
+                canvas.height = Math.min(600, window.innerHeight - 200);
+            }
+
+            width = canvas.width;
+            height = canvas.height;
+        });
+
+        // 初期化
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>
