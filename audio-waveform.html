@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音声波形アニメーション</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 12px 24px;
+            font-size: 14px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button.active {
+            background: rgba(100, 200, 255, 0.3);
+            border-color: #64c8ff;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="waveform"></canvas>
+    
+    <div class="info">
+        マイクをオンにすると、音声に合わせて波形が動きます
+    </div>
+
+    <div class="controls">
+        <button id="micBtn">🎤 マイクをオン</button>
+        <button id="styleBtn">🎨 スタイル変更</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">🖥️ 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('waveform');
+        const ctx = canvas.getContext('2d');
+        const micBtn = document.getElementById('micBtn');
+        const styleBtn = document.getElementById('styleBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let dataArray;
+        let bufferLength;
+        let isMicOn = false;
+        let currentStyle = 0;
+        const styles = ['wave', 'bars', 'circle', 'particles', 'spectrum'];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // マイクのセットアップ
+        async function setupMicrophone() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+
+                isMicOn = true;
+                micBtn.textContent = '🎤 マイクオフ';
+                micBtn.classList.add('active');
+
+                animate();
+            } catch (err) {
+                console.error('マイクのアクセスに失敗しました:', err);
+                alert('マイクのアクセスを許可してください');
+            }
+        }
+
+        // スタイル変更
+        function changeStyle() {
+            currentStyle = (currentStyle + 1) % styles.length;
+            const styleNames = ['波形', 'バー', '円形', 'パーティクル', 'スペクトル'];
+            styleBtn.textContent = `🎨 ${styleNames[currentStyle]}`;
+        }
+
+        // 描画スタイル
+        function drawWaveform() {
+            const centerY = canvas.height / 2;
+            const sliceWidth = canvas.width / bufferLength;
+
+            ctx.beginPath();
+            ctx.moveTo(0, centerY);
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = v * centerY;
+
+                const x = i * sliceWidth;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+
+            ctx.strokeStyle = `hsl(${Date.now() / 50 % 360}, 100%, 50%)`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // ミラー
+            ctx.beginPath();
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = canvas.height - (v * centerY);
+                const x = i * sliceWidth;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.strokeStyle = `hsl(${(Date.now() / 50 + 180) % 360}, 100%, 50%)`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        function drawBars() {
+            const barWidth = canvas.width / bufferLength * 2.5;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const barHeight = (dataArray[i] / 255) * canvas.height * 0.8;
+
+                const hue = (i / bufferLength) * 360 + Date.now() / 100;
+                ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+
+                ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+                x += barWidth + 1;
+            }
+        }
+
+        function drawCircle() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const baseRadius = Math.min(canvas.width, canvas.height) * 0.2;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const angle = (i / bufferLength) * Math.PI * 2;
+                const amplitude = dataArray[i] / 255;
+                const radius = baseRadius + amplitude * 200;
+
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+
+                const hue = (i / bufferLength) * 360 + Date.now() / 50;
+                ctx.beginPath();
+                ctx.arc(x, y, amplitude * 10 + 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                ctx.fill();
+
+                // 線で繋ぐ
+                if (i > 0) {
+                    const prevAngle = ((i - 1) / bufferLength) * Math.PI * 2;
+                    const prevAmplitude = dataArray[i - 1] / 255;
+                    const prevRadius = baseRadius + prevAmplitude * 200;
+                    const prevX = centerX + Math.cos(prevAngle) * prevRadius;
+                    const prevY = centerY + Math.sin(prevAngle) * prevRadius;
+
+                    ctx.beginPath();
+                    ctx.moveTo(prevX, prevY);
+                    ctx.lineTo(x, y);
+                    ctx.strokeStyle = `hsl(${hue}, 100%, 50%, 0.5)`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        let particles = [];
+        function drawParticles() {
+            // パーティクル追加
+            const avgFreq = dataArray.reduce((a, b) => a + b) / bufferLength;
+            if (avgFreq > 50) {
+                for (let i = 0; i < avgFreq / 20; i++) {
+                    particles.push({
+                        x: canvas.width / 2,
+                        y: canvas.height / 2,
+                        vx: (Math.random() - 0.5) * avgFreq / 10,
+                        vy: (Math.random() - 0.5) * avgFreq / 10,
+                        life: 1,
+                        hue: Math.random() * 360,
+                        size: Math.random() * 5 + 2
+                    });
+                }
+            }
+
+            // パーティクル更新
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.01;
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${p.hue}, 100%, 50%, ${p.life})`;
+                ctx.fill();
+
+                return p.life > 0;
+            });
+
+            // 中心の円
+            const centerRadius = avgFreq / 255 * 100;
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, centerRadius, 0, Math.PI * 2);
+            ctx.fillStyle = `hsl(${Date.now() / 20 % 360}, 100%, 50%)`;
+            ctx.fill();
+        }
+
+        function drawSpectrum() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const amplitude = dataArray[i] / 255;
+                const angle = (i / bufferLength) * Math.PI * 2;
+                const length = amplitude * Math.min(canvas.width, canvas.height) * 0.4;
+
+                const x1 = centerX + Math.cos(angle) * 50;
+                const y1 = centerY + Math.sin(angle) * 50;
+                const x2 = centerX + Math.cos(angle) * (50 + length);
+                const y2 = centerY + Math.sin(angle) * (50 + length);
+
+                const hue = (i / bufferLength) * 360 + Date.now() / 50;
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+        }
+
+        // アニメーション
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (isMicOn) {
+                analyser.getByteTimeDomainData(dataArray);
+
+                switch (styles[currentStyle]) {
+                    case 'wave':
+                        drawWaveform();
+                        break;
+                    case 'bars':
+                        analyser.getByteFrequencyData(dataArray);
+                        drawBars();
+                        break;
+                    case 'circle':
+                        analyser.getByteFrequencyData(dataArray);
+                        drawCircle();
+                        break;
+                    case 'particles':
+                        analyser.getByteFrequencyData(dataArray);
+                        drawParticles();
+                        break;
+                    case 'spectrum':
+                        analyser.getByteFrequencyData(dataArray);
+                        drawSpectrum();
+                        break;
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        micBtn.addEventListener('click', () => {
+            if (!isMicOn) {
+                setupMicrophone();
+            } else {
+                isMicOn = false;
+                micBtn.textContent = '🎤 マイクをオン';
+                micBtn.classList.remove('active');
+            }
+        });
+
+        styleBtn.addEventListener('click', changeStyle);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // デモアニメーション（マイクオフ時）
+        function demoAnimation() {
+            if (!isMicOn) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                const time = Date.now() / 1000;
+                for (let i = 0; i < 100; i++) {
+                    const x = (i / 100) * canvas.width;
+                    const y = canvas.height / 2 + Math.sin(time * 2 + i * 0.1) * 100;
+                    const hue = (i / 100) * 360 + time * 50;
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, 3, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsl(${hue % 360}, 100%, 50%)`;
+                    ctx.fill();
+                }
+            }
+            requestAnimationFrame(demoAnimation);
+        }
+        demoAnimation();
+    </script>
+</body>
+</html>

@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>タイミングゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            touch-action: manipulation;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100vmin;
+            height: 100vmin;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            z-index: 10;
+            text-align: center;
+        }
+
+        .score {
+            font-size: 48px;
+            color: #ffd700;
+        }
+
+        .combo {
+            font-size: 20px;
+            color: #00ffff;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: #fff;
+            text-align: center;
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .overlay h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .overlay p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            max-width: 400px;
+            line-height: 1.6;
+        }
+
+        .overlay button {
+            background: linear-gradient(45deg, #ff6b6b, #ffd93d);
+            border: none;
+            color: #fff;
+            padding: 15px 40px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(255, 107, 107, 0.3);
+        }
+
+        .overlay button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 10px 30px rgba(255, 107, 107, 0.5);
+        }
+
+        .perfect-text {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+            animation: pop 0.5s ease-out;
+            z-index: 50;
+            pointer-events: none;
+        }
+
+        .miss-text {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #ff4444;
+            text-shadow: 0 0 20px rgba(255, 68, 68, 0.8);
+            animation: pop 0.5s ease-out;
+            z-index: 50;
+            pointer-events: none;
+        }
+
+        @keyframes pop {
+            0% {
+                transform: translate(-50%, -50%) scale(0);
+                opacity: 1;
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.5);
+            }
+            100% {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 0;
+            }
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            font-size: 14px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="game"></canvas>
+    </div>
+
+    <div class="ui">
+        <div class="score" id="score">0</div>
+        <div class="combo" id="combo"></div>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">🖥️ 全画面</button>
+
+    <div class="overlay" id="startOverlay">
+        <h1>⏱️ タイミングゲーム</h1>
+        <p>円が小さい円と重なった瞬間にタップ！<br>タイミングが完璧だと高いスコアがもらえます</p>
+        <button id="startBtn">スタート</button>
+    </div>
+
+    <div class="overlay hidden" id="gameOverOverlay">
+        <h1>ゲームオーバー</h1>
+        <p>スコア: <span id="finalScore">0</span><br>コンボ: <span id="finalCombo">0</span></p>
+        <button id="restartBtn">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const comboEl = document.getElementById('combo');
+        const startOverlay = document.getElementById('startOverlay');
+        const gameOverOverlay = document.getElementById('gameOverOverlay');
+        const finalScoreEl = document.getElementById('finalScore');
+        const finalComboEl = document.getElementById('finalCombo');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let gameState = 'start'; // start, playing, gameOver
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let lives = 3;
+        let circles = [];
+        let particles = [];
+        let animationId;
+        let lastTapTime = 0;
+        let tapCooldown = 100; // ms
+
+        function resize() {
+            const size = Math.min(window.innerWidth, window.innerHeight);
+            canvas.width = size;
+            canvas.height = size;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        class Circle {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height / 2;
+                this.baseRadius = canvas.width * 0.15;
+                this.currentRadius = canvas.width * 0.35;
+                this.targetRadius = canvas.width * 0.15;
+                this.speed = 2 + Math.random() * 2;
+                this.shrinking = true;
+                this.hue = Math.random() * 360;
+                this.active = true;
+                this.created = Date.now();
+            }
+
+            update() {
+                if (this.shrinking) {
+                    this.currentRadius -= this.speed;
+                    if (this.currentRadius <= this.targetRadius) {
+                        this.shrinking = false;
+                        this.expandTime = Date.now();
+                    }
+                } else {
+                    this.currentRadius += this.speed * 1.5;
+                }
+
+                // 色を変化
+                this.hue = (this.hue + 1) % 360;
+
+                // タイムアウト（5秒）
+                if (Date.now() - this.created > 5000) {
+                    return false;
+                }
+
+                return true;
+            }
+
+            draw() {
+                // 外側の円
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.currentRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.lineWidth = 8;
+                ctx.stroke();
+
+                // グロー効果
+                ctx.shadowColor = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.shadowBlur = 20;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                // 目標の円
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.targetRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+            }
+
+            checkTap() {
+                if (!this.active) return null;
+
+                const diff = Math.abs(this.currentRadius - this.targetRadius);
+                const tolerance = 20;
+
+                if (diff <= tolerance) {
+                    this.active = false;
+                    const accuracy = 1 - (diff / tolerance);
+                    const points = Math.round(100 * accuracy * (1 + combo * 0.1));
+                    return { hit: true, points, accuracy };
+                } else if (this.currentRadius < this.targetRadius) {
+                    this.active = false;
+                    return { hit: false, reason: 'too_small' };
+                }
+
+                return null;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.life = 1;
+                this.color = color;
+                this.size = Math.random() * 5 + 2;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 0.02;
+                this.vy += 0.2; // 重力
+                return this.life > 0;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = this.color.replace(')', `, ${this.life})`).replace('rgb', 'rgba');
+                ctx.fill();
+            }
+        }
+
+        function spawnCircle() {
+            if (gameState === 'playing' && circles.length < 3) {
+                circles.push(new Circle());
+            }
+        }
+
+        function createParticles(x, y, color, count = 20) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function showFeedback(text, isPerfect) {
+            const el = document.createElement('div');
+            el.className = isPerfect ? 'perfect-text' : 'miss-text';
+            el.textContent = text;
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 500);
+        }
+
+        function handleTap(e) {
+            if (gameState !== 'playing') return;
+
+            const now = Date.now();
+            if (now - lastTapTime < tapCooldown) return;
+            lastTapTime = now;
+
+            let hitAny = false;
+
+            for (let i = circles.length - 1; i >= 0; i--) {
+                const result = circles[i].checkTap();
+                if (result) {
+                    hitAny = true;
+
+                    if (result.hit) {
+                        score += result.points;
+                        combo++;
+                        maxCombo = Math.max(maxCombo, combo);
+
+                        const color = `rgb(${Math.random() * 255}, ${Math.random() * 255}, 255)`;
+                        createParticles(canvas.width / 2, canvas.height / 2, color);
+
+                        if (result.accuracy > 0.9) {
+                            showFeedback('PERFECT! +' + result.points, true);
+                        } else if (result.accuracy > 0.7) {
+                            showFeedback('GREAT! +' + result.points, true);
+                        } else {
+                            showFeedback('GOOD! +' + result.points, true);
+                        }
+                    } else {
+                        combo = 0;
+                        showFeedback('MISS!', false);
+
+                        // ミスパーティクル
+                        createParticles(canvas.width / 2, canvas.height / 2, 'rgb(255, 68, 68)', 30);
+                    }
+
+                    circles.splice(i, 1);
+                    break;
+                }
+            }
+
+            if (!hitAny) {
+                // 空タップ
+                combo = 0;
+                showFeedback('MISS!', false);
+            }
+
+            updateUI();
+        }
+
+        function updateUI() {
+            scoreEl.textContent = score;
+            comboEl.textContent = combo > 1 ? `${combo} コンボ!` : '';
+        }
+
+        function gameOver() {
+            gameState = 'gameOver';
+            finalScoreEl.textContent = score;
+            finalComboEl.textContent = maxCombo;
+            gameOverOverlay.classList.remove('hidden');
+        }
+
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            circles = [];
+            particles = [];
+            updateUI();
+            startOverlay.classList.add('hidden');
+            gameOverOverlay.classList.add('hidden');
+
+            // 定期的に円を生成
+            setInterval(spawnCircle, 1500);
+            spawnCircle();
+        }
+
+        function gameLoop() {
+            // 背景をクリア
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // パーティクル更新
+            particles = particles.filter(p => {
+                p.draw();
+                return p.update();
+            });
+
+            // 円の更新
+            if (gameState === 'playing') {
+                circles = circles.filter(circle => {
+                    circle.draw();
+                    const alive = circle.update();
+
+                    // 外側まで広がったらミス
+                    if (!circle.shrinking && circle.currentRadius > canvas.width * 0.4) {
+                        combo = 0;
+                        updateUI();
+                        showFeedback('TIME UP!', false);
+                        return false;
+                    }
+
+                    return alive;
+                });
+            }
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', handleTap);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleTap(e);
+        });
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // ゲーム開始
+        gameLoop();
+    </script>
+</body>
+</html>
