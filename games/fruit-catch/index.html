@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>フルーツキャッチ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(255, 200, 100, 0.5);
+            text-align: center;
+        }
+
+        .score {
+            color: #ffd700;
+            font-size: clamp(1.2rem, 3vw, 1.8rem);
+            margin-bottom: 15px;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            aspect-ratio: 3/4;
+            background: linear-gradient(180deg, #87CEEB 0%, #98D8C8 100%);
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            border: none;
+            color: #333;
+            padding: 6px 12px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 1);
+            transform: scale(1.05);
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            z-index: 50;
+        }
+
+        .overlay h2 {
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .overlay p {
+            font-size: clamp(0.9rem, 2vw, 1.2rem);
+            margin-bottom: 20px;
+            text-align: center;
+            max-width: 80%;
+        }
+
+        .overlay button {
+            background: #ffd700;
+            color: #333;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: clamp(1rem, 2.5vw, 1.2rem);
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .overlay button:hover {
+            background: #ffed4a;
+            transform: scale(1.05);
+        }
+
+        .info {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.85rem;
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🍎 フルーツキャッチ 🍊</h1>
+        <p class="score">スコア: <span id="score">0</span></p>
+
+        <div class="game-container">
+            <canvas id="canvas"></canvas>
+            <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+            <div class="overlay" id="startOverlay">
+                <h2>🍎 フルーツキャッチ 🍊</h2>
+                <p>落ちてくるフルーツをキャッチしよう！<br>カゴをドラッグして動かします</p>
+                <button onclick="startGame()">スタート</button>
+            </div>
+
+            <div class="overlay hidden" id="gameOverOverlay">
+                <h2>ゲームオーバー</h2>
+                <p>最終スコア: <span id="finalScore">0</span></p>
+                <button onclick="startGame()">もう一度</button>
+            </div>
+        </div>
+
+        <p class="info">カゴをドラッグしてフルーツをキャッチ！</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const finalScoreEl = document.getElementById('finalScore');
+        const startOverlay = document.getElementById('startOverlay');
+        const gameOverOverlay = document.getElementById('gameOverOverlay');
+
+        let width, height;
+        let score = 0;
+        let gameRunning = false;
+        let animationId;
+        let fruits = [];
+        let lives = 3;
+        let spawnRate = 1500;
+        let lastSpawn = 0;
+        let speedMultiplier = 1;
+
+        const basket = {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 50,
+            targetX: 0
+        };
+
+        const fruitTypes = [
+            { emoji: '🍎', points: 10, speed: 2 },
+            { emoji: '🍊', points: 15, speed: 2.5 },
+            { emoji: '🍋', points: 20, speed: 3 },
+            { emoji: '🍇', points: 25, speed: 3.5 },
+            { emoji: '🍓', points: 30, speed: 4 },
+            { emoji: '🍑', points: 35, speed: 4.5 }
+        ];
+
+        function resize() {
+            const container = canvas.parentElement;
+            width = container.clientWidth;
+            height = container.clientHeight;
+            canvas.width = width * window.devicePixelRatio;
+            canvas.height = height * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+            basket.y = height - 70;
+            basket.x = width / 2 - basket.width / 2;
+            basket.targetX = basket.x;
+        }
+
+        class Fruit {
+            constructor() {
+                const type = fruitTypes[Math.floor(Math.random() * fruitTypes.length)];
+                this.emoji = type.emoji;
+                this.points = type.points;
+                this.speed = type.speed * speedMultiplier;
+                this.x = Math.random() * (width - 40) + 20;
+                this.y = -30;
+                this.size = 30;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+            }
+
+            update() {
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.font = `${this.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.emoji, 0, 0);
+                ctx.restore();
+            }
+
+            isOffScreen() {
+                return this.y > height + 30;
+            }
+
+            collidesWith(basket) {
+                return (
+                    this.x > basket.x &&
+                    this.x < basket.x + basket.width &&
+                    this.y > basket.y &&
+                    this.y < basket.y + basket.height
+                );
+            }
+        }
+
+        function spawnFruit() {
+            fruits.push(new Fruit());
+        }
+
+        function drawBasket() {
+            // カゴの本体
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(basket.x, basket.y, basket.width, basket.height);
+
+            // カゴの縁
+            ctx.fillStyle = '#A0522D';
+            ctx.fillRect(basket.x - 5, basket.y, basket.width + 10, 10);
+
+            // カゴの模様
+            ctx.strokeStyle = '#654321';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 5; i++) {
+                ctx.beginPath();
+                ctx.moveTo(basket.x + 10 + i * 15, basket.y);
+                ctx.lineTo(basket.x + 10 + i * 15, basket.y + basket.height);
+                ctx.stroke();
+            }
+        }
+
+        function update(timestamp) {
+            if (!gameRunning) return;
+
+            // スポーン
+            if (timestamp - lastSpawn > spawnRate) {
+                spawnFruit();
+                lastSpawn = timestamp;
+
+                // 難易度上昇
+                if (spawnRate > 500) {
+                    spawnRate -= 10;
+                }
+                speedMultiplier += 0.01;
+            }
+
+            // バスケットの移動（スムーズ）
+            basket.x += (basket.targetX - basket.x) * 0.15;
+
+            // バスケットを画面内に制限
+            if (basket.x < 0) {
+                basket.x = 0;
+                basket.targetX = 0;
+            }
+            if (basket.x > width - basket.width) {
+                basket.x = width - basket.width;
+                basket.targetX = width - basket.width;
+            }
+
+            // フルーツの更新
+            fruits.forEach((fruit, index) => {
+                fruit.update();
+
+                // 衝突判定
+                if (fruit.collidesWith(basket)) {
+                    score += fruit.points;
+                    scoreEl.textContent = score;
+                    fruits.splice(index, 1);
+                    return;
+                }
+
+                // 画面外に出た
+                if (fruit.isOffScreen()) {
+                    fruits.splice(index, 1);
+                    lives--;
+                    if (lives <= 0) {
+                        gameOver();
+                    }
+                }
+            });
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            // 背景（空）
+            const skyGradient = ctx.createLinearGradient(0, 0, 0, height);
+            skyGradient.addColorStop(0, '#87CEEB');
+            skyGradient.addColorStop(1, '#98D8C8');
+            ctx.fillStyle = skyGradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // 地面
+            ctx.fillStyle = '#90EE90';
+            ctx.fillRect(0, height - 20, width, 20);
+
+            // ライフ表示
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`❤️ ${lives}`, 15, 30);
+
+            drawBasket();
+
+            fruits.forEach(fruit => fruit.draw());
+        }
+
+        function gameLoop(timestamp) {
+            if (!gameRunning) return;
+
+            update(timestamp);
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            score = 0;
+            lives = 3;
+            fruits = [];
+            spawnRate = 1500;
+            speedMultiplier = 1;
+            lastSpawn = 0;
+            gameRunning = true;
+
+            scoreEl.textContent = score;
+            startOverlay.classList.add('hidden');
+            gameOverOverlay.classList.add('hidden');
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+            finalScoreEl.textContent = score;
+            gameOverOverlay.classList.remove('hidden');
+        }
+
+        function toggleFullscreen() {
+            const container = canvas.parentElement;
+            if (!document.fullscreenElement) {
+                container.requestFullscreen().catch(err => {
+                    console.log('Fullscreen error:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('mousemove', (e) => {
+            if (!gameRunning) return;
+            const rect = canvas.getBoundingClientRect();
+            basket.targetX = e.clientX - rect.left - basket.width / 2;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            basket.targetX = e.touches[0].clientX - rect.left - basket.width / 2;
+        }, { passive: false });
+
+        window.addEventListener('resize', resize);
+
+        // 初期化
+        resize();
+        draw();
+    </script>
+</body>
+</html>
