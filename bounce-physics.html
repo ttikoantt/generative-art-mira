@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>バウンス物理 - Bounce Physics</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+        .container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffffff;
+            text-align: center;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px 30px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        .info h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #ff6b6b, #feca57);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .info p {
+            font-size: 14px;
+            color: #b0b0b0;
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        .btn:active {
+            transform: translateY(0);
+        }
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <canvas id="canvas"></canvas>
+        <div class="info">
+            <h1>🏀 バウンス物理</h1>
+            <p>画面をタップして新しいボールを追加</p>
+        </div>
+        <div class="controls">
+            <button class="btn" onclick="clearBalls()">クリア</button>
+            <button class="btn" onclick="resetSimulation()">リセット</button>
+        </div>
+        <button class="btn fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let balls = [];
+        const gravity = 0.5;
+        const friction = 0.99;
+        const bounce = 0.8;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Ball {
+            constructor(x, y, vx, vy, radius, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.radius = radius;
+                this.color = color;
+                this.trail = [];
+                this.maxTrail = 20;
+            }
+
+            update() {
+                // 重力を適用
+                this.vy += gravity;
+
+                // 空気抵抗
+                this.vx *= friction;
+                this.vy *= friction;
+
+                // 位置を更新
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 軌跡を保存
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > this.maxTrail) {
+                    this.trail.shift();
+                }
+
+                // 壁との衝突
+                if (this.x - this.radius < 0) {
+                    this.x = this.radius;
+                    this.vx = -this.vx * bounce;
+                }
+                if (this.x + this.radius > width) {
+                    this.x = width - this.radius;
+                    this.vx = -this.vx * bounce;
+                }
+                if (this.y - this.radius < 0) {
+                    this.y = this.radius;
+                    this.vy = -this.vy * bounce;
+                }
+                if (this.y + this.radius > height) {
+                    this.y = height - this.radius;
+                    this.vy = -this.vy * bounce;
+                }
+            }
+
+            draw() {
+                // 軌跡を描画
+                for (let i = 0; i < this.trail.length; i++) {
+                    const alpha = i / this.trail.length;
+                    ctx.beginPath();
+                    ctx.arc(this.trail[i].x, this.trail[i].y, this.radius * alpha, 0, Math.PI * 2);
+                    ctx.fillStyle = this.color.replace(')', `, ${alpha * 0.5})`).replace('rgb', 'rgba');
+                    ctx.fill();
+                }
+
+                // ボールを描画
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+
+                // グラデーション
+                const gradient = ctx.createRadialGradient(
+                    this.x - this.radius * 0.3, this.y - this.radius * 0.3, 0,
+                    this.x, this.y, this.radius
+                );
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+                gradient.addColorStop(0.3, this.color);
+                gradient.addColorStop(1, this.color.replace('1)', '0.6)'));
+
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // 光沢
+                ctx.beginPath();
+                ctx.arc(this.x - this.radius * 0.3, this.y - this.radius * 0.3, this.radius * 0.2, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.fill();
+            }
+        }
+
+        function getRandomColor() {
+            const colors = [
+                'rgb(255, 107, 107)',
+                'rgb(78, 205, 196)',
+                'rgb(255, 230, 109)',
+                'rgb(26, 83, 92)',
+                'rgb(247, 255, 247)',
+                'rgb(255, 159, 67)',
+                'rgb(84, 160, 255)',
+                'rgb(95, 39, 205)'
+            ];
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        function addBall(x, y) {
+            const vx = (Math.random() - 0.5) * 20;
+            const vy = (Math.random() - 0.5) * 10 - 5;
+            const radius = Math.random() * 30 + 20;
+            const color = getRandomColor();
+            balls.push(new Ball(x, y, vx, vy, radius, color));
+        }
+
+        function clearBalls() {
+            balls = [];
+        }
+
+        function resetSimulation() {
+            balls = [];
+            // 初期ボールを追加
+            for (let i = 0; i < 5; i++) {
+                addBall(width / 2, height / 3);
+            }
+        }
+
+        function animate() {
+            // 背景を半透明で描画（トレイル効果）
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // ボールを更新・描画
+            balls.forEach(ball => {
+                ball.update();
+                ball.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // タップ/クリックでボールを追加
+        canvas.addEventListener('click', (e) => {
+            addBall(e.clientX, e.clientY);
+        });
+
+        // タッチ対応
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            addBall(touch.clientX, touch.clientY);
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        resetSimulation();
+        animate();
+    </script>
+</body>
+</html>
