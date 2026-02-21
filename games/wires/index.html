@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Wires - 配線パズル</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 20px;
+            color: #fff;
+        }
+
+        .level-info {
+            font-size: 18px;
+        }
+
+        .score {
+            font-size: 18px;
+            color: #00ffcc;
+        }
+
+        .canvas-container {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            max-width: 500px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            border: 2px solid #333;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            font-weight: bold;
+            color: #00ffcc;
+            text-shadow: 0 0 20px rgba(0, 255, 204, 0.8);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .message.show {
+            opacity: 1;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            background: rgba(0, 255, 204, 0.2);
+            color: #00ffcc;
+            border: 1px solid #00ffcc;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: rgba(0, 255, 204, 0.3);
+            transform: scale(1.05);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 255, 204, 0.2);
+            color: #00ffcc;
+            border: 1px solid #00ffcc;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 100;
+            font-size: 14px;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 204, 0.3);
+        }
+
+        @media (max-width: 600px) {
+            .game-container {
+                padding: 10px;
+            }
+
+            .level-info, .score {
+                font-size: 14px;
+            }
+
+            .buttons {
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            button {
+                padding: 10px 16px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="game-container">
+        <div class="header">
+            <div class="level-info">Level: <span id="level">1</span></div>
+            <div class="score">Score: <span id="score">0</span></div>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="gameCanvas"></canvas>
+            <div class="message" id="message"></div>
+        </div>
+
+        <div class="buttons">
+            <button onclick="resetLevel()">リセット</button>
+            <button onclick="newGame()">新しいゲーム</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const messageEl = document.getElementById('message');
+        const levelEl = document.getElementById('level');
+        const scoreEl = document.getElementById('score');
+
+        const COLORS = ['#ff6b6b', '#4ecdc4', '#ffe66d', '#95e1d3', '#f38181'];
+
+        let level = 1;
+        let score = 0;
+        let wires = [];
+        let draggingWire = null;
+        let completedWires = 0;
+        let canvasWidth, canvasHeight;
+
+        function resize() {
+            const container = canvas.parentElement;
+            canvasWidth = container.clientWidth;
+            canvasHeight = container.clientHeight;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            generateLevel();
+            draw();
+        }
+
+        function generateLevel() {
+            wires = [];
+            completedWires = 0;
+
+            const numWires = Math.min(3 + Math.floor(level / 2), COLORS.length);
+            const nodeRadius = Math.min(30, canvasWidth / 15);
+            const startY = canvasHeight / (numWires + 1);
+
+            // Shuffle colors for this level
+            const shuffledColors = [...COLORS].sort(() => Math.random() - 0.5);
+
+            for (let i = 0; i < numWires; i++) {
+                const color = shuffledColors[i];
+                const leftY = startY * (i + 1);
+                const rightY = startY * (Math.floor(Math.random() * numWires) + 1);
+
+                wires.push({
+                    color: color,
+                    leftNode: { x: nodeRadius, y: leftY, connected: false },
+                    rightNode: { x: canvasWidth - nodeRadius, y: rightY, connected: false },
+                    currentPath: null,
+                    completed: false
+                });
+            }
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = 'rgba(20, 20, 40, 1)';
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            const gridSize = 30;
+            for (let x = 0; x < canvasWidth; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvasHeight);
+                ctx.stroke();
+            }
+            for (let y = 0; y < canvasHeight; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvasWidth, y);
+                ctx.stroke();
+            }
+
+            // Draw wires
+            wires.forEach(wire => {
+                // Draw path if exists
+                if (wire.currentPath) {
+                    ctx.beginPath();
+                    ctx.moveTo(wire.currentPath[0].x, wire.currentPath[0].y);
+                    for (let i = 1; i < wire.currentPath.length; i++) {
+                        ctx.lineTo(wire.currentPath[i].x, wire.currentPath[i].y);
+                    }
+                    ctx.strokeStyle = wire.color;
+                    ctx.lineWidth = 8;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.stroke();
+                }
+
+                // Draw nodes
+                const nodeRadius = Math.min(30, canvasWidth / 15);
+
+                // Left node
+                ctx.beginPath();
+                ctx.arc(wire.leftNode.x, wire.leftNode.y, nodeRadius, 0, Math.PI * 2);
+                ctx.fillStyle = wire.color;
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Right node
+                ctx.beginPath();
+                ctx.arc(wire.rightNode.x, wire.rightNode.y, nodeRadius, 0, Math.PI * 2);
+                ctx.fillStyle = '#333';
+                ctx.fill();
+                ctx.strokeStyle = wire.color;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            });
+
+            // Draw instructions
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('左のノードをドラッグして、同じ色の右のノードに繋げてください', canvasWidth / 2, 20);
+        }
+
+        function getNodeAt(x, y) {
+            const nodeRadius = Math.min(30, canvasWidth / 15);
+            for (const wire of wires) {
+                if (!wire.completed) {
+                    const distToLeft = Math.hypot(x - wire.leftNode.x, y - wire.leftNode.y);
+                    if (distToLeft < nodeRadius) {
+                        return { wire, node: 'left' };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function checkCompletion() {
+            completedWires = wires.filter(w => w.completed).length;
+
+            if (completedWires === wires.length) {
+                showMessage('🎉 クリア！');
+                score += level * 100;
+                scoreEl.textContent = score;
+
+                setTimeout(() => {
+                    level++;
+                    levelEl.textContent = level;
+                    generateLevel();
+                    draw();
+                }, 1500);
+            }
+        }
+
+        function showMessage(text) {
+            messageEl.textContent = text;
+            messageEl.classList.add('show');
+            setTimeout(() => {
+                messageEl.classList.remove('show');
+            }, 1500);
+        }
+
+        // Touch/Mouse handlers
+        function getEventPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+
+            if (e.touches) {
+                return {
+                    x: (e.touches[0].clientX - rect.left) * scaleX,
+                    y: (e.touches[0].clientY - rect.top) * scaleY
+                };
+            }
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        }
+
+        function handleStart(e) {
+            e.preventDefault();
+            const pos = getEventPos(e);
+            const nodeInfo = getNodeAt(pos.x, pos.y);
+
+            if (nodeInfo) {
+                draggingWire = nodeInfo.wire;
+                draggingWire.currentPath = [
+                    { x: nodeInfo.wire.leftNode.x, y: nodeInfo.wire.leftNode.y },
+                    { x: pos.x, y: pos.y }
+                ];
+                draw();
+            }
+        }
+
+        function handleMove(e) {
+            e.preventDefault();
+            if (!draggingWire) return;
+
+            const pos = getEventPos(e);
+            draggingWire.currentPath.push({ x: pos.x, y: pos.y });
+            draw();
+        }
+
+        function handleEnd(e) {
+            if (!draggingWire) return;
+
+            const lastPoint = draggingWire.currentPath[draggingWire.currentPath.length - 1];
+            const nodeRadius = Math.min(30, canvasWidth / 15);
+            const distToRight = Math.hypot(
+                lastPoint.x - draggingWire.rightNode.x,
+                lastPoint.y - draggingWire.rightNode.y
+            );
+
+            if (distToRight < nodeRadius * 1.5) {
+                draggingWire.completed = true;
+                draggingWire.rightNode.connected = true;
+                checkCompletion();
+            } else {
+                draggingWire.currentPath = null;
+            }
+
+            draggingWire = null;
+            draw();
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('mouseleave', handleEnd);
+
+        canvas.addEventListener('touchstart', handleStart);
+        canvas.addEventListener('touchmove', handleMove);
+        canvas.addEventListener('touchend', handleEnd);
+        canvas.addEventListener('touchcancel', handleEnd);
+
+        function resetLevel() {
+            generateLevel();
+            draw();
+        }
+
+        function newGame() {
+            level = 1;
+            score = 0;
+            levelEl.textContent = level;
+            scoreEl.textContent = score;
+            generateLevel();
+            draw();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+    </script>
+</body>
+</html>
