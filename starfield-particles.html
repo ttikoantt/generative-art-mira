@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Starfield Particles - Interactive</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(to bottom, #000011, #000033);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        #container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #title {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffffff;
+            font-size: 24px;
+            text-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #6495ED;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+        }
+
+        #hint {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+        }
+
+        #fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #ffffff;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 10;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        #fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            #title {
+                font-size: 18px;
+                top: 60px;
+            }
+
+            #hint {
+                font-size: 12px;
+            }
+
+            #fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 12px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+        <h1 id="title">✨ Starfield Particles ✨</h1>
+        <p id="hint">タッチ・マウスで星を動かしてね</p>
+        <button id="fullscreen-btn">全画面表示</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('container');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+        let mouseX = 0;
+        let mouseY = 0;
+        let targetX = 0;
+        let targetY = 0;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 星のクラス
+        class Star {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.z = Math.random() * 3 + 1; // 深度
+                this.size = Math.random() * 2 + 0.5;
+                this.opacity = Math.random() * 0.5 + 0.5;
+                this.twinkle = Math.random() * 0.02 + 0.01;
+                this.twinkleDir = Math.random() > 0.5 ? 1 : -1;
+            }
+
+            update() {
+                // マウスの影響で動く
+                const dx = mouseX - canvas.width / 2;
+                const dy = mouseY - canvas.height / 2;
+
+                this.x += dx * 0.0001 / this.z;
+                this.y += dy * 0.0001 / this.z;
+
+                // きらめき
+                this.opacity += this.twinkle * this.twinkleDir;
+                if (this.opacity >= 1 || this.opacity <= 0.3) {
+                    this.twinkleDir *= -1;
+                }
+
+                // 画面外に出たらリセット
+                if (this.x < 0 || this.x > canvas.width ||
+                    this.y < 0 || this.y > canvas.height) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const scale = 1 / this.z;
+                const size = this.size * scale;
+                const alpha = this.opacity * scale;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.fill();
+
+                // グロー効果
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, size * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.3})`;
+                ctx.fill();
+            }
+        }
+
+        // 流れ星のクラス
+        class ShootingStar {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height * 0.5;
+                this.length = Math.random() * 80 + 40;
+                this.speed = Math.random() * 10 + 5;
+                this.opacity = 1;
+                this.active = false;
+            }
+
+            start() {
+                this.active = true;
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height * 0.3;
+            }
+
+            update() {
+                if (!this.active) return;
+
+                this.x += this.speed;
+                this.y += this.speed * 0.6;
+                this.opacity -= 0.01;
+
+                if (this.opacity <= 0 || this.x > canvas.width || this.y > canvas.height) {
+                    this.active = false;
+                    this.reset();
+                }
+            }
+
+            draw() {
+                if (!this.active) return;
+
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x - this.length, this.y - this.length * 0.6);
+                ctx.strokeStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // グロー
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x - this.length * 0.5, this.y - this.length * 0.3);
+                ctx.strokeStyle = `rgba(255, 255, 255, ${this.opacity * 0.5})`;
+                ctx.lineWidth = 4;
+                ctx.stroke();
+            }
+        }
+
+        // 星と流れ星の配列
+        const stars = [];
+        const shootingStars = [];
+
+        for (let i = 0; i < 200; i++) {
+            stars.push(new Star());
+        }
+
+        for (let i = 0; i < 3; i++) {
+            shootingStars.push(new ShootingStar());
+        }
+
+        // 流れ星をランダムに開始
+        setInterval(() => {
+            const inactive = shootingStars.find(s => !s.active);
+            if (inactive && Math.random() > 0.7) {
+                inactive.start();
+            }
+        }, 2000);
+
+        // マウスイベント
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        // 全画面ボタン
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = '全画面表示';
+            } else {
+                document.documentElement.requestFullscreen();
+                fullscreenBtn.textContent = '全画面終了';
+            }
+        });
+
+        // アニメーションループ
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 背景のグラデーション
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#000011');
+            gradient.addColorStop(1, '#000033');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 星を描画（遠い星から）
+            stars.sort((a, b) => b.z - a.z);
+            stars.forEach(star => {
+                star.update();
+                star.draw();
+            });
+
+            // 流れ星を描画
+            shootingStars.forEach(s => {
+                s.update();
+                s.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // 初期化
+        mouseX = canvas.width / 2;
+        mouseY = canvas.height / 2;
+        animate();
+    </script>
+</body>
+</html>
