@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>フラクタル木のアニメーション</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+            width: 100%;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #0f0;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #0f0;
+            pointer-events: none;
+        }
+
+        .info h2 {
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .info p {
+            margin: 5px 0;
+            font-size: 12px;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: rgba(0, 255, 0, 0.2);
+            border: 1px solid #0f0;
+            color: #0f0;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: rgba(0, 255, 0, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                padding: 10px;
+            }
+
+            .info h2 {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <canvas id="canvas"></canvas>
+        <div class="info">
+            <h2>🌳 フラクタル木のアニメーション</h2>
+            <p>マウスを左右: 分岐角度</p>
+            <p>マウスを上下: 枝の長さ</p>
+            <p>クリック: 新しい木を生成</p>
+        </div>
+        <div class="controls">
+            <button onclick="toggleAnimation()">再生/停止</button>
+            <button onclick="randomize()">ランダム生成</button>
+            <button onclick="toggleWind()">風オン/オフ</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let mouseX, mouseY;
+        let animationId;
+        let isAnimating = true;
+        let windEnabled = true;
+        let time = 0;
+
+        // 色のパレット
+        const colors = [
+            { trunk: '#8B4513', leaves: '#228B22' },
+            { trunk: '#A0522D', leaves: '#32CD32' },
+            { trunk: '#6B4423', leaves: '#90EE90' },
+            { trunk: '#8B4513', leaves: '#00FA9A' },
+            { trunk: '#A0522D', leaves: '#3CB371' }
+        ];
+
+        let currentColor = colors[0];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('click', () => {
+            currentColor = colors[Math.floor(Math.random() * colors.length)];
+            generateNewTree();
+        });
+
+        let treeParams = {
+            length: 120,
+            angle: Math.PI / 6,
+            depth: 10,
+            windStrength: 0.5
+        };
+
+        function generateNewTree() {
+            treeParams.length = 80 + Math.random() * 60;
+            treeParams.angle = (Math.PI / 8) + Math.random() * (Math.PI / 4);
+        }
+
+        function randomize() {
+            currentColor = colors[Math.floor(Math.random() * colors.length)];
+            generateNewTree();
+        }
+
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+        }
+
+        function toggleWind() {
+            windEnabled = !windEnabled;
+        }
+
+        function drawBranch(x, y, length, angle, depth) {
+            if (depth === 0) return;
+
+            const endX = x + length * Math.cos(angle);
+            const endY = y - length * Math.sin(angle);
+
+            // 枝を描画
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(endX, endY);
+            ctx.strokeStyle = currentColor.trunk;
+            ctx.lineWidth = depth * 1.5;
+            ctx.stroke();
+
+            // 葉を描画（深さが浅いとき）
+            if (depth <= 3) {
+                ctx.beginPath();
+                ctx.arc(endX, endY, depth * 3, 0, Math.PI * 2);
+                ctx.fillStyle = currentColor.leaves;
+                ctx.globalAlpha = 0.3;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+
+            // 風の影響を計算
+            let windOffset = 0;
+            if (windEnabled) {
+                windOffset = Math.sin(time * 0.02 + depth * 0.5) * treeParams.windStrength * 0.1;
+            }
+
+            // マウスの位置で角度を調整
+            let angleMod = 0;
+            if (mouseX !== undefined) {
+                angleMod = (mouseX / width - 0.5) * 0.5;
+            }
+
+            let lengthMod = 1;
+            if (mouseY !== undefined) {
+                lengthMod = 1 - (mouseY / height) * 0.3;
+            }
+
+            // 再帰的に枝を描画
+            const newLength = length * 0.7 * lengthMod;
+            const newAngle = treeParams.angle + angleMod;
+
+            drawBranch(endX, endY, newLength, angle + newAngle + windOffset, depth - 1);
+            drawBranch(endX, endY, newLength, angle - newAngle + windOffset, depth - 1);
+        }
+
+        function draw() {
+            // 背景をクリア（トレイル効果）
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 地面を描画
+            ctx.beginPath();
+            ctx.moveTo(0, height);
+            ctx.lineTo(width, height);
+            ctx.strokeStyle = '#0f0';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // 木を描画
+            const startX = width / 2;
+            const startY = height - 50;
+
+            if (mouseX !== undefined && mouseY !== undefined) {
+                treeParams.angle = (mouseX / width) * (Math.PI / 3);
+                treeParams.length = 50 + (height - mouseY) * 0.15;
+            }
+
+            drawBranch(startX, startY, treeParams.length, Math.PI / 2, treeParams.depth);
+
+            if (isAnimating) {
+                time++;
+                animationId = requestAnimationFrame(draw);
+            }
+        }
+
+        // 初期化
+        mouseX = width / 2;
+        mouseY = height / 2;
+        draw();
+    </script>
+</body>
+</html>

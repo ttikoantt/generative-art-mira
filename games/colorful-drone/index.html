@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>カラフルなドローン</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        .score {
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .lives {
+            display: flex;
+            gap: 5px;
+        }
+
+        .heart {
+            font-size: 30px;
+            filter: drop-shadow(0 0 5px rgba(255, 0, 0, 0.5));
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 10;
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .overlay h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        .overlay p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            text-align: center;
+            max-width: 80%;
+        }
+
+        .overlay .final-score {
+            font-size: 36px;
+            margin-bottom: 20px;
+            color: #ffd700;
+        }
+
+        .overlay button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.3s;
+            pointer-events: all;
+        }
+
+        .overlay button:hover {
+            transform: scale(1.1);
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            pointer-events: none;
+        }
+
+        @media (max-width: 768px) {
+            .overlay h1 {
+                font-size: 32px;
+            }
+
+            .overlay p {
+                font-size: 16px;
+            }
+
+            .score {
+                font-size: 18px;
+                padding: 8px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="canvas"></canvas>
+
+        <div class="ui">
+            <div class="score">スコア: <span id="score">0</span></div>
+            <div class="lives" id="lives"></div>
+        </div>
+
+        <div class="instructions">
+            スワイプ/ドラッグでドローンを移動
+        </div>
+
+        <div class="overlay" id="startOverlay">
+            <h1>🚁 カラフルなドローン</h1>
+            <p>スワイプまたはドラッグでドローンを操作して、障害物を回避しよう！</p>
+            <button onclick="startGame()">ゲーム開始</button>
+        </div>
+
+        <div class="overlay hidden" id="gameOverOverlay">
+            <h1>ゲームオーバー</h1>
+            <div class="final-score">スコア: <span id="finalScore">0</span></div>
+            <p>もう一度挑戦しますか？</p>
+            <button onclick="startGame()">リプレイ</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let animationId;
+        let score = 0;
+        let lives = 3;
+        let gameRunning = false;
+        let targetX;
+        let targetY;
+
+        // ドローン
+        const drone = {
+            x: 0,
+            y: 0,
+            radius: 25,
+            color: '#ffd700',
+            propellerAngle: 0
+        };
+
+        // 障害物
+        let obstacles = [];
+        let particles = [];
+
+        // 色
+        const colors = [
+            '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4',
+            '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe'
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            drone.x = width / 2;
+            drone.y = height / 2;
+            targetX = drone.x;
+            targetY = drone.y;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // マウス/タッチ操作
+        function handleInput(x, y) {
+            if (!gameRunning) return;
+            targetX = x;
+            targetY = y;
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            handleInput(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            handleInput(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleInput(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        function updateLives() {
+            const livesDiv = document.getElementById('lives');
+            livesDiv.innerHTML = '';
+            for (let i = 0; i < lives; i++) {
+                const heart = document.createElement('span');
+                heart.className = 'heart';
+                heart.textContent = '❤️';
+                livesDiv.appendChild(heart);
+            }
+        }
+
+        function updateScore() {
+            document.getElementById('score').textContent = score;
+        }
+
+        function startGame() {
+            document.getElementById('startOverlay').classList.add('hidden');
+            document.getElementById('gameOverOverlay').classList.add('hidden');
+
+            score = 0;
+            lives = 3;
+            obstacles = [];
+            particles = [];
+            drone.x = width / 2;
+            drone.y = height / 2;
+            targetX = drone.x;
+            targetY = drone.y;
+            gameRunning = true;
+
+            updateLives();
+            updateScore();
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOverOverlay').classList.remove('hidden');
+        }
+
+        function spawnObstacle() {
+            if (!gameRunning) return;
+
+            const side = Math.floor(Math.random() * 4);
+            let x, y, vx, vy;
+
+            switch (side) {
+                case 0: // 上
+                    x = Math.random() * width;
+                    y = -50;
+                    vx = (Math.random() - 0.5) * 4;
+                    vy = 2 + Math.random() * 3;
+                    break;
+                case 1: // 右
+                    x = width + 50;
+                    y = Math.random() * height;
+                    vx = -2 - Math.random() * 3;
+                    vy = (Math.random() - 0.5) * 4;
+                    break;
+                case 2: // 下
+                    x = Math.random() * width;
+                    y = height + 50;
+                    vx = (Math.random() - 0.5) * 4;
+                    vy = -2 - Math.random() * 3;
+                    break;
+                case 3: // 左
+                    x = -50;
+                    y = Math.random() * height;
+                    vx = 2 + Math.random() * 3;
+                    vy = (Math.random() - 0.5) * 4;
+                    break;
+            }
+
+            obstacles.push({
+                x, y, vx, vy,
+                radius: 15 + Math.random() * 20,
+                color: colors[Math.floor(Math.random() * colors.length)]
+            });
+
+            // 徐々に難しくなる
+            const spawnRate = Math.max(500, 2000 - score * 10);
+            setTimeout(spawnObstacle, spawnRate);
+        }
+
+        function createParticle(x, y, color) {
+            for (let i = 0; i < 5; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1,
+                    color: color
+                });
+            }
+        }
+
+        function checkCollision(obstacle) {
+            const dx = drone.x - obstacle.x;
+            const dy = drone.y - obstacle.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance < drone.radius + obstacle.radius;
+        }
+
+        function update() {
+            // ドローンをスムーズに移動
+            drone.x += (targetX - drone.x) * 0.1;
+            drone.y += (targetY - drone.y) * 0.1;
+
+            // プロペラを回転
+            drone.propellerAngle += 0.3;
+
+            // 障害物を更新
+            obstacles = obstacles.filter(obs => {
+                obs.x += obs.vx;
+                obs.y += obs.vy;
+
+                // 画面外に出たら削除
+                if (obs.x < -100 || obs.x > width + 100 ||
+                    obs.y < -100 || obs.y > height + 100) {
+                    return false;
+                }
+
+                // 衝突判定
+                if (checkCollision(obs)) {
+                    createParticle(obs.x, obs.y, obs.color);
+                    lives--;
+                    updateLives();
+                    if (lives <= 0) {
+                        gameOver();
+                    }
+                    return false;
+                }
+
+                return true;
+            });
+
+            // パーティクルを更新
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                return p.life > 0;
+            });
+
+            // スコアを増加
+            score++;
+            updateScore();
+        }
+
+        function draw() {
+            // 背景をクリア
+            ctx.fillStyle = 'rgba(102, 126, 234, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // パーティクルを描画
+            particles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 5 * p.life, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            });
+
+            // 障害物を描画
+            obstacles.forEach(obs => {
+                ctx.beginPath();
+                ctx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
+                ctx.fillStyle = obs.color;
+                ctx.fill();
+
+                // 光沢
+                ctx.beginPath();
+                ctx.arc(obs.x - obs.radius * 0.3, obs.y - obs.radius * 0.3,
+                    obs.radius * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.fill();
+            });
+
+            // ドローンを描画
+            // 本体
+            ctx.beginPath();
+            ctx.arc(drone.x, drone.y, drone.radius, 0, Math.PI * 2);
+            ctx.fillStyle = drone.color;
+            ctx.fill();
+
+            // 光沢
+            ctx.beginPath();
+            ctx.arc(drone.x - drone.radius * 0.3, drone.y - drone.radius * 0.3,
+                drone.radius * 0.3, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fill();
+
+            // プロペラ（4つ）
+            for (let i = 0; i < 4; i++) {
+                const angle = drone.propellerAngle + (i * Math.PI / 2);
+                const px = drone.x + Math.cos(angle) * drone.radius * 0.8;
+                const py = drone.y + Math.sin(angle) * drone.radius * 0.8;
+
+                ctx.beginPath();
+                ctx.arc(px, py, 8, 0, Math.PI * 2);
+                ctx.fillStyle = '#333';
+                ctx.fill();
+            }
+
+            // 目
+            ctx.beginPath();
+            ctx.arc(drone.x - 5, drone.y - 5, 4, 0, Math.PI * 2);
+            ctx.arc(drone.x + 5, drone.y - 5, 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#333';
+            ctx.fill();
+
+            // 口（笑顔）
+            ctx.beginPath();
+            ctx.arc(drone.x, drone.y + 5, 8, 0, Math.PI);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            update();
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // 初期化
+        updateLives();
+        setTimeout(spawnObstacle, 1000);
+    </script>
+</body>
+</html>
