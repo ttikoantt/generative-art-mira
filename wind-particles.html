@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>風の粒子 | Wind Particles</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0a1a2a 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        #canvas {
+            display: block;
+            cursor: pointer;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            z-index: 10;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            font-weight: 300;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+            }
+            .title {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">🌬️ 風の粒子</div>
+    <canvas id="canvas"></canvas>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    <div class="info">クリックで風を吹かせる</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let mouseX = 0, mouseY = 0;
+        let windX = 0, windY = 0;
+        let clickWind = { x: 0, y: 0, strength: 0 };
+
+        // 設定
+        const PARTICLE_COUNT = 300;
+        const GRAVITY = 0.02;
+        const WIND_CHANGE = 0.001;
+
+        // 色パレット（青、緑、紫、ピンクのグラデーション）
+        const colors = [
+            'hsla(200, 70%, 60%, 0.8)',
+            'hsla(180, 70%, 55%, 0.8)',
+            'hsla(280, 60%, 65%, 0.8)',
+            'hsla(320, 70%, 70%, 0.8)',
+            'hsla(160, 60%, 50%, 0.8)'
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 3 + 1;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.life = 1;
+                this.decay = Math.random() * 0.002 + 0.001;
+            }
+
+            update() {
+                // 重力
+                this.vy += GRAVITY;
+
+                // 自然の風
+                this.vx += windX * 0.01;
+                this.vy += windY * 0.01;
+
+                // クリックによる風
+                if (clickWind.strength > 0) {
+                    const dx = this.x - mouseX;
+                    const dy = this.y - mouseY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 200) {
+                        const force = (1 - dist / 200) * clickWind.strength;
+                        this.vx += (dx / dist) * force;
+                        this.vy += (dy / dist) * force;
+                    }
+                }
+
+                // 速度制限
+                const maxSpeed = 5;
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > maxSpeed) {
+                    this.vx = (this.vx / speed) * maxSpeed;
+                    this.vy = (this.vy / speed) * maxSpeed;
+                }
+
+                // 位置更新
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 減衰
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+
+                // 寿命
+                this.life -= this.decay;
+
+                // 境界チェックとリスポーン
+                if (this.x < 0 || this.x > width ||
+                    this.y < 0 || this.y > height ||
+                    this.life <= 0) {
+                    this.reset();
+                    this.y = -10; // 上から再開
+                    this.life = 1;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function init() {
+            resize();
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function animate() {
+            // 背景をフェード
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 風の変化
+            windX += (Math.random() - 0.5) * WIND_CHANGE;
+            windY += (Math.random() - 0.5) * WIND_CHANGE;
+            windX = Math.max(-1, Math.min(1, windX));
+            windY = Math.max(-0.5, Math.min(0.5, windY));
+
+            // クリック風の減衰
+            clickWind.strength *= 0.95;
+
+            // パーティクル更新
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // 接続線（近い粒子同士）
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 60) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        canvas.addEventListener('click', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            clickWind.strength = 10;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            clickWind.strength = 10;
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        window.addEventListener('resize', resize);
+        init();
+        animate();
+    </script>
+</body>
+</html>
