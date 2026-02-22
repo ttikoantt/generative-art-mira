@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎭 Face Art Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 800px;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(255, 200, 100, 0.5);
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: clamp(0.8rem, 2vw, 1rem);
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            border-radius: 20px;
+            box-shadow: 0 0 60px rgba(255, 200, 100, 0.3);
+            max-width: 100%;
+            cursor: pointer;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .control-group {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px 15px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        label {
+            color: #ccc;
+            font-size: 0.85rem;
+            min-width: 60px;
+        }
+
+        input[type="range"] {
+            width: 100px;
+            accent-color: #ffd060;
+        }
+
+        .value-display {
+            color: #ffd060;
+            font-size: 0.85rem;
+            min-width: 30px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #ffd060, #ff9040);
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 200, 100, 0.5);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            font-size: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s;
+            z-index: 1000;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 600px) {
+            .control-group {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            input[type="range"] {
+                width: 150px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <div class="container">
+        <h1>🎭 Face Art Generator</h1>
+        <p class="subtitle">ノイズで生まれる「顔」のようなアート</p>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>複雑さ</label>
+                <input type="range" id="complexity" min="0.002" max="0.02" step="0.001" value="0.008">
+                <span class="value-display" id="complexityVal">0.008</span>
+            </div>
+            <div class="control-group">
+                <label>変化速度</label>
+                <input type="range" id="speed" min="0.001" max="0.03" step="0.001" value="0.008">
+                <span class="value-display" id="speedVal">0.008</span>
+            </div>
+            <div class="control-group">
+                <label>サイズ</label>
+                <input type="range" id="scale" min="50" max="200" step="10" value="100">
+                <span class="value-display" id="scaleVal">100</span>
+            </div>
+            <div class="control-group">
+                <button class="btn" onclick="randomize()">🎲 ランダム</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 設定
+        let settings = {
+            complexity: 0.008,
+            speed: 0.008,
+            scale: 100
+        };
+
+        let time = 0;
+        let seed = Math.random() * 1000;
+
+        // キャンバスサイズ
+        function resize() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 250, 700);
+            canvas.width = size;
+            canvas.height = size;
+        }
+
+        // シンプレックスノイズ（簡易版）
+        class SimplexNoise {
+            constructor(seed = Math.random()) {
+                this.p = new Uint8Array(256);
+                for (let i = 0; i < 256; i++) {
+                    this.p[i] = i;
+                }
+                for (let i = 255; i > 0; i--) {
+                    const j = Math.floor((seed * (i + 1)) % (i + 1));
+                    seed = seed * 16807 % 2147483647;
+                    [this.p[i], this.p[j]] = [this.p[j], this.p[i]];
+                }
+                this.perm = new Uint8Array(512);
+                for (let i = 0; i < 512; i++) {
+                    this.perm[i] = this.p[i & 255];
+                }
+            }
+
+            noise2D(x, y) {
+                const F2 = 0.5 * (Math.sqrt(3) - 1);
+                const G2 = (3 - Math.sqrt(3)) / 6;
+
+                let s = (x + y) * F2;
+                let i = Math.floor(x + s);
+                let j = Math.floor(y + s);
+                let t = (i + j) * G2;
+
+                let X0 = i - t;
+                let Y0 = j - t;
+                let x0 = x - X0;
+                let y0 = y - Y0;
+
+                let i1, j1;
+                if (x0 > y0) { i1 = 1; j1 = 0; }
+                else { i1 = 0; j1 = 1; }
+
+                let x1 = x0 - i1 + G2;
+                let y1 = y0 - j1 + G2;
+                let x2 = x0 - 1 + 2 * G2;
+                let y2 = y0 - 1 + 2 * G2;
+
+                let ii = i & 255;
+                let jj = j & 255;
+
+                let n0 = 0, n1 = 0, n2 = 0;
+
+                let t0 = 0.5 - x0 * x0 - y0 * y0;
+                if (t0 >= 0) {
+                    t0 *= t0;
+                    n0 = t0 * t0 * this.grad(this.perm[ii + this.perm[jj]], x0, y0);
+                }
+
+                let t1 = 0.5 - x1 * x1 - y1 * y1;
+                if (t1 >= 0) {
+                    t1 *= t1;
+                    n1 = t1 * t1 * this.grad(this.perm[ii + i1 + this.perm[jj + j1]], x1, y1);
+                }
+
+                let t2 = 0.5 - x2 * x2 - y2 * y2;
+                if (t2 >= 0) {
+                    t2 *= t2;
+                    n2 = t2 * t2 * this.grad(this.perm[ii + 1 + this.perm[jj + 1]], x2, y2);
+                }
+
+                return 70 * (n0 + n1 + n2);
+            }
+
+            grad(hash, x, y) {
+                const h = hash & 7;
+                const u = h < 4 ? x : y;
+                const v = h < 4 ? y : x;
+                return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
+            }
+
+            noise3D(x, y, z) {
+                return (this.noise2D(x, y) + this.noise2D(y, z) + this.noise2D(x, z)) / 3;
+            }
+        }
+
+        const noise = new SimplexNoise(seed);
+
+        // 顔のようなパターンを描画
+        function drawFace() {
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const baseSize = settings.scale;
+
+            // 複数のレイヤーで顔のようなパターンを生成
+            for (let layer = 0; layer < 5; layer++) {
+                const layerOffset = layer * 20;
+                const layerAlpha = 1 - layer * 0.15;
+
+                // 目の領域（左右）
+                for (let eye = -1; eye <= 1; eye += 2) {
+                    const eyeX = cx + eye * baseSize * 0.35;
+                    const eyeY = cy - baseSize * 0.1;
+
+                    // 目の周りのパターン
+                    for (let i = 0; i < 30; i++) {
+                        const angle = (i / 30) * Math.PI * 2;
+                        const noiseVal = noise.noise3D(
+                            eyeX * settings.complexity + layer * 0.5,
+                            eyeY * settings.complexity + layer * 0.5,
+                            time * settings.speed
+                        );
+
+                        const radius = (30 + noiseVal * 20) * (1 - layer * 0.1);
+                        const px = eyeX + Math.cos(angle + time * 0.001 * (layer + 1)) * radius;
+                        const py = eyeY + Math.sin(angle + time * 0.001 * (layer + 1)) * radius;
+
+                        const size = (3 + noiseVal * 2) * (1 - layer * 0.1);
+                        const hue = (30 + noiseVal * 30 + layer * 10 + time * 10) % 360;
+                        const saturation = 60 + noiseVal * 20;
+                        const lightness = 40 + noiseVal * 20;
+
+                        ctx.beginPath();
+                        ctx.arc(px, py, size, 0, Math.PI * 2);
+                        ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${layerAlpha * 0.6})`;
+                        ctx.fill();
+                    }
+                }
+
+                // 鼻の領域（中央下部）
+                const noseX = cx;
+                const noseY = cy + baseSize * 0.15;
+
+                for (let i = 0; i < 15; i++) {
+                    const angle = (i / 15) * Math.PI;
+                    const noiseVal = noise.noise3D(
+                        noseX * settings.complexity + layer * 0.7,
+                        noseY * settings.complexity + layer * 0.7,
+                        time * settings.speed + 1
+                    );
+
+                    const radius = (20 + noiseVal * 10) * (1 - layer * 0.15);
+                    const px = noseX + Math.cos(angle - Math.PI / 2) * radius;
+                    const py = noseY + Math.sin(angle - Math.PI / 2) * radius * 1.5;
+
+                    const size = (2 + noiseVal * 1.5) * (1 - layer * 0.15);
+                    const hue = (25 + noiseVal * 25 + layer * 8 + time * 10) % 360;
+
+                    ctx.beginPath();
+                    ctx.arc(px, py, size, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${hue}, 50%, ${35 + noiseVal * 15}%, ${layerAlpha * 0.5})`;
+                    ctx.fill();
+                }
+
+                // 口の領域（下部）
+                const mouthY = cy + baseSize * 0.35;
+
+                for (let i = 0; i < 40; i++) {
+                    const t = i / 39;
+                    const x = cx + (t - 0.5) * baseSize * 0.6;
+                    const noiseVal = noise.noise3D(
+                        x * settings.complexity * 1.5 + layer * 0.3,
+                        mouthY * settings.complexity * 1.5 + layer * 0.3,
+                        time * settings.speed + 2
+                    );
+
+                    const y = mouthY + noiseVal * 20;
+                    const size = (2 + noiseVal * 2) * (1 - layer * 0.1);
+                    const hue = (20 + noiseVal * 30 + layer * 12 + time * 10) % 360;
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, size, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${hue}, 55%, ${45 + noiseVal * 15}%, ${layerAlpha * 0.7})`;
+                    ctx.fill();
+                }
+            }
+
+            // 全体の輪郭（顔の形）
+            for (let i = 0; i < 60; i++) {
+                const angle = (i / 60) * Math.PI * 2;
+                const noiseVal = noise.noise3D(
+                    Math.cos(angle) * settings.complexity * 2,
+                    Math.sin(angle) * settings.complexity * 2,
+                    time * settings.speed
+                );
+
+                const radius = baseSize * (0.7 + noiseVal * 0.15);
+                const px = cx + Math.cos(angle) * radius;
+                const py = cy + Math.sin(angle) * radius;
+
+                const size = 4 + noiseVal * 3;
+                const hue = (35 + noiseVal * 25 + time * 5) % 360;
+
+                ctx.beginPath();
+                ctx.arc(px, py, size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${hue}, 50%, ${50 + noiseVal * 15}%, 0.8)`;
+                ctx.fill();
+            }
+        }
+
+        // アニメーション
+        function animate() {
+            time += 1;
+            drawFace();
+            requestAnimationFrame(animate);
+        }
+
+        // コントロール
+        document.getElementById('complexity').addEventListener('input', (e) => {
+            settings.complexity = parseFloat(e.target.value);
+            document.getElementById('complexityVal').textContent = settings.complexity.toFixed(3);
+        });
+
+        document.getElementById('speed').addEventListener('input', (e) => {
+            settings.speed = parseFloat(e.target.value);
+            document.getElementById('speedVal').textContent = settings.speed.toFixed(3);
+        });
+
+        document.getElementById('scale').addEventListener('input', (e) => {
+            settings.scale = parseInt(e.target.value);
+            document.getElementById('scaleVal').textContent = settings.scale;
+        });
+
+        function randomize() {
+            settings.complexity = 0.002 + Math.random() * 0.018;
+            settings.speed = 0.001 + Math.random() * 0.029;
+            settings.scale = 50 + Math.floor(Math.random() * 150);
+
+            document.getElementById('complexity').value = settings.complexity;
+            document.getElementById('speed').value = settings.speed;
+            document.getElementById('scale').value = settings.scale;
+
+            document.getElementById('complexityVal').textContent = settings.complexity.toFixed(3);
+            document.getElementById('speedVal').textContent = settings.speed.toFixed(3);
+            document.getElementById('scaleVal').textContent = settings.scale;
+
+            seed = Math.random() * 1000;
+            noise.p = new Uint8Array(256);
+            for (let i = 0; i < 256; i++) {
+                noise.p[i] = i;
+            }
+            for (let i = 255; i > 0; i--) {
+                const j = Math.floor((seed * (i + 1)) % (i + 1));
+                seed = seed * 16807 % 2147483647;
+                [noise.p[i], noise.p[j]] = [noise.p[j], noise.p[i]];
+            }
+            noise.perm = new Uint8Array(512);
+            for (let i = 0; i < 512; i++) {
+                noise.perm[i] = noise.p[i & 255];
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // キャンバスクリックでランダム
+        canvas.addEventListener('click', randomize);
+
+        // 初期化
+        window.addEventListener('resize', resize);
+        resize();
+        animate();
+    </script>
+</body>
+</html>
