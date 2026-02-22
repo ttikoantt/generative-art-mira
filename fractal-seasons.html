@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fractal Seasons Tree - 四季の木</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            font-family: 'Hiragino Sans', 'Helvetica Neue', sans-serif;
+            background: linear-gradient(to bottom, #1a1a2e 0%, #16213e 100%);
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .season-btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .season-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+        }
+
+        .season-btn.spring {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+            color: #d6336c;
+        }
+
+        .season-btn.summer {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: #0f5132;
+        }
+
+        .season-btn.autumn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: #7c2d12;
+        }
+
+        .season-btn.winter {
+            background: linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%);
+            color: #1e3a5f;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.7);
+            font-size: 12px;
+            z-index: 100;
+            backdrop-filter: blur(5px);
+            background: rgba(0,0,0,0.3);
+            padding: 10px 15px;
+            border-radius: 10px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 25px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255,255,255,0.2);
+            transform: scale(1.05);
+        }
+
+        .season-name {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+            z-index: 50;
+            text-shadow: 0 0 30px rgba(0,0,0,0.5);
+        }
+
+        .season-name.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <button class="season-btn spring" data-season="spring">🌸 春</button>
+        <button class="season-btn summer" data-season="summer">🌿 夏</button>
+        <button class="season-btn autumn" data-season="autumn">🍂 秋</button>
+        <button class="season-btn winter" data-season="winter">❄️ 冬</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreen">⛶ 全画面</button>
+
+    <div class="info">
+        マウスを動かして風を吹かせよう
+    </div>
+
+    <div class="season-name" id="seasonName"></div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let currentSeason = 'spring';
+        let windStrength = 0;
+        let windTarget = 0;
+        let mouseX = 0;
+        let mouseY = 0;
+        let time = 0;
+
+        // 季節ごとの設定
+        const seasons = {
+            spring: {
+                name: '春',
+                trunkColor: '#5d4037',
+                leafColors: ['#ffb7c5', '#ff9a9e', '#fecfef', '#ffd1dc'],
+                skyGradient: ['#ffecd2', '#fcb69f'],
+                leafSize: 4,
+                branchSpread: 0.7,
+                leavesDensity: 0.6
+            },
+            summer: {
+                name: '夏',
+                trunkColor: '#3e2723',
+                leafColors: ['#11998e', '#38ef7d', '#06d6a0', '#073b4c'],
+                skyGradient: ['#667eea', '#764ba2'],
+                leafSize: 5,
+                branchSpread: 0.8,
+                leavesDensity: 0.8
+            },
+            autumn: {
+                name: '秋',
+                trunkColor: '#4a3728',
+                leafColors: ['#f093fb', '#f5576c', '#ff6b6b', '#ffd93d', '#ff9f1c'],
+                skyGradient: ['#fa709a', '#fee140'],
+                leafSize: 4,
+                branchSpread: 0.65,
+                leavesDensity: 0.5
+            },
+            winter: {
+                name: '冬',
+                trunkColor: '#2c1810',
+                leafColors: ['#e0eafc', '#cfdef3', '#ffffff', '#b8c5d6'],
+                skyGradient: ['#1a1a2e', '#16213e'],
+                leafSize: 2,
+                branchSpread: 0.5,
+                leavesDensity: 0.2
+            }
+        };
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 風の計算
+        function updateWind() {
+            windTarget = (mouseX / width - 0.5) * 0.3;
+            windStrength += (windTarget - windStrength) * 0.02;
+        }
+
+        // フラクタル木の描画
+        function drawTree(x, y, length, angle, depth, season) {
+            if (depth === 0) {
+                // 葉を描画
+                const config = seasons[season];
+                if (Math.random() < config.leavesDensity) {
+                    const leafColor = config.leafColors[Math.floor(Math.random() * config.leafColors.length)];
+                    ctx.beginPath();
+                    ctx.arc(x, y, config.leafSize + Math.sin(time * 0.001 + depth) * 1, 0, Math.PI * 2);
+                    ctx.fillStyle = leafColor;
+                    ctx.globalAlpha = 0.7 + Math.sin(time * 0.002 + x) * 0.3;
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+                return;
+            }
+
+            const config = seasons[season];
+            const windEffect = Math.sin(time * 0.001 + depth) * windStrength * (10 - depth) * 0.05;
+
+            const endX = x + Math.cos(angle + windEffect) * length;
+            const endY = y + Math.sin(angle + windEffect) * length;
+
+            // 枝を描画
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(endX, endY);
+            ctx.strokeStyle = config.trunkColor;
+            ctx.lineWidth = depth * 1.5;
+            ctx.globalAlpha = 1;
+            ctx.stroke();
+
+            // 再帰的に枝を描画
+            const newLength = length * 0.75;
+            const spread = config.branchSpread;
+
+            drawTree(endX, endY, newLength, angle - spread + windEffect * 0.5, depth - 1, season);
+            drawTree(endX, endY, newLength, angle + spread + windEffect * 0.5, depth - 1, season);
+
+            // 時々追加の枝
+            if (depth > 5 && Math.random() < 0.3) {
+                drawTree(endX, endY, newLength * 0.6, angle + windEffect * 0.3, depth - 2, season);
+            }
+        }
+
+        // 落ち葉の描画
+        let fallingLeaves = [];
+
+        function createFallingLeaf(season) {
+            const config = seasons[season];
+            return {
+                x: Math.random() * width,
+                y: -20,
+                size: config.leafSize + Math.random() * 2,
+                color: config.leafColors[Math.floor(Math.random() * config.leafColors.length)],
+                speed: 0.5 + Math.random() * 1,
+                sway: Math.random() * Math.PI * 2,
+                swaySpeed: 0.02 + Math.random() * 0.03
+            };
+        }
+
+        function updateFallingLeaves(season) {
+            // 新しい落ち葉を追加
+            if (fallingLeaves.length < 100 && Math.random() < 0.3) {
+                fallingLeaves.push(createFallingLeaf(season));
+            }
+
+            // 落ち葉を更新
+            fallingLeaves = fallingLeaves.filter(leaf => {
+                leaf.y += leaf.speed;
+                leaf.sway += leaf.swaySpeed;
+                leaf.x += Math.sin(leaf.sway) * 0.5 + windStrength * 2;
+
+                // 落ち葉を描画
+                ctx.beginPath();
+                ctx.arc(leaf.x, leaf.y, leaf.size, 0, Math.PI * 2);
+                ctx.fillStyle = leaf.color;
+                ctx.globalAlpha = 0.6;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                return leaf.y < height + 20;
+            });
+        }
+
+        function draw() {
+            time++;
+            updateWind();
+
+            const config = seasons[currentSeason];
+
+            // 背景グラデーション
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, config.skyGradient[0]);
+            gradient.addColorStop(1, config.skyGradient[1]);
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // 地面
+            ctx.fillStyle = currentSeason === 'winter' ? '#e0eafc' : '#3e2723';
+            ctx.fillRect(0, height - 100, width, 100);
+
+            // 木を描画
+            const treeX = width / 2;
+            const treeY = height - 100;
+            const trunkLength = Math.min(height * 0.25, 150);
+            drawTree(treeX, treeY, trunkLength, -Math.PI / 2, 10, currentSeason);
+
+            // 落ち葉を描画
+            updateFallingLeaves(currentSeason);
+
+            requestAnimationFrame(draw);
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        document.querySelectorAll('.season-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentSeason = btn.dataset.season;
+                fallingLeaves = [];
+
+                // 季節名を表示
+                const seasonName = document.getElementById('seasonName');
+                seasonName.textContent = seasons[currentSeason].name;
+                seasonName.style.color = seasons[currentSeason].leafColors[0];
+                seasonName.classList.add('show');
+                setTimeout(() => seasonName.classList.remove('show'), 1500);
+            });
+        });
+
+        document.getElementById('fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // 自動で季節を循環（30秒ごと）
+        setInterval(() => {
+            const seasonOrder = ['spring', 'summer', 'autumn', 'winter'];
+            const currentIndex = seasonOrder.indexOf(currentSeason);
+            const nextSeason = seasonOrder[(currentIndex + 1) % 4];
+            currentSeason = nextSeason;
+            fallingLeaves = [];
+        }, 30000);
+
+        draw();
+    </script>
+</body>
+</html>
