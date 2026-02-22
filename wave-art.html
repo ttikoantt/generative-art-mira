@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generative Wave Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 1200px;
+        }
+        h1 {
+            color: #00ff88;
+            font-size: clamp(1.5rem, 4vw, 3rem);
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px #00ff88;
+        }
+        #canvas {
+            display: block;
+            margin: 0 auto;
+            border: 2px solid #00ff88;
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
+            max-width: 95vw;
+            max-height: 60vh;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            align-items: center;
+        }
+        .btn {
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-family: 'Courier New', monospace;
+            background: rgba(0, 255, 136, 0.1);
+            color: #00ff88;
+            border: 2px solid #00ff88;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            background: rgba(0, 255, 136, 0.3);
+            transform: scale(1.05);
+        }
+        .btn:active {
+            transform: scale(0.95);
+        }
+        .fullscreen {
+            padding: 12px 24px;
+            font-size: 1rem;
+            background: rgba(255, 0, 255, 0.1);
+            color: #ff00ff;
+            border: 2px solid #ff00ff;
+            cursor: pointer;
+        }
+        .info {
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌊 Generative Wave Art</h1>
+        <canvas id="canvas" width="900" height="500"></canvas>
+        <div class="controls">
+            <button class="btn" id="newPattern">🎨 New Pattern</button>
+            <button class="btn" id="animate">▶️ Animate</button>
+            <button class="btn" id="pause">⏸️ Pause</button>
+            <button class="fullscreen" id="fullscreen">📺 Fullscreen</button>
+        </div>
+        <div class="info">Click on the canvas to add interactive points</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let animationId = null;
+        let isAnimating = true;
+        let time = 0;
+        let interactivePoints = [];
+
+        // Wave patterns
+        const patterns = [
+            // Sine waves
+            () => Math.sin(x * 0.02 + time),
+            () => Math.sin(x * 0.03 + time) * Math.sin(x * 0.01),
+            () => Math.sin(x * 0.04 + time) + Math.sin(x * 0.02 - time * 0.5),
+            // Complex waves
+            () => Math.sin(x * 0.02 + time) + Math.sin(x * 0.05 - time * 0.3) * 0.5,
+            () => Math.sin(x * 0.03 + time) * Math.cos(x * 0.02 - time * 0.5),
+            // Modulated waves
+            () => Math.sin(x * 0.02 + time) * Math.sin(time * 0.5),
+            () => Math.sin(x * 0.04 + Math.sin(time * 0.3) * x * 0.02),
+            // Frequency modulation
+            () => Math.sin(x * 0.02 + time + Math.sin(x * 0.01) * 2),
+            () => Math.sin(x * 0.03 + Math.cos(time * 0.4) * x * 0.02 + time),
+            // Amplitude modulation
+            () => Math.sin(x * 0.02 + time) * (1 + Math.sin(time * 0.5) * 0.5),
+            // Phase modulation
+            () => Math.sin(x * 0.02 + time + Math.sin(time * 0.7) * 3),
+            // Interference pattern
+            () => Math.sin(x * 0.03 + time) + Math.sin(x * 0.03 - time) * 0.7,
+        ];
+
+        // Color schemes
+        const colorSchemes = [
+            ['#00ff88', '#00ffcc', '#00ffff'],
+            ['#ff00ff', '#ff0088', '#ff0044'],
+            ['#ffff00', '#ff8800', '#ff0088'],
+            ['#0088ff', '#00ffff', '#00ff88'],
+            ['#ff4444', '#ff8844', '#ffcc44'],
+            ['#cc44ff', '#8844ff', '#4444ff'],
+        ];
+
+        let currentPattern = 0;
+        let currentColorScheme = 0;
+
+        function getRandomPattern() {
+            currentPattern = Math.floor(Math.random() * patterns.length);
+            currentColorScheme = Math.floor(Math.random() * colorSchemes.length);
+            interactivePoints = [];
+        }
+
+        function getWaveY(x, patternIndex) {
+            const baseY = canvas.height / 2;
+            const amplitude = 100;
+            const wave = patterns[patternIndex]();
+            return baseY + wave * amplitude;
+        }
+
+        function drawWave(patternIndex, colorSchemeIndex, offsetX = 0) {
+            const colors = colorSchemes[colorSchemeIndex];
+            ctx.lineWidth = 2;
+
+            // Draw multiple waves for depth effect
+            for (let layer = 0; layer < 3; layer++) {
+                ctx.beginPath();
+                ctx.strokeStyle = colors[layer % colors.length];
+                ctx.globalAlpha = 0.8 - layer * 0.2;
+
+                for (let x = 0; x < canvas.width; x++) {
+                    const y = getWaveY(x + offsetX, patternIndex) + layer * 15;
+                    if (x === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function drawInteractiveWaves() {
+            interactivePoints.forEach((point, index) => {
+                const colors = colorSchemes[currentColorScheme];
+                ctx.beginPath();
+                ctx.strokeStyle = colors[index % colors.length];
+                ctx.lineWidth = 2;
+
+                for (let x = 0; x < canvas.width; x++) {
+                    const dist = Math.abs(x - point.x);
+                    const wave = Math.sin(dist * 0.05 - time * 2) * Math.exp(-dist * 0.01) * 50;
+                    const y = point.y + wave;
+
+                    if (x === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+            });
+        }
+
+        function drawParticles() {
+            for (let i = 0; i < 20; i++) {
+                const x = (i * 50 + time * 20) % canvas.width;
+                const y = getWaveY(x, currentPattern);
+                const size = 2 + Math.sin(time + i) * 1;
+
+                ctx.beginPath();
+                ctx.fillStyle = `rgba(0, 255, 136, ${0.5 + Math.sin(time + i) * 0.3})`;
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function draw() {
+            // Semi-transparent background for trail effect
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw main wave
+            drawWave(currentPattern, currentColorScheme);
+
+            // Draw interactive waves
+            drawInteractiveWaves();
+
+            // Draw particles
+            drawParticles();
+        }
+
+        function animate() {
+            if (!isAnimating) return;
+
+            time += 0.05;
+            draw();
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        document.getElementById('newPattern').addEventListener('click', () => {
+            getRandomPattern();
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        });
+
+        document.getElementById('animate').addEventListener('click', () => {
+            if (!isAnimating) {
+                isAnimating = true;
+                animate();
+            }
+        });
+
+        document.getElementById('pause').addEventListener('click', () => {
+            isAnimating = false;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+        });
+
+        document.getElementById('fullscreen').addEventListener('click', () => {
+            if (canvas.requestFullscreen) {
+                canvas.requestFullscreen();
+            } else if (canvas.webkitRequestFullscreen) {
+                canvas.webkitRequestFullscreen();
+            }
+        });
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+            if (interactivePoints.length >= 5) {
+                interactivePoints.shift();
+            }
+            interactivePoints.push({ x, y });
+        });
+
+        // Initialize
+        getRandomPattern();
+        animate();
+    </script>
+</body>
+</html>
