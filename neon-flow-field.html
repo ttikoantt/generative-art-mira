@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Flow Field - Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        #canvas {
+            border: 2px solid #333;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+            cursor: pointer;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        button {
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        button:hover {
+            background: rgba(0, 255, 255, 0.4);
+            box-shadow: 0 0 10px #0ff;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            z-index: 100;
+        }
+
+        @media (max-width: 768px) {
+            #canvas {
+                width: 95vw;
+                height: 95vw;
+                max-width: 500px;
+                max-height: 500px;
+            }
+
+            button {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="info">Neon Flow Field - Click to regenerate</div>
+    <canvas id="canvas"></canvas>
+    <div class="controls">
+        <button onclick="regenerate()">Regenerate</button>
+        <button onclick="toggleAnimation()">Pause/Resume</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let animationId;
+        let isPaused = false;
+
+        // Perlin Noiseの簡易実装
+        class PerlinNoise {
+            constructor() {
+                this.permutation = [];
+                for (let i = 0; i < 256; i++) {
+                    this.permutation[i] = i;
+                }
+                for (let i = 255; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [this.permutation[i], this.permutation[j]] = [this.permutation[j], this.permutation[i]];
+                }
+                this.p = [...this.permutation, ...this.permutation];
+            }
+
+            fade(t) {
+                return t * t * t * (t * (t * 6 - 15) + 10);
+            }
+
+            lerp(t, a, b) {
+                return a + t * (b - a);
+            }
+
+            grad(hash, x, y) {
+                const h = hash & 3;
+                const u = h < 2 ? x : y;
+                const v = h < 2 ? y : x;
+                return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
+            }
+
+            noise(x, y) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+
+                const u = this.fade(x);
+                const v = this.fade(y);
+
+                const A = this.p[X] + Y;
+                const B = this.p[X + 1] + Y;
+
+                return this.lerp(v,
+                    this.lerp(u, this.grad(this.p[A], x, y), this.grad(this.p[B], x - 1, y)),
+                    this.lerp(u, this.grad(this.p[A + 1], x, y - 1), this.grad(this.p[B + 1], x - 1, y - 1))
+                );
+            }
+
+            noise3D(x, y, z) {
+                return this.noise(x + z, y + z);
+            }
+        }
+
+        const perlin = new PerlinNoise();
+
+        // Particle class
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.life = Math.random() * 200 + 100;
+                this.maxLife = this.life;
+                this.size = Math.random() * 2 + 1;
+                this.speed = Math.random() * 1 + 0.5;
+
+                // ネオンカラー
+                const colors = [
+                    { r: 0, g: 255, b: 255 },    // シアン
+                    { r: 255, g: 0, b: 255 },    // マゼンタ
+                    { r: 255, g: 255, b: 0 },    // イエロー
+                    { r: 0, g: 255, b: 128 },    // スプリンググリーン
+                    { r: 255, g: 128, b: 0 },    // オレンジ
+                    { r: 128, g: 0, b: 255 }     // パープル
+                ];
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update(time) {
+                // ノイズから角度を取得
+                const scale = 0.003;
+                const angle = perlin.noise3D(this.x * scale, this.y * scale, time * 0.0001) * Math.PI * 4;
+
+                this.x += Math.cos(angle) * this.speed;
+                this.y += Math.sin(angle) * this.speed;
+                this.life--;
+
+                // ライフが終わったらリセット
+                if (this.life <= 0 || this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = this.life / this.maxLife;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        function init() {
+            // キャンバスサイズ設定（正方形）
+            const size = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.8, 600);
+            canvas.width = size;
+            canvas.height = size;
+            width = size;
+            height = size;
+
+            // パーティクル初期化
+            particles = [];
+            const numParticles = 800;
+            for (let i = 0; i < numParticles; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function animate(time) {
+            if (!isPaused) {
+                // 半透明の黒で上書き（トレイル効果）
+                ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
+                ctx.fillRect(0, 0, width, height);
+
+                // パーティクル更新と描画
+                particles.forEach(particle => {
+                    particle.update(time);
+                    particle.draw();
+                });
+            }
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function regenerate() {
+            init();
+        }
+
+        function toggleAnimation() {
+            isPaused = !isPaused;
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', regenerate);
+
+        window.addEventListener('resize', () => {
+            init();
+        });
+
+        // 初期化
+        init();
+        animate(0);
+    </script>
+</body>
+</html>
