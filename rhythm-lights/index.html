@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rhythm Lights - Interactive Music Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        
+        .container {
+            position: relative;
+            z-index: 10;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #ffeaa7, #dfe6e9);
+            background-size: 300% 300%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradient 3s ease infinite;
+            text-shadow: 0 0 30px rgba(255, 107, 107, 0.5);
+        }
+        
+        @keyframes gradient {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        
+        .subtitle {
+            font-size: 1.1rem;
+            color: #aaa;
+            margin-bottom: 30px;
+        }
+        
+        .controls {
+            margin-top: 20px;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            border-radius: 50px;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 25px rgba(102, 126, 234, 0.6);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .info {
+            margin-top: 30px;
+            font-size: 0.9rem;
+            color: #666;
+        }
+        
+        .stats {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 100;
+            font-size: 0.9rem;
+            color: #888;
+        }
+        
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            backdrop-filter: blur(10px);
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .subtitle {
+                font-size: 0.9rem;
+            }
+            
+            button {
+                padding: 12px 24px;
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="container">
+        <h1>🎵 Rhythm Lights</h1>
+        <p class="subtitle">クリックで光のリズムを作ろう</p>
+        
+        <div class="controls">
+            <button id="autoBtn">🎵 自動再生</button>
+            <button id="clearBtn">🗑️ クリア</button>
+        </div>
+        
+        <p class="info">画面をクリックすると、光が広がります</p>
+    </div>
+    
+    <div class="stats">
+        <div>光粒子: <span id="count">0</span></div>
+    </div>
+    
+    <button class="fullscreen-btn" id="fullscreenBtn">🖥️ 全画面</button>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const countEl = document.getElementById('count');
+        
+        let particles = [];
+        let autoMode = false;
+        let autoInterval = null;
+        
+        // Canvas size
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        resize();
+        window.addEventListener('resize', resize);
+        
+        // Light particle
+        class LightParticle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 1;
+                this.maxRadius = Math.random() * 100 + 100;
+                this.color = this.getRandomColor();
+                this.alpha = 1;
+                this.growthSpeed = 2 + Math.random() * 2;
+                this.fadeSpeed = 0.008 + Math.random() * 0.005;
+            }
+            
+            getRandomColor() {
+                const colors = [
+                    { r: 255, g: 107, b: 107 },
+                    { r: 78, g: 205, b: 196 },
+                    { r: 69, g: 183, b: 209 },
+                    { r: 150, g: 206, b: 180 },
+                    { r: 255, g: 234, b: 167 },
+                    { r: 223, g: 230, b: 233 },
+                    { r: 102, g: 126, b: 234 },
+                    { r: 118, g: 75, b: 162 }
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+            
+            update() {
+                this.radius += this.growthSpeed;
+                this.alpha -= this.fadeSpeed;
+                
+                return this.alpha > 0 && this.radius < this.maxRadius;
+            }
+            
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius
+                );
+                
+                gradient.addColorStop(0, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${this.alpha * 0.3})`);
+                gradient.addColorStop(0.5, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${this.alpha * 0.1})`);
+                gradient.addColorStop(1, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, 0)`);
+                
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+        
+        // Click to add particle
+        canvas.addEventListener('click', (e) => {
+            for (let i = 0; i < 5; i++) {
+                particles.push(new LightParticle(
+                    e.clientX + (Math.random() - 0.5) * 50,
+                    e.clientY + (Math.random() - 0.5) * 50
+                ));
+            }
+        });
+        
+        // Auto mode
+        document.getElementById('autoBtn').addEventListener('click', () => {
+            autoMode = !autoMode;
+            
+            if (autoMode) {
+                document.getElementById('autoBtn').textContent = '⏸️ 停止';
+                autoInterval = setInterval(() => {
+                    const x = Math.random() * canvas.width;
+                    const y = Math.random() * canvas.height;
+                    
+                    for (let i = 0; i < 5; i++) {
+                        particles.push(new LightParticle(
+                            x + (Math.random() - 0.5) * 100,
+                            y + (Math.random() - 0.5) * 100
+                        ));
+                    }
+                }, 500);
+            } else {
+                document.getElementById('autoBtn').textContent = '🎵 自動再生';
+                clearInterval(autoInterval);
+            }
+        });
+        
+        // Clear
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            particles = [];
+        });
+        
+        // Fullscreen
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+        
+        // Animation loop
+        function animate() {
+            // Fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Update and draw particles
+            particles = particles.filter(p => {
+                p.draw();
+                return p.update();
+            });
+            
+            // Update count
+            countEl.textContent = particles.length;
+            
+            requestAnimationFrame(animate);
+        }
+        
+        animate();
+    </script>
+</body>
+</html>
