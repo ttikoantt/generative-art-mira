@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>フラクタルな森 | Fractal Forest</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(to bottom, #1a1a2e, #16213e);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            height: 100vh;
+        }
+
+        h1 {
+            color: #eee;
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+
+        .subtitle {
+            color: #aaa;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+
+        #canvas {
+            background: linear-gradient(to bottom,
+                #0a0a15 0%,
+                #1a1a2e 50%,
+                #2d3561 100%
+            );
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #eee;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        button:hover {
+            background: rgba(255,255,255,0.2);
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: #eee;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            backdrop-filter: blur(10px);
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.4rem;
+            }
+
+            .subtitle {
+                font-size: 0.8rem;
+            }
+
+            button {
+                padding: 8px 16px;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌲 フラクタルな森</h1>
+        <p class="subtitle">Fractal Forest - タップで新しい木を植える</p>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="controls">
+            <button onclick="changeSeason('spring')">🌸 春</button>
+            <button onclick="changeSeason('summer')">🌿 夏</button>
+            <button onclick="changeSeason('autumn')">🍂 秋</button>
+            <button onclick="changeSeason('winter')">❄️ 冬</button>
+            <button onclick="regenerate()">🔄 再生成</button>
+        </div>
+
+        <div class="info">クリックで新しい木を植える | 各季節で表情が変わります</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // キャンバスサイズ設定
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 800);
+            const maxHeight = Math.min(window.innerHeight - 250, 600);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            generateForest();
+        });
+
+        // 設定
+        let trees = [];
+        let season = 'spring';
+        let windTime = 0;
+        let stars = [];
+
+        // 季節の色設定
+        const seasonColors = {
+            spring: {
+                sky: ['#ffecd2', '#fcb69f'],
+                leaf: ['#ff9a9e', '#fecfef', '#ffecd2', '#fcb69f'],
+                trunk: '#8b4513'
+            },
+            summer: {
+                sky: ['#a1c4fd', '#c2e9fb'],
+                leaf: ['#4caf50', '#8bc34a', '#cddc39', '#388e3c'],
+                trunk: '#5d4037'
+            },
+            autumn: {
+                sky: ['#ffd89b', '#19547b'],
+                leaf: ['#ff6b6b', '#feca57', '#ff9f43', '#ee5a24'],
+                trunk: '#6d4c41'
+            },
+            winter: {
+                sky: ['#e6dada', '#274046'],
+                leaf: ['#ecf0f1', '#bdc3c7', '#95a5a6', '#7f8c8d'],
+                trunk: '#4e342e'
+            }
+        };
+
+        // 星を生成
+        function generateStars() {
+            stars = [];
+            for (let i = 0; i < 100; i++) {
+                stars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height * 0.6,
+                    size: Math.random() * 2,
+                    twinkle: Math.random() * Math.PI * 2
+                });
+            }
+        }
+
+        // 木のクラス
+        class Tree {
+            constructor(x, depth) {
+                this.x = x;
+                this.y = canvas.height;
+                this.depth = depth;
+                this.seed = Math.random();
+            }
+
+            draw() {
+                const trunkLength = canvas.height * 0.25;
+                this.drawBranch(
+                    this.x,
+                    this.y,
+                    -Math.PI / 2,
+                    trunkLength,
+                    this.depth
+                );
+            }
+
+            drawBranch(x, y, angle, length, depth) {
+                if (depth === 0) return;
+
+                // 風による角度の変化
+                const windStrength = 0.02;
+                const windOffset = Math.sin(windTime + this.seed * 10 + depth) * windStrength * (12 - depth) * 0.1;
+
+                const newAngle = angle + windOffset;
+                const endX = x + Math.cos(newAngle) * length;
+                const endY = y + Math.sin(newAngle) * length;
+
+                // 幅は深さに比例
+                const lineWidth = depth * 1.5;
+
+                // 色の選択
+                const colors = seasonColors[season];
+                ctx.strokeStyle = depth > 2 ? colors.trunk : colors.leaf[Math.floor(Math.random() * colors.leaf.length)];
+                ctx.lineWidth = lineWidth;
+                ctx.lineCap = 'round';
+
+                // 分岐を描画
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+
+                // 葉（深さ2以下で）
+                if (depth <= 3) {
+                    const leafSize = depth * 3;
+                    ctx.fillStyle = colors.leaf[Math.floor(Math.random() * colors.leaf.length)];
+                    ctx.beginPath();
+                    ctx.arc(endX, endY, leafSize, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // 再帰的に分岐
+                const angleSpread = 0.4 + Math.sin(this.seed * depth) * 0.1;
+                const lengthScale = 0.7 + Math.cos(this.seed * depth) * 0.1;
+
+                this.drawBranch(endX, endY, newAngle - angleSpread, length * lengthScale, depth - 1);
+                this.drawBranch(endX, endY, newAngle + angleSpread, length * lengthScale, depth - 1);
+            }
+        }
+
+        // 森を生成
+        function generateForest() {
+            trees = [];
+            const numTrees = 5 + Math.floor(Math.random() * 5);
+            for (let i = 0; i < numTrees; i++) {
+                const x = (canvas.width / (numTrees + 1)) * (i + 1);
+                const depth = 6 + Math.floor(Math.random() * 4);
+                trees.push(new Tree(x, depth));
+            }
+            generateStars();
+        }
+
+        // 季節を変更
+        function changeSeason(newSeason) {
+            season = newSeason;
+        }
+
+        // 再生成
+        function regenerate() {
+            generateForest();
+        }
+
+        // アニメーション
+        function animate() {
+            // 背景をクリア
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            const skyColors = season === 'winter'
+                ? ['#0f0c29', '#302b63', '#24243e']
+                : ['#0a0a15', '#1a1a2e', '#2d3561'];
+            gradient.addColorStop(0, skyColors[0]);
+            gradient.addColorStop(0.5, skyColors[1]);
+            gradient.addColorStop(1, skyColors[2]);
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 星を描画（冬のみ）
+            if (season === 'winter') {
+                stars.forEach(star => {
+                    star.twinkle += 0.02;
+                    const alpha = 0.5 + Math.sin(star.twinkle) * 0.5;
+                    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                    ctx.beginPath();
+                    ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+
+            // 地面
+            ctx.fillStyle = season === 'winter' ? '#ecf0f1' : '#3d2914';
+            ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
+
+            // 木を描画
+            trees.forEach(tree => tree.draw());
+
+            // 風の時間を更新
+            windTime += 0.02;
+
+            requestAnimationFrame(animate);
+        }
+
+        // クリックで新しい木を追加
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const depth = 6 + Math.floor(Math.random() * 4);
+            trees.push(new Tree(x, depth));
+
+            // 木が多すぎたら古いものを削除
+            if (trees.length > 12) {
+                trees.shift();
+            }
+        });
+
+        // タッチ対応
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = touch.clientX - rect.left;
+            const depth = 6 + Math.floor(Math.random() * 4);
+            trees.push(new Tree(x, depth));
+
+            if (trees.length > 12) {
+                trees.shift();
+            }
+        });
+
+        // 全画面表示
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'f') {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                } else {
+                    canvas.requestFullscreen();
+                }
+            }
+        });
+
+        // 初期化
+        generateForest();
+        animate();
+
+        // 全画面表示ボタン
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'f') {
+                toggleFullscreen();
+            }
+        });
+
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>

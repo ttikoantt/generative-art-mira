@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Simon Says | 記憶ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        h1 {
+            color: #eee;
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+
+        .subtitle {
+            color: #aaa;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            max-width: 350px;
+            width: 100%;
+            aspect-ratio: 1;
+        }
+
+        .button {
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .button::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255,255,255,0.3);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.3s ease, height 0.3s ease;
+        }
+
+        .button:active::before {
+            width: 200%;
+            height: 200%;
+        }
+
+        .button.red { background: linear-gradient(135deg, #ff6b6b, #ee5a24); }
+        .button.blue { background: linear-gradient(135deg, #54a0ff, #2e86de); }
+        .button.green { background: linear-gradient(135deg, #5f27cd, #341f97); }
+        .button.yellow { background: linear-gradient(135deg, #feca57, #ff9f43); }
+
+        .button.lit {
+            filter: brightness(1.5);
+            transform: scale(1.05);
+            box-shadow: 0 0 40px currentColor;
+        }
+
+        .button.wrong {
+            animation: shake 0.5s ease;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+
+        .info {
+            margin-top: 20px;
+            text-align: center;
+            color: #eee;
+        }
+
+        .score {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .high-score {
+            font-size: 0.9rem;
+            color: #aaa;
+            margin-bottom: 10px;
+        }
+
+        .status {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            min-height: 1.5em;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #eee;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: rgba(255,255,255,0.2);
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: #eee;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            max-width: 90%;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.4rem;
+            }
+
+            .subtitle {
+                font-size: 0.8rem;
+            }
+
+            .game-board {
+                gap: 10px;
+            }
+
+            .score {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🎮 Simon Says</h1>
+    <p class="subtitle">光る順序を覚えて、同じ順序で押そう！</p>
+
+    <div class="game-board">
+        <button class="button red" data-color="red"></button>
+        <button class="button blue" data-color="blue"></button>
+        <button class="button green" data-color="green"></button>
+        <button class="button yellow" data-color="yellow"></button>
+    </div>
+
+    <div class="info">
+        <div class="score">スコア: <span id="score">0</span></div>
+        <div class="high-score">🏆 最高: <span id="highScore">0</span></div>
+        <div class="status" id="status">スタートボタンを押してね</div>
+
+        <div class="controls">
+            <button class="btn" id="startBtn">▶️ スタート</button>
+            <button class="btn" id="resetBtn">🔄 リセット</button>
+        </div>
+    </div>
+
+    <div class="instructions">
+        音量ONでお楽しみください | Fキーで全画面表示
+    </div>
+
+    <script>
+        const buttons = document.querySelectorAll('.button');
+        const scoreDisplay = document.getElementById('score');
+        const highScoreDisplay = document.getElementById('highScore');
+        const statusDisplay = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        const colors = ['red', 'blue', 'green', 'yellow'];
+        const frequencies = {
+            red: 523.25,    // C5
+            blue: 659.25,   // E5
+            green: 783.99,  // G5
+            yellow: 1046.50 // C6
+        };
+
+        let sequence = [];
+        let playerSequence = [];
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('simonHighScore')) || 0;
+        let isPlaying = false;
+        let isPlayerTurn = false;
+
+        highScoreDisplay.textContent = highScore;
+
+        // 音を生成
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playTone(frequency, duration = 0.3) {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.frequency.value = frequency;
+            oscillator.type = 'sine';
+
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+        }
+
+        function playErrorSound() {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.frequency.value = 200;
+            oscillator.type = 'sawtooth';
+
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.5);
+        }
+
+        // ボタンを光らせる
+        function flashButton(color) {
+            const button = document.querySelector(`[data-color="${color}"]`);
+            button.classList.add('lit');
+            playTone(frequencies[color]);
+
+            setTimeout(() => {
+                button.classList.remove('lit');
+            }, 300);
+        }
+
+        // シーケンスを再生
+        async function playSequence() {
+            isPlayerTurn = false;
+            statusDisplay.textContent = 'よく見てね...';
+
+            for (let i = 0; i < sequence.length; i++) {
+                await new Promise(resolve => setTimeout(resolve, 600));
+                flashButton(sequence[i]);
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 500));
+            isPlayerTurn = true;
+            statusDisplay.textContent = 'あなたの番！';
+        }
+
+        // 新しいラウンドを開始
+        function nextRound() {
+            playerSequence = [];
+            const randomColor = colors[Math.floor(Math.random() * colors.length)];
+            sequence.push(randomColor);
+            playSequence();
+        }
+
+        // ゲームオーバー
+        function gameOver() {
+            isPlaying = false;
+            isPlayerTurn = false;
+            playErrorSound();
+
+            buttons.forEach(button => button.classList.add('wrong'));
+            setTimeout(() => {
+                buttons.forEach(button => button.classList.remove('wrong'));
+            }, 500);
+
+            statusDisplay.textContent = `ゲームオーバー！ スコア: ${score}`;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('simonHighScore', highScore);
+                highScoreDisplay.textContent = highScore;
+                statusDisplay.textContent = `🎉 新記録！ スコア: ${score}`;
+            }
+
+            startBtn.disabled = false;
+        }
+
+        // プレイヤーの入力を処理
+        function handlePlayerInput(color) {
+            if (!isPlaying || !isPlayerTurn) return;
+
+            flashButton(color);
+            playerSequence.push(color);
+
+            const currentIndex = playerSequence.length - 1;
+
+            // 間違った入力
+            if (playerSequence[currentIndex] !== sequence[currentIndex]) {
+                gameOver();
+                return;
+            }
+
+            // シーケンス完了
+            if (playerSequence.length === sequence.length) {
+                score++;
+                scoreDisplay.textContent = score;
+                isPlayerTurn = false;
+                statusDisplay.textContent = '正解！';
+
+                setTimeout(() => {
+                    nextRound();
+                }, 1000);
+            }
+        }
+
+        // イベントリスナー
+        buttons.forEach(button => {
+            button.addEventListener('click', () => {
+                const color = button.dataset.color;
+                handlePlayerInput(color);
+            });
+
+            // タッチ対応
+            button.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const color = button.dataset.color;
+                handlePlayerInput(color);
+            });
+        });
+
+        // スタートボタン
+        startBtn.addEventListener('click', () => {
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
+            sequence = [];
+            playerSequence = [];
+            score = 0;
+            scoreDisplay.textContent = score;
+            isPlaying = true;
+            startBtn.disabled = true;
+
+            nextRound();
+        });
+
+        // リセットボタン
+        resetBtn.addEventListener('click', () => {
+            sequence = [];
+            playerSequence = [];
+            score = 0;
+            scoreDisplay.textContent = score;
+            isPlaying = false;
+            isPlayerTurn = false;
+            startBtn.disabled = false;
+            statusDisplay.textContent = 'スタートボタンを押してね';
+        });
+
+        // 全画面表示
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'f') {
+                toggleFullscreen();
+            }
+        });
+
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        // キーボード操作
+        document.addEventListener('keydown', (e) => {
+            if (!isPlaying || !isPlayerTurn) return;
+
+            const keyMap = {
+                '1': 'red',
+                '2': 'blue',
+                '3': 'green',
+                '4': 'yellow',
+                'q': 'red',
+                'w': 'blue',
+                'a': 'green',
+                's': 'yellow'
+            };
+
+            if (keyMap[e.key]) {
+                handlePlayerInput(keyMap[e.key]);
+            }
+        });
+    </script>
+</body>
+</html>
