@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Particle Flow - テキストパーティクルフロー</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .container {
+            text-align: center;
+            z-index: 10;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: clamp(1.5rem, 4vw, 3rem);
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(138, 43, 226, 0.8);
+            letter-spacing: 2px;
+        }
+
+        .canvas-container {
+            position: relative;
+            display: inline-block;
+            border: 2px solid rgba(138, 43, 226, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(138, 43, 226, 0.3);
+        }
+
+        canvas {
+            display: block;
+            background: #000;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #8a2be2, #4b0082);
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-family: inherit;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(138, 43, 226, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(138, 43, 226, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .fullscreen-btn {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+        }
+
+        input[type="text"] {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 2px solid rgba(138, 43, 226, 0.5);
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-family: inherit;
+            width: 200px;
+        }
+
+        input[type="text"]::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #8a2be2;
+        }
+
+        .info {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✨ Text Particle Flow</h1>
+        <div class="canvas-container">
+            <canvas id="canvas"></canvas>
+        </div>
+        <div class="controls">
+            <input type="text" id="textInput" placeholder="テキストを入力" value="DREAM">
+            <button onclick="changeText()">テキスト変更</button>
+            <button onclick="resetParticles()">リセット</button>
+            <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+        </div>
+        <div class="info">🎨 マウスを動かすとパーティクルが反応します</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvas size
+        const width = Math.min(700, window.innerWidth - 60);
+        const height = Math.min(500, window.innerHeight - 250);
+        canvas.width = width;
+        canvas.height = height;
+
+        // Particles
+        let particles = [];
+        let textParticles = [];
+        const fontSize = 100;
+        let hue = 0;
+
+        // Mouse
+        const mouse = {
+            x: null,
+            y: null,
+            radius: 100
+        };
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        // Touch support
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            mouse.x = touch.clientX - rect.left;
+            mouse.y = touch.clientY - rect.top;
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.baseX = x;
+                this.baseY = y;
+                this.size = 3;
+                this.density = Math.random() * 30 + 1;
+                this.hueOffset = Math.random() * 60;
+            }
+
+            draw() {
+                ctx.fillStyle = `hsl(${hue + this.hueOffset}, 70%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            update() {
+                // Mouse interaction
+                if (mouse.x && mouse.y) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < mouse.radius) {
+                        const forceDirectionX = dx / distance;
+                        const forceDirectionY = dy / distance;
+                        const maxDistance = mouse.radius;
+                        const force = (maxDistance - distance) / maxDistance;
+                        const directionX = forceDirectionX * force * this.density;
+                        const directionY = forceDirectionY * force * this.density;
+
+                        this.x -= directionX;
+                        this.y -= directionY;
+                    }
+                }
+
+                // Return to base
+                const dx = this.baseX - this.x;
+                const dy = this.baseY - this.y;
+                this.x += dx * 0.05;
+                this.y += dy * 0.05;
+            }
+        }
+
+        function init() {
+            createTextParticles();
+        }
+
+        function createTextParticles() {
+            textParticles = [];
+
+            // Draw text to canvas
+            ctx.fillStyle = '#fff';
+            ctx.font = `bold ${fontSize}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(document.getElementById('textInput').value, width / 2, height / 2);
+
+            // Get image data
+            const imageData = ctx.getImageData(0, 0, width, height);
+            ctx.clearRect(0, 0, width, height);
+
+            // Create particles from text
+            const gap = 4;
+            for (let y = 0; y < height; y += gap) {
+                for (let x = 0; x < width; x += gap) {
+                    const index = (y * width + x) * 4;
+                    const alpha = imageData.data[index + 3];
+
+                    if (alpha > 128) {
+                        textParticles.push(new Particle(x, y));
+                    }
+                }
+            }
+
+            // Add flow particles
+            particles = [];
+            for (let i = 0; i < 50; i++) {
+                particles.push(new FlowParticle());
+            }
+        }
+
+        class FlowParticle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.size = Math.random() * 3 + 1;
+                this.speedX = Math.random() * 2 - 1;
+                this.speedY = Math.random() * 2 - 1;
+                this.hueOffset = Math.random() * 360;
+                this.life = 1;
+                this.decay = Math.random() * 0.01 + 0.005;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= this.decay;
+
+                // Mouse attraction
+                if (mouse.x && mouse.y) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < 150) {
+                        this.speedX += dx * 0.0001;
+                        this.speedY += dy * 0.0001;
+                    }
+                }
+
+                if (this.life <= 0 || this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                ctx.fillStyle = `hsla(${hue + this.hueOffset}, 70%, 60%, ${this.life})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
+        function animate() {
+            // Fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw flow particles
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // Draw text particles
+            textParticles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            hue += 0.5;
+            requestAnimationFrame(animate);
+        }
+
+        function changeText() {
+            ctx.clearRect(0, 0, width, height);
+            createTextParticles();
+        }
+
+        function resetParticles() {
+            ctx.clearRect(0, 0, width, height);
+            createTextParticles();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                canvas.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Enter key support
+        document.getElementById('textInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                changeText();
+            }
+        });
+
+        // Init
+        init();
+        animate();
+    </script>
+</body>
+</html>
