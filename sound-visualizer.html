@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>🎵 Sound Visualizer - 音を視覚化</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            text-align: center;
+            z-index: 100;
+        }
+
+        .mode-selector {
+            position: fixed;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            z-index: 100;
+        }
+
+        .mode-btn {
+            padding: 8px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .mode-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: transparent;
+            color: white;
+        }
+
+        .mode-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .mode-btn.active:hover {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .start-screen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .start-screen p {
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 40px;
+            font-size: 16px;
+        }
+
+        .start-screen.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="start-screen" id="startScreen">
+        <h1>🎵 Sound Visualizer</h1>
+        <p>マイクを使って音を美しく視覚化</p>
+        <button class="btn btn-primary" id="startBtn">開始</button>
+    </div>
+
+    <div class="container">
+        <canvas id="visualizer"></canvas>
+
+        <div class="info">
+            音楽を再生したり、話しかけたりしてみてください
+        </div>
+
+        <div class="mode-selector">
+            <button class="mode-btn active" data-mode="bars">Bars</button>
+            <button class="mode-btn" data-mode="wave">Wave</button>
+            <button class="mode-btn" data-mode="circle">Circle</button>
+            <button class="mode-btn" data-mode="particles">Particles</button>
+        </div>
+
+        <div class="controls">
+            <button class="btn btn-secondary" id="fullscreenBtn">全画面</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const startBtn = document.getElementById('startBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const modeBtns = document.querySelectorAll('.mode-btn');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let dataArray;
+        let bufferLength;
+        let isRunning = false;
+        let currentMode = 'bars';
+        let particles = [];
+        let time = 0;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        async function initAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+
+                analyser.fftSize = 512;
+                bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                microphone.connect(analyser);
+
+                isRunning = true;
+                startScreen.classList.add('hidden');
+                animate();
+            } catch (err) {
+                console.error('マイクアクセスエラー:', err);
+                alert('マイクへのアクセスが必要です。ブラウザの設定を確認してください。');
+            }
+        }
+
+        startBtn.addEventListener('click', () => {
+            initAudio();
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        modeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                modeBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentMode = btn.dataset.mode;
+                particles = [];
+            });
+        });
+
+        function getAverageFrequency(data) {
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) {
+                sum += data[i];
+            }
+            return sum / data.length;
+        }
+
+        function drawBars(data) {
+            const barWidth = canvas.width / data.length;
+            let x = 0;
+
+            for (let i = 0; i < data.length; i++) {
+                const barHeight = (data[i] / 255) * canvas.height * 0.8;
+
+                const hue = (i / data.length) * 360 + time;
+                const saturation = 70 + (data[i] / 255) * 30;
+                const lightness = 40 + (data[i] / 255) * 20;
+
+                const gradient = ctx.createLinearGradient(0, canvas.height - barHeight, 0, canvas.height);
+                gradient.addColorStop(0, `hsla(${hue}, ${saturation}%, ${lightness}%, 1)`);
+                gradient.addColorStop(1, `hsla(${hue}, ${saturation}%, ${lightness - 20}%, 0.8)`);
+
+                ctx.fillStyle = gradient;
+                ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
+
+                x += barWidth;
+            }
+        }
+
+        function drawWave(data) {
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height / 2);
+
+            const sliceWidth = canvas.width / data.length;
+            let x = 0;
+
+            for (let i = 0; i < data.length; i++) {
+                const v = data[i] / 255;
+                const y = (v * canvas.height / 2) + (canvas.height / 2 - canvas.height / 4);
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            ctx.lineTo(canvas.width, canvas.height / 2);
+
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+            gradient.addColorStop(0, `hsla(${time % 360}, 70%, 50%, 1)`);
+            gradient.addColorStop(0.5, `hsla(${(time + 120) % 360}, 70%, 50%, 1)`);
+            gradient.addColorStop(1, `hsla(${(time + 240) % 360}, 70%, 50%, 1)`);
+
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.lineTo(0, canvas.height);
+            ctx.closePath();
+
+            ctx.fillStyle = `hsla(${time % 360}, 70%, 50%, 0.1)`;
+            ctx.fill();
+        }
+
+        function drawCircle(data) {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const baseRadius = Math.min(canvas.width, canvas.height) * 0.2;
+
+            for (let i = 0; i < data.length; i++) {
+                const angle = (i / data.length) * Math.PI * 2;
+                const amplitude = (data[i] / 255) * Math.min(canvas.width, canvas.height) * 0.2;
+
+                const x1 = centerX + Math.cos(angle) * baseRadius;
+                const y1 = centerY + Math.sin(angle) * baseRadius;
+                const x2 = centerX + Math.cos(angle) * (baseRadius + amplitude);
+                const y2 = centerY + Math.sin(angle) * (baseRadius + amplitude);
+
+                const hue = (i / data.length) * 360 + time;
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = `hsla(${hue}, 70%, 50%, 0.8)`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            const avgFreq = getAverageFrequency(data);
+            const glowRadius = baseRadius * (0.5 + avgFreq / 255);
+
+            const glowGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, glowRadius);
+            glowGradient.addColorStop(0, `hsla(${time % 360}, 70%, 50%, 0.3)`);
+            glowGradient.addColorStop(1, `hsla(${time % 360}, 70%, 50%, 0)`);
+
+            ctx.fillStyle = glowGradient;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, glowRadius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawParticles(data) {
+            const avgFreq = getAverageFrequency(data);
+            const bassFreq = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+
+            if (particles.length < 200 && bassFreq > 150) {
+                for (let i = 0; i < 5; i++) {
+                    particles.push({
+                        x: canvas.width / 2,
+                        y: canvas.height / 2,
+                        vx: (Math.random() - 0.5) * (bassFreq / 50),
+                        vy: (Math.random() - 0.5) * (bassFreq / 50),
+                        life: 1,
+                        size: Math.random() * 5 + 2,
+                        hue: Math.random() * 360
+                    });
+                }
+            }
+
+            particles = particles.filter(p => p.life > 0);
+
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.01;
+                p.size *= 0.99;
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${p.hue}, 70%, 50%, ${p.life})`;
+                ctx.fill();
+            });
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const baseRadius = 50 + (avgFreq / 255) * 50;
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${time % 360}, 70%, 50%, 0.5)`;
+            ctx.fill();
+        }
+
+        function animate() {
+            if (!isRunning) return;
+
+            analyser.getByteFrequencyData(dataArray);
+
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            switch (currentMode) {
+                case 'bars':
+                    drawBars(dataArray);
+                    break;
+                case 'wave':
+                    drawWave(dataArray);
+                    break;
+                case 'circle':
+                    drawCircle(dataArray);
+                    break;
+                case 'particles':
+                    drawParticles(dataArray);
+                    break;
+            }
+
+            time += 0.5;
+            requestAnimationFrame(animate);
+        }
+
+        // タッチ操作のサポート
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        });
+    </script>
+</body>
+</html>
