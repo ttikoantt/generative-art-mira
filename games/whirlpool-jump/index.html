@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Whirlpool Jump</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: manipulation;
+        }
+        
+        canvas {
+            display: block;
+            margin: 0 auto;
+        }
+        
+        .ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        .score {
+            color: #fff;
+            font-size: 28px;
+            font-weight: bold;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+        
+        .best {
+            color: #ffd700;
+            font-size: 18px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+        
+        .game-over, .start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 100;
+        }
+        
+        .game-over h1, .start-screen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px #00ffff;
+        }
+        
+        .game-over p, .start-screen p {
+            font-size: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+            pointer-events: auto;
+        }
+        
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 30px rgba(0, 212, 255, 0.6);
+        }
+        
+        .btn:active {
+            transform: scale(0.95);
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            z-index: 100;
+            pointer-events: auto;
+        }
+        
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="score">Score: <span id="score">0</span></div>
+        <div class="best">Best: <span id="best">0</span></div>
+    </div>
+    
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    
+    <canvas id="canvas"></canvas>
+    
+    <div class="start-screen" id="startScreen">
+        <h1>🌀 Whirlpool Jump</h1>
+        <p>タップしてジャンプ！<br>障害物を避けよう</p>
+        <button class="btn" onclick="startGame()">スタート</button>
+    </div>
+    
+    <div class="game-over hidden" id="gameOver">
+        <h1>Game Over!</h1>
+        <p>Score: <span id="finalScore">0</span></p>
+        <button class="btn" onclick="startGame()">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let gameState = 'start'; // start, playing, gameover
+        let score = 0;
+        let bestScore = localStorage.getItem('whirlpoolBest') || 0;
+        let gameSpeed = 3;
+        let obstacleTimer = 0;
+        
+        // Player
+        const player = {
+            x: 100,
+            y: 0,
+            radius: 20,
+            vy: 0,
+            rotation: 0,
+            jumping: false,
+            trail: []
+        };
+        
+        const gravity = 0.5;
+        const jumpForce = -12;
+        const groundY = 0;
+        
+        let obstacles = [];
+        let particles = [];
+        
+        function resize() {
+            width = canvas.width = Math.min(window.innerWidth, 800);
+            height = canvas.height = window.innerHeight;
+            player.y = height - 100;
+        }
+        
+        function init() {
+            resize();
+            document.getElementById('best').textContent = bestScore;
+        }
+        
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            gameSpeed = 3;
+            obstacleTimer = 0;
+            player.y = height - 100;
+            player.vy = 0;
+            player.rotation = 0;
+            player.trail = [];
+            obstacles = [];
+            particles = [];
+            
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOver').classList.add('hidden');
+            document.getElementById('score').textContent = '0';
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        function gameOver() {
+            gameState = 'gameover';
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('whirlpoolBest', bestScore);
+                document.getElementById('best').textContent = bestScore;
+            }
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').classList.remove('hidden');
+        }
+        
+        function jump() {
+            if (gameState === 'playing' && !player.jumping) {
+                player.vy = jumpForce;
+                player.jumping = true;
+                
+                // Jump particles
+                for (let i = 0; i < 10; i++) {
+                    particles.push({
+                        x: player.x,
+                        y: player.y + player.radius,
+                        vx: (Math.random() - 0.5) * 4,
+                        vy: Math.random() * 2,
+                        life: 30,
+                        maxLife: 30,
+                        color: `hsl(${180 + Math.random() * 60}, 100%, 60%)`
+                    });
+                }
+            }
+        }
+        
+        function spawnObstacle() {
+            const types = ['ground', 'air', 'double'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            
+            if (type === 'ground') {
+                obstacles.push({
+                    x: width,
+                    y: height - 60,
+                    width: 40,
+                    height: 60,
+                    type: 'ground'
+                });
+            } else if (type === 'air') {
+                obstacles.push({
+                    x: width,
+                    y: height - 150,
+                    width: 40,
+                    height: 40,
+                    type: 'air'
+                });
+            } else if (type === 'double') {
+                obstacles.push({
+                    x: width,
+                    y: height - 60,
+                    width: 30,
+                    height: 60,
+                    type: 'ground'
+                });
+                obstacles.push({
+                    x: width + 150,
+                    y: height - 130,
+                    width: 30,
+                    height: 40,
+                    type: 'air'
+                });
+            }
+        }
+        
+        function update() {
+            // Player physics
+            player.vy += gravity;
+            player.y += player.vy;
+            
+            // Ground collision
+            if (player.y > height - 100) {
+                player.y = height - 100;
+                player.vy = 0;
+                player.jumping = false;
+            }
+            
+            // Rotation
+            if (player.jumping) {
+                player.rotation += 0.15;
+            } else {
+                player.rotation = Math.round(player.rotation / (Math.PI / 2)) * (Math.PI / 2);
+                const diff = player.rotation % (Math.PI * 2);
+                player.rotation -= diff * 0.2;
+            }
+            
+            // Trail
+            player.trail.push({ x: player.x, y: player.y, rotation: player.rotation, alpha: 1 });
+            if (player.trail.length > 10) player.trail.shift();
+            player.trail.forEach(t => t.alpha -= 0.1);
+            
+            // Obstacles
+            obstacleTimer++;
+            if (obstacleTimer > 100) {
+                spawnObstacle();
+                obstacleTimer = 0;
+            }
+            
+            obstacles.forEach(o => {
+                o.x -= gameSpeed;
+            });
+            
+            // Remove off-screen obstacles
+            obstacles = obstacles.filter(o => o.x + o.width > -50);
+            
+            // Score
+            obstacleTimer % 10 === 0 && score++;
+            document.getElementById('score').textContent = score;
+            
+            // Increase speed
+            if (score % 50 === 0 && score > 0) {
+                gameSpeed = Math.min(gameSpeed + 0.5, 8);
+            }
+            
+            // Collision detection
+            obstacles.forEach(o => {
+                const dx = player.x - (o.x + o.width / 2);
+                const dy = player.y - (o.y + o.height / 2);
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < player.radius + Math.min(o.width, o.height) / 2 - 5) {
+                    gameOver();
+                }
+            });
+            
+            // Particles
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.1;
+                p.life--;
+            });
+            particles = particles.filter(p => p.life > 0);
+        }
+        
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            
+            // Ground line
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, height - 40);
+            ctx.lineTo(width, height - 40);
+            ctx.stroke();
+            
+            // Trail
+            player.trail.forEach((t, i) => {
+                ctx.save();
+                ctx.translate(t.x, t.y);
+                ctx.rotate(t.rotation);
+                ctx.globalAlpha = t.alpha * 0.3;
+                
+                // Draw whirlpool shape
+                ctx.strokeStyle = '#00ffff';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                for (let a = 0; a < Math.PI * 2; a += 0.3) {
+                    const r = player.radius * (0.5 + a / (Math.PI * 4));
+                    const x = Math.cos(a) * r;
+                    const y = Math.sin(a) * r;
+                    if (a === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                ctx.restore();
+            });
+            
+            // Player (whirlpool)
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            ctx.rotate(player.rotation);
+            
+            // Glow effect
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#00ffff';
+            
+            // Draw whirlpool
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            for (let a = 0; a < Math.PI * 2; a += 0.3) {
+                const r = player.radius * (0.5 + a / (Math.PI * 4));
+                const x = Math.cos(a) * r;
+                const y = Math.sin(a) * r;
+                if (a === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            
+            ctx.restore();
+            
+            // Obstacles
+            obstacles.forEach(o => {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#ff0066';
+                ctx.fillStyle = '#ff0066';
+                ctx.fillRect(o.x, o.y, o.width, o.height);
+                
+                // Inner detail
+                ctx.fillStyle = '#ff3388';
+                ctx.fillRect(o.x + 5, o.y + 5, o.width - 10, o.height - 10);
+            });
+            
+            // Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life / p.maxLife;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+        }
+        
+        function gameLoop() {
+            if (gameState === 'playing') {
+                update();
+                draw();
+                requestAnimationFrame(gameLoop);
+            }
+        }
+        
+        // Event listeners
+        window.addEventListener('resize', resize);
+        
+        canvas.addEventListener('click', jump);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        });
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (gameState === 'playing') {
+                    jump();
+                } else if (gameState === 'start' || gameState === 'gameover') {
+                    startGame();
+                }
+            }
+        });
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>
