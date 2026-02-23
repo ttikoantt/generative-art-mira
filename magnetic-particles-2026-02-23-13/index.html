@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>磁石パーティクル - Magnetic Particles</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            touch-action: none;
+        }
+
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(20, 20, 40, 0.9);
+            padding: 15px 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(100, 150, 255, 0.3);
+            color: #fff;
+            font-size: 14px;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        .controls h3 {
+            margin-bottom: 10px;
+            color: #88aaff;
+            font-size: 16px;
+        }
+
+        .control {
+            margin-bottom: 8px;
+        }
+
+        .control label {
+            display: inline-block;
+            width: 100px;
+            color: #aaccff;
+        }
+
+        .control input[type="range"] {
+            width: 120px;
+            vertical-align: middle;
+        }
+
+        .buttons {
+            margin-top: 10px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #4a6fa5, #2d4a6f);
+            border: 1px solid #6a8caf;
+            color: #fff;
+            padding: 6px 14px;
+            margin: 3px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #5a7fb5, #3d5a7f);
+            transform: scale(1.05);
+        }
+
+        button.active {
+            background: linear-gradient(135deg, #6a9fd5, #4d6a8f);
+            box-shadow: 0 0 10px rgba(100, 150, 255, 0.5);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(20, 20, 40, 0.9);
+            padding: 10px 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(100, 150, 255, 0.3);
+            color: #aaccff;
+            font-size: 12px;
+            z-index: 100;
+        }
+
+        .info strong {
+            color: #88aaff;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(20, 20, 40, 0.9);
+            border: 1px solid rgba(100, 150, 255, 0.3);
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <h3>🧲 磁石パーティクル</h3>
+        <div class="control">
+            <label>粒子数:</label>
+            <input type="range" id="particleCount" min="20" max="200" value="80">
+            <span id="particleCountVal">80</span>
+        </div>
+        <div class="control">
+            <label>磁力強度:</label>
+            <input type="range" id="magneticForce" min="1000" max="5000" value="2500">
+            <span id="magneticForceVal">2500</span>
+        </div>
+        <div class="control">
+            <label>摩擦:</label>
+            <input type="range" id="friction" min="90" max="99" value="96">
+            <span id="frictionVal">0.96</span>
+        </div>
+        <div class="buttons">
+            <button id="modeAttract" class="active">吸引</button>
+            <button id="modeRepel">反発</button>
+            <button id="modeBoth">混合</button>
+        </div>
+        <div class="buttons">
+            <button id="reset">リセット</button>
+        </div>
+    </div>
+
+    <div class="info">
+        <strong>操作:</strong> クリック/タップで磁石を配置<br>
+        <strong>粒子:</strong> <span id="particleInfo">0</span> 個
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreen">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let magnets = [];
+        let mode = 'attract'; // attract, repel, both
+
+        // Settings
+        let settings = {
+            particleCount: 80,
+            magneticForce: 2500,
+            friction: 0.96
+        };
+
+        // Resize canvas
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Particle class
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 3 + 2;
+
+                // Half positive (attracted to positive magnets), half negative (attracted to negative)
+                this.charge = Math.random() > 0.5 ? 1 : -1;
+
+                // Color based on charge
+                if (this.charge > 0) {
+                    // Positive: Red/Orange
+                    this.hue = Math.random() * 30 + 330; // 330-360 (pink-red) and 0-30 (orange)
+                } else {
+                    // Negative: Blue/Cyan
+                    this.hue = Math.random() * 60 + 180; // 180-240 (cyan-blue)
+                }
+                this.saturation = 80 + Math.random() * 20;
+                this.lightness = 50 + Math.random() * 20;
+
+                this.trail = [];
+                this.maxTrail = 20;
+            }
+
+            update() {
+                // Apply magnetic forces from all magnets
+                for (let magnet of magnets) {
+                    const dx = magnet.x - this.x;
+                    const dy = magnet.y - this.y;
+                    const distSq = dx * dx + dy * dy;
+                    const dist = Math.sqrt(distSq);
+
+                    if (dist < 5) continue; // Avoid singularity
+
+                    // Magnetic force: F = k * (q1 * q2) / r^2
+                    // Same charges repel, opposite charges attract
+                    const forceMag = (settings.magneticForce * this.charge * magnet.charge) / distSq;
+
+                    const fx = forceMag * dx / dist;
+                    const fy = forceMag * dy / dist;
+
+                    this.vx += fx;
+                    this.vy += fy;
+                }
+
+                // Apply friction
+                this.vx *= settings.friction;
+                this.vy *= settings.friction;
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Bounce off walls
+                if (this.x < 0 || this.x > width) {
+                    this.vx *= -0.8;
+                    this.x = Math.max(0, Math.min(width, this.x));
+                }
+                if (this.y < 0 || this.y > height) {
+                    this.vy *= -0.8;
+                    this.y = Math.max(0, Math.min(height, this.y));
+                }
+
+                // Store trail
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > this.maxTrail) {
+                    this.trail.shift();
+                }
+            }
+
+            draw() {
+                // Draw trail
+                if (this.trail.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.trail[0].x, this.trail[0].y);
+                    for (let i = 1; i < this.trail.length; i++) {
+                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    }
+                    ctx.strokeStyle = `hsla(${this.hue}, ${this.saturation}%, ${this.lightness}%, 0.3)`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+
+                // Draw particle
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${this.hue}, ${this.saturation}%, ${this.lightness}%)`;
+                ctx.fill();
+
+                // Glow effect
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, ${this.saturation}%, ${this.lightness}%, 0.2)`;
+                ctx.fill();
+            }
+        }
+
+        // Magnet class
+        class Magnet {
+            constructor(x, y, charge) {
+                this.x = x;
+                this.y = y;
+                this.charge = charge; // +1 or -1
+                this.radius = 30;
+                this.pulsePhase = 0;
+            }
+
+            draw() {
+                this.pulsePhase += 0.05;
+                const pulse = Math.sin(this.pulsePhase) * 5;
+
+                // Outer glow
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius + pulse + 20
+                );
+
+                if (this.charge > 0) {
+                    gradient.addColorStop(0, 'rgba(255, 100, 100, 0.8)');
+                    gradient.addColorStop(0.5, 'rgba(255, 50, 50, 0.3)');
+                    gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                } else {
+                    gradient.addColorStop(0, 'rgba(100, 150, 255, 0.8)');
+                    gradient.addColorStop(0.5, 'rgba(50, 100, 255, 0.3)');
+                    gradient.addColorStop(1, 'rgba(0, 50, 255, 0)');
+                }
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius + pulse + 20, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Core
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.charge > 0 ? '#ff4444' : '#4488ff';
+                ctx.fill();
+                ctx.strokeStyle = this.charge > 0 ? '#ff8888' : '#88aaff';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Symbol
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 24px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.charge > 0 ? '+' : '−', this.x, this.y);
+            }
+        }
+
+        // Initialize particles
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < settings.particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        // Add magnet on click/touch
+        function addMagnet(x, y) {
+            let charge;
+            if (mode === 'attract') {
+                charge = 1; // All positive - attracts negative particles
+            } else if (mode === 'repel') {
+                charge = 1; // All positive - repels positive particles
+            } else {
+                charge = Math.random() > 0.5 ? 1 : -1; // Random
+            }
+            magnets.push(new Magnet(x, y, charge));
+
+            // Limit magnets
+            if (magnets.length > 5) {
+                magnets.shift();
+            }
+
+            updateParticleInfo();
+        }
+
+        // Animation loop
+        function animate() {
+            // Fade effect
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Update and draw particles
+            for (let particle of particles) {
+                particle.update();
+                particle.draw();
+            }
+
+            // Draw magnets
+            for (let magnet of magnets) {
+                magnet.draw();
+            }
+
+            // Draw connections between nearby particles of same charge
+            ctx.strokeStyle = 'rgba(100, 150, 255, 0.1)';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 80) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        canvas.addEventListener('click', (e) => {
+            addMagnet(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            for (let touch of e.touches) {
+                addMagnet(touch.clientX, touch.clientY);
+            }
+        });
+
+        // Controls
+        document.getElementById('particleCount').addEventListener('input', (e) => {
+            settings.particleCount = parseInt(e.target.value);
+            document.getElementById('particleCountVal').textContent = settings.particleCount;
+            initParticles();
+            updateParticleInfo();
+        });
+
+        document.getElementById('magneticForce').addEventListener('input', (e) => {
+            settings.magneticForce = parseInt(e.target.value);
+            document.getElementById('magneticForceVal').textContent = settings.magneticForce;
+        });
+
+        document.getElementById('friction').addEventListener('input', (e) => {
+            settings.friction = parseInt(e.target.value) / 100;
+            document.getElementById('frictionVal').textContent = settings.friction.toFixed(2);
+        });
+
+        document.getElementById('modeAttract').addEventListener('click', () => {
+            mode = 'attract';
+            updateModeButtons();
+        });
+
+        document.getElementById('modeRepel').addEventListener('click', () => {
+            mode = 'repel';
+            updateModeButtons();
+        });
+
+        document.getElementById('modeBoth').addEventListener('click', () => {
+            mode = 'both';
+            updateModeButtons();
+        });
+
+        function updateModeButtons() {
+            document.querySelectorAll('.buttons button').forEach(btn => {
+                if (btn.id.startsWith('mode')) {
+                    btn.classList.remove('active');
+                }
+            });
+            document.getElementById('mode' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
+        }
+
+        document.getElementById('reset').addEventListener('click', () => {
+            magnets = [];
+            initParticles();
+            updateParticleInfo();
+        });
+
+        document.getElementById('fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        function updateParticleInfo() {
+            document.getElementById('particleInfo').textContent = particles.length;
+        }
+
+        // Initialize
+        initParticles();
+        updateParticleInfo();
+        animate();
+
+        // Add initial magnet at center
+        setTimeout(() => {
+            addMagnet(width / 2, height / 2);
+        }, 500);
+    </script>
+</body>
+</html>
