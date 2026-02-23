@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Star Catcher</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: linear-gradient(180deg, #0a0a2e 0%, #1a1a4e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        .game-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 500px;
+            padding: 15px 20px;
+            color: #a0a0ff;
+        }
+        .score-box {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .level-box {
+            font-size: 16px;
+            color: #8080cc;
+        }
+        .lives-box {
+            font-size: 20px;
+        }
+        #gameCanvas {
+            border-radius: 10px;
+            box-shadow: 0 10px 50px rgba(100, 100, 255, 0.3);
+            max-width: 100%;
+            height: auto;
+            cursor: pointer;
+            touch-action: none;
+        }
+        .overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(20, 20, 50, 0.95);
+            padding: 30px 40px;
+            border-radius: 15px;
+            text-align: center;
+            color: #fff;
+            border: 2px solid rgba(150, 150, 255, 0.5);
+            display: none;
+        }
+        .overlay.active {
+            display: block;
+        }
+        .overlay h2 {
+            font-size: 32px;
+            margin-bottom: 20px;
+            color: #a0a0ff;
+        }
+        .overlay p {
+            margin-bottom: 15px;
+            font-size: 18px;
+            color: #c0c0e0;
+        }
+        .overlay .final-score {
+            font-size: 48px;
+            color: #ffcc00;
+            margin: 20px 0;
+        }
+        .btn {
+            padding: 15px 30px;
+            font-size: 18px;
+            background: linear-gradient(135deg, #6a6aff, #9a9aff);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin-top: 10px;
+        }
+        .btn:hover {
+            transform: scale(1.05);
+        }
+        .full-btn {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: rgba(150, 150, 255, 0.2);
+            border: 1px solid rgba(150, 150, 255, 0.5);
+            color: #a0a0ff;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .full-btn:hover {
+            background: rgba(150, 150, 255, 0.3);
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-header">
+        <div class="score-box">⭐ <span id="score">0</span></div>
+        <div class="level-box">Level <span id="level">1</span></div>
+        <div class="lives-box">❤️ <span id="lives">3</span></div>
+    </div>
+
+    <canvas id="gameCanvas" width="500" height="400"></canvas>
+
+    <button class="full-btn" onclick="toggleFullScreen()">全画面表示</button>
+
+    <div class="overlay" id="startScreen">
+        <h2>🌟 Star Catcher</h2>
+        <p>落ちてくる星をキャッチ！</p>
+        <p>クリックかタップで移動</p>
+        <button class="btn" onclick="startGame()">スタート</button>
+    </div>
+
+    <div class="overlay" id="gameOverScreen">
+        <h2>💫 Game Over</h2>
+        <p>あなたのスコア</p>
+        <div class="final-score" id="finalScore">0</div>
+        <p>最高スコア: <span id="highScore">0</span></p>
+        <button class="btn" onclick="startGame()">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+
+        // ゲーム状態
+        let gameRunning = false;
+        let score = 0;
+        let lives = 3;
+        let level = 1;
+        let highScore = localStorage.getItem('starCatcherHighScore') || 0;
+
+        // プレイヤー（星をキャッチするバスケット）
+        const player = {
+            x: width / 2,
+            y: height - 60,
+            width: 80,
+            height: 40,
+            targetX: width / 2,
+            speed: 0.15
+        };
+
+        // 星
+        let stars = [];
+        const starSpawnRate = 60; // フレーム数
+        let frameCount = 0;
+
+        // パーティクル
+        let particles = [];
+
+        // 背景の星
+        const bgStars = Array.from({ length: 100 }, () => ({
+            x: Math.random() * width,
+            y: Math.random() * height,
+            size: Math.random() * 2 + 0.5,
+            opacity: Math.random() * 0.5 + 0.2
+        }));
+
+        // 星クラス
+        class Star {
+            constructor() {
+                this.size = Math.random() * 15 + 10;
+                this.x = Math.random() * (width - this.size * 2) + this.size;
+                this.y = -this.size;
+                this.speed = Math.random() * 2 + 2 + level * 0.5;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+                this.points = Math.floor(this.size);
+                this.hue = Math.random() * 60 + 40; // 黄色系
+                this.trail = [];
+            }
+
+            update() {
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+
+                // 軌跡
+                this.trail.unshift({ x: this.x, y: this.y });
+                if (this.trail.length > 10) this.trail.pop();
+
+                // プレイヤーとの衝突
+                if (this.y + this.size > player.y - player.height / 2 &&
+                    this.y - this.size < player.y + player.height / 2 &&
+                    this.x > player.x - player.width / 2 &&
+                    this.x < player.x + player.width / 2) {
+                    return 'caught';
+                }
+
+                // 画面外に出た
+                if (this.y > height + this.size) {
+                    return 'missed';
+                }
+
+                return 'falling';
+            }
+
+            draw() {
+                // 軌跡
+                this.trail.forEach((pos, i) => {
+                    const alpha = (1 - i / this.trail.length) * 0.3;
+                    ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${alpha})`;
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, this.size * (1 - i / this.trail.length), 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                // 星
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // グロー
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size * 1.5);
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 80%, 0.8)`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 100%, 60%, 0.4)`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 50%, 0)`);
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size * 1.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 星の形
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 70%)`;
+                ctx.beginPath();
+                for (let i = 0; i < 5; i++) {
+                    const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+                    const x = Math.cos(angle) * this.size;
+                    const y = Math.sin(angle) * this.size;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 5 + 2;
+                this.speedX = (Math.random() - 0.5) * 8;
+                this.speedY = (Math.random() - 0.5) * 8 - 3;
+                this.hue = hue;
+                this.life = 1;
+                this.decay = Math.random() * 0.02 + 0.02;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.speedY += 0.2;
+                this.life -= this.decay;
+            }
+
+            draw() {
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${this.life})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // プレイヤー描画
+        function drawPlayer() {
+            // グロー
+            const gradient = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, player.width);
+            gradient.addColorStop(0, 'rgba(150, 150, 255, 0.3)');
+            gradient.addColorStop(1, 'rgba(150, 150, 255, 0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.width, 0, Math.PI * 2);
+            ctx.fill();
+
+            // バスケット
+            ctx.strokeStyle = '#a0a0ff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(player.x - player.width / 2, player.y);
+            ctx.lineTo(player.x - player.width / 3, player.y + player.height / 2);
+            ctx.lineTo(player.x + player.width / 3, player.y + player.height / 2);
+            ctx.lineTo(player.x + player.width / 2, player.y);
+            ctx.stroke();
+        }
+
+        // 背景描画
+        function drawBackground() {
+            // グラデーション
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#0a0a2e');
+            gradient.addColorStop(1, '#1a1a4e');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // 星
+            bgStars.forEach(star => {
+                ctx.fillStyle = `rgba(255, 255, 255, ${star.opacity})`;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        // ゲームループ
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            drawBackground();
+
+            // プレイヤー更新
+            player.x += (player.targetX - player.x) * player.speed;
+            player.x = Math.max(player.width / 2, Math.min(width - player.width / 2, player.x));
+
+            // 星スポーン
+            frameCount++;
+            if (frameCount >= starSpawnRate - level * 5) {
+                stars.push(new Star());
+                frameCount = 0;
+            }
+
+            // 星更新
+            stars = stars.filter(star => {
+                const result = star.update();
+                if (result === 'caught') {
+                    score += star.points * level;
+                    createParticles(star.x, star.y, star.hue);
+                    return false;
+                } else if (result === 'missed') {
+                    lives--;
+                    if (lives <= 0) {
+                        endGame();
+                    }
+                    return false;
+                }
+                return true;
+            });
+
+            // パーティクル更新
+            particles = particles.filter(p => {
+                p.update();
+                return p.life > 0;
+            });
+
+            // 描画
+            stars.forEach(star => star.draw());
+            particles.forEach(p => p.draw());
+            drawPlayer();
+
+            // レベルアップ
+            if (score >= level * 100) {
+                level++;
+            }
+
+            // UI更新
+            document.getElementById('score').textContent = score;
+            document.getElementById('level').textContent = level;
+            document.getElementById('lives').textContent = lives;
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // パーティクル作成
+        function createParticles(x, y, hue) {
+            for (let i = 0; i < 15; i++) {
+                particles.push(new Particle(x, y, hue));
+            }
+        }
+
+        // ゲーム開始
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            lives = 3;
+            level = 1;
+            stars = [];
+            particles = [];
+            frameCount = 0;
+
+            document.getElementById('startScreen').classList.remove('active');
+            document.getElementById('gameOverScreen').classList.remove('active');
+
+            gameLoop();
+        }
+
+        // ゲーム終了
+        function endGame() {
+            gameRunning = false;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('starCatcherHighScore', highScore);
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('highScore').textContent = highScore;
+            document.getElementById('gameOverScreen').classList.add('active');
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const clickX = (e.clientX - rect.left) * scaleX;
+            player.targetX = clickX;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const touchX = (e.touches[0].clientX - rect.left) * scaleX;
+            player.targetX = touchX;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const touchX = (e.touches[0].clientX - rect.left) * scaleX;
+            player.targetX = touchX;
+        });
+
+        // 全画面
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                canvas.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期画面表示
+        document.getElementById('startScreen').classList.add('active');
+    </script>
+</body>
+</html>
