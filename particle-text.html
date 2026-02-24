@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Text | Mira's Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        #canvas {
+            display: block;
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            text-align: center;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+
+        .info h1 {
+            font-size: clamp(1.5rem, 5vw, 2.5rem);
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .info p {
+            font-size: clamp(0.8rem, 2vw, 1rem);
+            opacity: 0.8;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .controls button {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h1>✨ Particle Text</h1>
+        <p>触って文字を崩そう | Click or drag to scatter</p>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <button onclick="changeText()">🔄 テキスト変更</button>
+        <button onclick="changeMode()">🎨 モード変更</button>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let particles = [];
+        let mouse = { x: null, y: null, radius: 100 };
+        let animationId;
+
+        const texts = [
+            'Mira',
+            '創造性',
+            'Art',
+            '夢',
+            '未来',
+            'Spark',
+            '星',
+            '感動'
+        ];
+        let currentTextIndex = 0;
+
+        const modes = ['rainbow', 'fire', 'ice', 'neon'];
+        let currentModeIndex = 0;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            init();
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.targetX = x;
+                this.targetY = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.size = Math.random() * 3 + 2;
+                this.color = this.getColor();
+            }
+
+            getColor() {
+                const mode = modes[currentModeIndex];
+                switch(mode) {
+                    case 'rainbow':
+                        return `hsl(${Math.random() * 360}, 70%, 60%)`;
+                    case 'fire':
+                        return `hsl(${Math.random() * 60}, 100%, ${50 + Math.random() * 30}%)`;
+                    case 'ice':
+                        return `hsl(${180 + Math.random() * 60}, 70%, ${60 + Math.random() * 30}%)`;
+                    case 'neon':
+                        const neonColors = ['#ff00ff', '#00ffff', '#ffff00', '#ff0080'];
+                        return neonColors[Math.floor(Math.random() * neonColors.length)];
+                    default:
+                        return `hsl(${Math.random() * 360}, 70%, 60%)`;
+                }
+            }
+
+            update() {
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < mouse.radius && mouse.x !== null) {
+                    const force = (mouse.radius - distance) / mouse.radius;
+                    const angle = Math.atan2(dy, dx);
+                    const forceX = Math.cos(angle) * force * 15;
+                    const forceY = Math.sin(angle) * force * 15;
+                    this.vx -= forceX;
+                    this.vy -= forceY;
+                }
+
+                // Return to target
+                const returnForce = 0.03;
+                const targetDx = this.targetX - this.x;
+                const targetDy = this.targetY - this.y;
+                this.vx += targetDx * returnForce;
+                this.vy += targetDy * returnForce;
+
+                // Friction
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function init() {
+            particles = [];
+
+            const fontSize = Math.min(canvas.width, canvas.height) * 0.2;
+            ctx.font = `bold ${fontSize}px Arial`;
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            const text = texts[currentTextIndex];
+            ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const step = 6;
+            for (let y = 0; y < canvas.height; y += step) {
+                for (let x = 0; x < canvas.width; x += step) {
+                    const index = (y * canvas.width + x) * 4;
+                    const alpha = imageData.data[index + 3];
+
+                    if (alpha > 128) {
+                        particles.push(new Particle(x, y));
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function changeText() {
+            currentTextIndex = (currentTextIndex + 1) % texts.length;
+            init();
+        }
+
+        function changeMode() {
+            currentModeIndex = (currentModeIndex + 1) % modes.length;
+            particles.forEach(p => p.color = p.getColor());
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            // Explosion effect
+            const clickRadius = 150;
+            particles.forEach(particle => {
+                const dx = e.clientX - particle.x;
+                const dy = e.clientY - particle.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < clickRadius) {
+                    const force = (clickRadius - distance) / clickRadius;
+                    const angle = Math.atan2(dy, dx);
+                    particle.vx -= Math.cos(angle) * force * 25;
+                    particle.vy -= Math.sin(angle) * force * 25;
+                }
+            });
+        });
+
+        // Initialize
+        resize();
+        animate();
+    </script>
+</body>
+</html>
