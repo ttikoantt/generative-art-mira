@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Timing Perfect</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: #fff;
+            z-index: 100;
+        }
+
+        .score {
+            font-size: 48px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .combo {
+            font-size: 24px;
+            margin-top: 5px;
+            color: #ffd700;
+            font-weight: bold;
+        }
+
+        .high-score {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 5px;
+        }
+
+        .message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-size: 32px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(240, 147, 251, 0.8);
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 200;
+        }
+
+        .message.show {
+            opacity: 1;
+        }
+
+        .start-screen, .game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            z-index: 300;
+        }
+
+        .start-screen h1, .game-over-screen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .start-screen p, .game-over-screen p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            color: rgba(255, 255, 255, 0.8);
+            text-align: center;
+            line-height: 1.6;
+            padding: 0 20px;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 20px;
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            border: none;
+            border-radius: 50px;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 5px 20px rgba(240, 147, 251, 0.4);
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 30px rgba(240, 147, 251, 0.6);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .final-score {
+            font-size: 64px;
+            font-weight: bold;
+            margin: 20px 0;
+            color: #ffd700;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            background: rgba(240, 147, 251, 0.8);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 100;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 768px) {
+            .score {
+                font-size: 36px;
+            }
+
+            .combo {
+                font-size: 20px;
+            }
+
+            .start-screen h1, .game-over-screen h1 {
+                font-size: 36px;
+            }
+
+            .final-score {
+                font-size: 48px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui">
+        <div class="score" id="score">0</div>
+        <div class="combo" id="combo"></div>
+        <div class="high-score" id="highScore">Best: 0</div>
+    </div>
+
+    <div class="message" id="message"></div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="start-screen" id="startScreen">
+        <h1>⏱️ Timing Perfect</h1>
+        <p>
+            回る円が<br>
+            上部のマーカーと重なった瞬間に<br>
+            タップ！<br><br>
+            タイミングが完璧なほど高得点
+        </p>
+        <button class="btn" onclick="startGame()">スタート</button>
+    </div>
+
+    <div class="game-over-screen hidden" id="gameOverScreen">
+        <h1>ゲームオーバー</h1>
+        <p>最終スコア</p>
+        <div class="final-score" id="finalScore">0</div>
+        <p>ハイスコア: <span id="finalHighScore">0</span></p>
+        <button class="btn" onclick="startGame()">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let centerX, centerY;
+        let rotation = 0;
+        let targetRotation = 0;
+        let rotationSpeed = 0.03;
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let highScore = localStorage.getItem('timingPerfectHighScore') || 0;
+        let lives = 3;
+        let gameRunning = false;
+        let difficulty = 1;
+
+        const PERFECT_WINDOW = 0.15;
+        const GOOD_WINDOW = 0.3;
+        const OK_WINDOW = 0.5;
+
+        function resize() {
+            width = canvas.width = Math.min(window.innerWidth, 600);
+            height = canvas.height = Math.min(window.innerHeight, 800);
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+
+        function startGame() {
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            lives = 3;
+            difficulty = 1;
+            rotationSpeed = 0.03;
+            rotation = 0;
+            targetRotation = -Math.PI / 2;
+
+            updateScore();
+            document.getElementById('highScore').textContent = `Best: ${highScore}`;
+
+            gameRunning = true;
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('timingPerfectHighScore', highScore);
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalHighScore').textContent = highScore;
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        function updateScore() {
+            document.getElementById('score').textContent = score;
+
+            if (combo > 1) {
+                document.getElementById('combo').textContent = `${combo} combo!`;
+            } else {
+                document.getElementById('combo').textContent = '';
+            }
+        }
+
+        function showMessage(text, color) {
+            const msg = document.getElementById('message');
+            msg.textContent = text;
+            msg.style.color = color;
+            msg.classList.add('show');
+            setTimeout(() => msg.classList.remove('show'), 500);
+        }
+
+        function checkTiming() {
+            if (!gameRunning) return;
+
+            // 現在の角度を -PI から PI の範囲に正規化
+            let currentAngle = rotation % (Math.PI * 2);
+            if (currentAngle > Math.PI) currentAngle -= Math.PI * 2;
+            if (currentAngle < -Math.PI) currentAngle += Math.PI * 2;
+
+            // ターゲットは -PI/2（上部）
+            let targetAngle = -Math.PI / 2;
+            let diff = Math.abs(currentAngle - targetAngle);
+
+            // 円を一周した場合の処理
+            if (diff > Math.PI) {
+                diff = Math.PI * 2 - diff;
+            }
+
+            let points = 0;
+            let message = '';
+            let color = '#fff';
+
+            if (diff < PERFECT_WINDOW) {
+                points = 100 * difficulty;
+                message = 'PERFECT!';
+                color = '#ffd700';
+                combo++;
+                createParticles(centerX, centerY - 120, '#ffd700');
+            } else if (diff < GOOD_WINDOW) {
+                points = 50 * difficulty;
+                message = 'GOOD!';
+                color = '#4ecdc4';
+                combo++;
+                createParticles(centerX, centerY - 120, '#4ecdc4');
+            } else if (diff < OK_WINDOW) {
+                points = 20 * difficulty;
+                message = 'OK';
+                color = '#95e1d3';
+                combo = 0;
+            } else {
+                message = 'MISS';
+                color = '#ff6b6b';
+                combo = 0;
+                lives--;
+                if (lives <= 0) {
+                    gameOver();
+                    return;
+                }
+            }
+
+            score += points;
+            updateScore();
+            showMessage(message, color);
+
+            // 難易度アップ
+            if (combo >= 5) {
+                difficulty = Math.min(difficulty + 0.1, 3);
+                rotationSpeed = Math.min(rotationSpeed + 0.005, 0.08);
+            }
+        }
+
+        // パーティクルエフェクト
+        let particles = [];
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 20; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1,
+                    color: color
+                });
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.03;
+
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function drawParticles() {
+            for (let p of particles) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3 * p.life, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            // メインの円
+            const radius = 120;
+
+            // 円の背景
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // ターゲットマーカー（上部）
+            ctx.beginPath();
+            ctx.arc(centerX, centerY - radius, 15, 0, Math.PI * 2);
+            ctx.fillStyle = '#f5576c';
+            ctx.fill();
+
+            // 回転するインジケーター
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(rotation);
+
+            // インジケーターの線
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(0, -radius);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // インジケーターのボール
+            ctx.beginPath();
+            ctx.arc(0, -radius, 12, 0, Math.PI * 2);
+            let gradient = ctx.createRadialGradient(0, -radius, 0, 0, -radius, 12);
+            gradient.addColorStop(0, '#f093fb');
+            gradient.addColorStop(1, '#f5576c');
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            ctx.restore();
+
+            // 残機表示
+            for (let i = 0; i < lives; i++) {
+                ctx.beginPath();
+                ctx.arc(30 + i * 30, 40, 10, 0, Math.PI * 2);
+                ctx.fillStyle = '#f5576c';
+                ctx.fill();
+            }
+
+            // 難易度表示
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`Speed: ${difficulty.toFixed(1)}x`, centerX, height - 30);
+
+            // パーティクル
+            drawParticles();
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            rotation += rotationSpeed;
+            updateParticles();
+            draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('click', checkTiming);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            checkTiming();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (gameRunning) {
+                    checkTiming();
+                }
+            }
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        resize();
+        document.getElementById('highScore').textContent = `Best: ${highScore}`;
+    </script>
+</body>
+</html>
