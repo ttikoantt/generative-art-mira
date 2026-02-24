@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Flow Field Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            pointer-events: none;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        .info h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(102, 126, 234, 0.3);
+            color: white;
+            border: 1px solid rgba(102, 126, 234, 0.5);
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        .fullscreen-btn:hover {
+            background: rgba(102, 126, 234, 0.5);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="info">
+        <h1>Digital Flow Field Art</h1>
+        <p>クリックでリセット</p>
+    </div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let flowField = [];
+        let cols, rows;
+        const scale = 20;
+        let time = 0;
+        let animationId;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.floor(width / scale) + 1;
+            rows = Math.floor(height / scale) + 1;
+            flowField = new Array(cols * rows);
+        }
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.history = [];
+                this.maxHistory = 5;
+                this.hue = Math.random() * 60 + 220; // Blue to purple range
+            }
+
+            update() {
+                const col = Math.floor(this.x / scale);
+                const row = Math.floor(this.y / scale);
+                const index = col + row * cols;
+
+                if (index >= 0 && index < flowField.length && flowField[index]) {
+                    const angle = flowField[index];
+                    this.vx += Math.cos(angle) * 0.5;
+                    this.vy += Math.sin(angle) * 0.5;
+                }
+
+                // Limit speed
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 3) {
+                    this.vx = (this.vx / speed) * 3;
+                    this.vy = (this.vy / speed) * 3;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Store history
+                this.history.push({ x: this.x, y: this.y });
+                if (this.history.length > this.maxHistory) {
+                    this.history.shift();
+                }
+
+                // Wrap around edges
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+
+                // Slowly change hue
+                this.hue += 0.1;
+                if (this.hue > 320) this.hue = 220;
+            }
+
+            draw() {
+                if (this.history.length < 2) return;
+
+                ctx.beginPath();
+                ctx.moveTo(this.history[0].x, this.history[0].y);
+                for (let i = 1; i < this.history.length; i++) {
+                    ctx.lineTo(this.history[i].x, this.history[i].y);
+                }
+                ctx.strokeStyle = `hsla(${this.hue}, 70%, 60%, 0.5)`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        function createFlowField() {
+            for (let i = 0; i < flowField.length; i++) {
+                const col = i % cols;
+                const row = Math.floor(i / cols);
+                const x = col * scale;
+                const y = row * scale;
+
+                // Perlin noise-like using sine waves
+                const angle = (Math.cos(x * 0.01 + time * 0.5) +
+                              Math.sin(y * 0.01 + time * 0.3) +
+                              Math.sin((x + y) * 0.005 + time)) * Math.PI;
+
+                flowField[i] = angle;
+            }
+        }
+
+        function init() {
+            particles = [];
+            for (let i = 0; i < 800; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function animate() {
+            // Fade effect
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.03)';
+            ctx.fillRect(0, 0, width, height);
+
+            createFlowField();
+            time += 0.005;
+
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function reset() {
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, width, height);
+            init();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+        canvas.addEventListener('click', reset);
+
+        // Initialize
+        resize();
+        init();
+        animate();
+    </script>
+</body>
+</html>
