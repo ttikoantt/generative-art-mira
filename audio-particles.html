@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Reactive Particle Flow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #startOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            cursor: pointer;
+        }
+
+        #startOverlay.hidden {
+            display: none;
+        }
+
+        #startOverlay h1 {
+            color: #0ff;
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            text-shadow: 0 0 20px #0ff;
+        }
+
+        #startOverlay p {
+            color: #888;
+            font-size: 1rem;
+            text-align: center;
+            max-width: 400px;
+            padding: 0 1rem;
+        }
+
+        #startOverlay .hint {
+            margin-top: 2rem;
+            color: #0f0;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        #fullscreenBtn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 255, 255, 0.2);
+            border: 2px solid #0ff;
+            color: #0ff;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            z-index: 50;
+            transition: all 0.3s;
+        }
+
+        #fullscreenBtn:hover {
+            background: rgba(0, 255, 255, 0.4);
+            transform: scale(1.05);
+        }
+
+        #info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            z-index: 50;
+        }
+    </style>
+</head>
+<body>
+    <div id="startOverlay">
+        <h1>Audio Reactive Particles</h1>
+        <p>音楽や音声に反応して、パーティクルが流れます<br>マイクの使用を許可してください</p>
+        <p class="hint">Click or Tap to Start</p>
+    </div>
+
+    <div id="info">
+        Audio Level: <span id="audioLevel">0</span>%
+    </div>
+
+    <button id="fullscreenBtn">Fullscreen</button>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startOverlay = document.getElementById('startOverlay');
+        const audioLevelDisplay = document.getElementById('audioLevel');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let audioLevel = 0;
+        let particles = [];
+        let isStarted = false;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function startAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    const source = audioContext.createMediaStreamSource(stream);
+                    source.connect(analyser);
+                    dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    isStarted = true;
+                    startOverlay.classList.add('hidden');
+                    animate();
+                })
+                .catch(err => {
+                    console.error('Microphone access denied:', err);
+                    alert('マイクの使用が許可されませんでした。このアートはオーディオ入力が必要です。');
+                });
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = canvas.height + 10;
+                this.baseSize = Math.random() * 3 + 1;
+                this.size = this.baseSize;
+                this.baseSpeed = Math.random() * 2 + 1;
+                this.speed = this.baseSpeed;
+                this.angle = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.02;
+                this.life = 0;
+                this.maxLife = Math.random() * 200 + 100;
+                this.hue = Math.random() * 60 + 180; // Cyan to Blue
+            }
+
+            update(frequencyData) {
+                this.life++;
+
+                // Audio reactivity
+                const bass = frequencyData.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+                const mid = frequencyData.slice(10, 50).reduce((a, b) => a + b, 0) / 40;
+                const high = frequencyData.slice(50, 100).reduce((a, b) => a + b, 0) / 50;
+
+                const audioFactor = (bass + mid + high) / 255;
+
+                // Speed based on audio
+                this.speed = this.baseSpeed * (1 + audioFactor * 3);
+
+                // Size pulsing
+                this.size = this.baseSize * (1 + audioFactor * 2);
+
+                // Movement
+                this.y -= this.speed;
+                this.angle += this.rotationSpeed + (audioFactor * 0.05);
+
+                // Horizontal movement based on frequency
+                this.x += Math.sin(this.angle) * (2 + audioFactor * 3);
+
+                // Color shift based on audio
+                if (audioFactor > 0.5) {
+                    this.hue = 180 + audioFactor * 60; // Cyan to Purple
+                }
+
+                // Reset if off screen or too old
+                if (this.y < -50 || this.life > this.maxLife) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = 1 - (this.life / this.maxLife);
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                // Glow effect
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsla(${this.hue}, 100%, 50%, ${alpha})`;
+
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${alpha})`;
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            const particleCount = Math.min(300, (canvas.width * canvas.height) / 5000);
+            for (let i = 0; i < particleCount; i++) {
+                const p = new Particle();
+                p.y = Math.random() * canvas.height; // Distribute initially
+                p.life = Math.random() * p.maxLife;
+                particles.push(p);
+            }
+        }
+
+        function getAudioLevel() {
+            if (!dataArray) return 0;
+
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            return (sum / dataArray.length / 255) * 100;
+        }
+
+        function animate() {
+            // Get audio data
+            if (analyser) {
+                analyser.getByteFrequencyData(dataArray);
+                audioLevel = getAudioLevel();
+                audioLevelDisplay.textContent = Math.round(audioLevel);
+            }
+
+            // Clear with trail effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw particles
+            particles.forEach(particle => {
+                particle.update(dataArray || new Uint8Array(128).fill(0));
+                particle.draw();
+            });
+
+            // Draw audio visualization bars at bottom
+            if (dataArray) {
+                const barWidth = canvas.width / dataArray.length;
+                ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
+                for (let i = 0; i < dataArray.length; i++) {
+                    const barHeight = (dataArray[i] / 255) * 100;
+                    ctx.fillRect(
+                        i * barWidth,
+                        canvas.height - barHeight,
+                        barWidth - 1,
+                        barHeight
+                    );
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event Listeners
+        startOverlay.addEventListener('click', startAudio);
+        startOverlay.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startAudio();
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            initParticles();
+        });
+
+        // Initialize
+        resizeCanvas();
+        initParticles();
+    </script>
+</body>
+</html>
