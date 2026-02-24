@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circle Dodge - 円形回避ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 600px;
+            padding: 20px;
+        }
+        
+        h1 {
+            color: #ff6b6b;
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin-bottom: 5px;
+            text-shadow: 0 0 20px #ff6b6b;
+            letter-spacing: 0.1em;
+        }
+        
+        .subtitle {
+            color: #888;
+            font-size: clamp(0.7rem, 2vw, 0.9rem);
+            margin-bottom: 20px;
+        }
+        
+        .score-display {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 15px;
+        }
+        
+        .score-item {
+            color: #fff;
+            font-size: 1.2rem;
+        }
+        
+        .score-item span {
+            color: #ff6b6b;
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+        
+        #canvas {
+            background: radial-gradient(circle at center, #1a1a2e 0%, #0a0a0f 100%);
+            border-radius: 20px;
+            box-shadow: 0 0 40px rgba(255, 107, 107, 0.3);
+            max-width: 100%;
+            cursor: pointer;
+            touch-action: none;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+            border: none;
+            color: white;
+            padding: 12px 30px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(255, 107, 107, 0.5);
+        }
+        
+        .info {
+            color: #666;
+            font-size: 0.85rem;
+            margin-top: 15px;
+        }
+        
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 107, 107, 0.2);
+            border: 2px solid #ff6b6b;
+            color: #ff6b6b;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .fullscreen-btn:hover {
+            background: rgba(255, 107, 107, 0.4);
+            transform: scale(1.1);
+        }
+        
+        @media (max-width: 768px) {
+            .fullscreen-btn {
+                width: 45px;
+                height: 45px;
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="fullscreen-btn" onclick="toggleFullscreen()">⛶</div>
+    
+    <div class="container">
+        <h1>CIRCLE DODGE</h1>
+        <p class="subtitle">中心から広がる円を避けろ！</p>
+        
+        <div class="score-display">
+            <div class="score-item">SCORE: <span id="score">0</span></div>
+            <div class="score-item">BEST: <span id="best">0</span></div>
+        </div>
+        
+        <canvas id="canvas"></canvas>
+        
+        <div class="controls">
+            <button id="startBtn" onclick="startGame()">▶ スタート</button>
+        </div>
+        
+        <p class="info">タップ/クリックでプレイヤーを移動</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let isRunning = false;
+        let score = 0;
+        let bestScore = localStorage.getItem('circleDodgeBest') || 0;
+        let animationId;
+        let lastSpawnTime = 0;
+        let difficulty = 1;
+        
+        const player = {
+            x: 0,
+            y: 0,
+            radius: 15,
+            targetX: 0,
+            targetY: 0,
+            color: '#ff6b6b'
+        };
+        
+        let circles = [];
+        let particles = [];
+        
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 250, 500);
+            canvas.width = size;
+            canvas.height = size;
+            
+            // プレイヤーを中心に初期化
+            if (!isRunning) {
+                player.x = canvas.width / 2;
+                player.y = canvas.height / 2;
+                player.targetX = player.x;
+                player.targetY = player.y;
+            }
+        }
+        
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        document.getElementById('best').textContent = bestScore;
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // タッチ/マウス操作
+        function handleInput(e) {
+            if (!isRunning) return;
+            
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            
+            let clientX, clientY;
+            if (e.touches) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            
+            player.targetX = clientX - rect.left;
+            player.targetY = clientY - rect.top;
+        }
+        
+        canvas.addEventListener('mousedown', handleInput);
+        canvas.addEventListener('touchstart', handleInput, { passive: false });
+        canvas.addEventListener('touchmove', handleInput, { passive: false });
+        
+        function spawnCircle() {
+            const side = Math.floor(Math.random() * 4);
+            let x, y;
+            
+            // 4方向から出現
+            switch (side) {
+                case 0: // 上
+                    x = canvas.width / 2;
+                    y = 0;
+                    break;
+                case 1: // 右
+                    x = canvas.width;
+                    y = canvas.height / 2;
+                    break;
+                case 2: // 下
+                    x = canvas.width / 2;
+                    y = canvas.height;
+                    break;
+                case 3: // 左
+                    x = 0;
+                    y = canvas.height / 2;
+                    break;
+            }
+            
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const angle = Math.atan2(centerY - y, centerX - x);
+            
+            circles.push({
+                x: x,
+                y: y,
+                radius: 10,
+                maxRadius: 30 + Math.random() * 40,
+                vx: Math.cos(angle) * (2 + difficulty * 0.5),
+                vy: Math.sin(angle) * (2 + difficulty * 0.5),
+                color: `hsl(${Math.random() * 60 + 330}, 70%, 60%)`,
+                expanding: true
+            });
+        }
+        
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                const angle = (Math.PI * 2 / 15) * i;
+                const speed = 3 + Math.random() * 3;
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    radius: 3 + Math.random() * 3,
+                    color: color,
+                    life: 1
+                });
+            }
+        }
+        
+        function update(timestamp) {
+            if (!isRunning) return;
+            
+            // プレイヤーの移動（スムーズに）
+            const dx = player.targetX - player.x;
+            const dy = player.targetY - player.y;
+            player.x += dx * 0.15;
+            player.y += dy * 0.15;
+            
+            // 円の生成
+            if (timestamp - lastSpawnTime > 1500 - difficulty * 100) {
+                spawnCircle();
+                lastSpawnTime = timestamp;
+            }
+            
+            // 冒険の更新
+            circles.forEach((circle, index) => {
+                circle.x += circle.vx;
+                circle.y += circle.vy;
+                
+                if (circle.expanding) {
+                    circle.radius += 0.5;
+                    if (circle.radius >= circle.maxRadius) {
+                        circle.expanding = false;
+                    }
+                }
+                
+                // 画面外に出たら削除
+                if (circle.x < -50 || circle.x > canvas.width + 50 ||
+                    circle.y < -50 || circle.y > canvas.height + 50) {
+                    circles.splice(index, 1);
+                    score++;
+                    document.getElementById('score').textContent = score;
+                    
+                    // 難易度上昇
+                    if (score % 10 === 0) {
+                        difficulty++;
+                    }
+                }
+                
+                // 衝突判定
+                const dist = Math.hypot(player.x - circle.x, player.y - circle.y);
+                if (dist < player.radius + circle.radius) {
+                    gameOver();
+                }
+            });
+            
+            // パーティクルの更新
+            particles.forEach((p, index) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.03;
+                p.radius *= 0.95;
+                
+                if (p.life <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+        }
+        
+        function draw() {
+            // 背景をクリア
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 円を描画
+            circles.forEach(circle => {
+                ctx.beginPath();
+                ctx.arc(circle.x, circle.y, circle.radius, 0, Math.PI * 2);
+                ctx.fillStyle = circle.color;
+                ctx.globalAlpha = 0.7;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+                
+                // 光沢効果
+                ctx.beginPath();
+                ctx.arc(circle.x - circle.radius * 0.3, circle.y - circle.radius * 0.3, 
+                        circle.radius * 0.2, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.fill();
+            });
+            
+            // パーティクル
+            particles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            });
+            
+            // プレイヤー
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            
+            const gradient = ctx.createRadialGradient(
+                player.x, player.y, 0,
+                player.x, player.y, player.radius
+            );
+            gradient.addColorStop(0, '#ff6b6b');
+            gradient.addColorStop(1, '#ee5a5a');
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            // プレイヤーの光沢
+            ctx.beginPath();
+            ctx.arc(player.x - 4, player.y - 4, 5, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.fill();
+        }
+        
+        function gameLoop(timestamp) {
+            if (!isRunning) return;
+            
+            update(timestamp);
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+        
+        function startGame() {
+            isRunning = true;
+            score = 0;
+            difficulty = 1;
+            circles = [];
+            particles = [];
+            lastSpawnTime = 0;
+            
+            player.x = canvas.width / 2;
+            player.y = canvas.height / 2;
+            player.targetX = player.x;
+            player.targetY = player.y;
+            
+            document.getElementById('score').textContent = '0';
+            document.getElementById('startBtn').textContent = 'プレイ中...';
+            document.getElementById('startBtn').disabled = true;
+            
+            gameLoop(0);
+        }
+        
+        function gameOver() {
+            isRunning = false;
+            cancelAnimationFrame(animationId);
+            
+            // パーティクルエフェクト
+            createParticles(player.x, player.y, '#ff6b6b');
+            
+            // ベストスコア更新
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('circleDodgeBest', bestScore);
+                document.getElementById('best').textContent = bestScore;
+            }
+            
+            // ゲームオーバー画面
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.font = 'bold 36px Courier New';
+            ctx.fillStyle = '#ff6b6b';
+            ctx.textAlign = 'center';
+            ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 30);
+            
+            ctx.font = '20px Courier New';
+            ctx.fillStyle = '#fff';
+            ctx.fillText(`Score: ${score}`, canvas.width / 2, canvas.height / 2 + 10);
+            
+            if (score >= bestScore && score > 0) {
+                ctx.fillStyle = '#ffff00';
+                ctx.fillText('🎉 NEW BEST! 🎉', canvas.width / 2, canvas.height / 2 + 50);
+            }
+            
+            document.getElementById('startBtn').textContent = '▶ もう一度';
+            document.getElementById('startBtn').disabled = false;
+        }
+        
+        // 初期画面
+        function drawIdle() {
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // デモ用の円
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            for (let i = 0; i < 3; i++) {
+                const radius = 30 + i * 25;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(255, 107, 107, ${0.5 - i * 0.15})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+            
+            ctx.font = '16px Courier New';
+            ctx.fillStyle = '#ff6b6b';
+            ctx.textAlign = 'center';
+            ctx.fillText('タップしてスタート', centerX, centerY + 120);
+        }
+        
+        drawIdle();
+        
+        canvas.addEventListener('click', () => {
+            if (!isRunning) {
+                startGame();
+            }
+        });
+    </script>
+</body>
+</html>
