@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Art Generator | Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: #e0e0e0;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #00d4ff;
+            text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: rgba(0, 212, 255, 0.2);
+            border: 2px solid #00d4ff;
+            color: #00d4ff;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: rgba(0, 212, 255, 0.4);
+            transform: scale(1.05);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .canvas-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            border: 3px solid #00d4ff;
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+            cursor: crosshair;
+            max-width: 100%;
+            height: auto;
+        }
+
+        .info {
+            text-align: center;
+            font-size: 0.85rem;
+            color: #888;
+        }
+
+        .color-palette {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        .color-swatch {
+            width: 40px;
+            height: 40px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .color-swatch:hover,
+        .color-swatch.selected {
+            border-color: #00d4ff;
+            transform: scale(1.1);
+            box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.2rem;
+            }
+
+            button {
+                padding: 8px 16px;
+                font-size: 0.8rem;
+            }
+
+            .color-swatch {
+                width: 35px;
+                height: 35px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 Pixel Art Generator</h1>
+
+    <div class="color-palette" id="palette"></div>
+
+    <div class="controls">
+        <button onclick="generateArt()">🎲 Generate</button>
+        <button onclick="clearCanvas()">🗑️ Clear</button>
+        <button onclick="downloadArt()">💾 Download</button>
+        <button onclick="randomPalette()">🌈 Random Palette</button>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="canvas" width="480" height="480"></canvas>
+    </div>
+
+    <p class="info">Click or drag to paint | Choose a color from the palette</p>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const paletteEl = document.getElementById('palette');
+
+        const PIXEL_SIZE = 20;
+        const GRID_SIZE = canvas.width / PIXEL_SIZE;
+
+        let isDrawing = false;
+        let selectedColor = '#00d4ff';
+        let currentPalette = [];
+
+        // Pixel art color palettes
+        const palettes = [
+            ['#00d4ff', '#0099cc', '#006699', '#003366', '#001a33'],
+            ['#ff6b6b', '#ee5a5a', '#d63031', '#b71c1c', '#7f0000'],
+            ['#00b894', '#00a885', '#009974', '#007a5a', '#005c3d'],
+            ['#fdcb6e', '#feca57', '#ff9f43', '#ff9f1a', '#f39c12'],
+            ['#a29bfe', '#6c5ce7', '#5b4cdb', '#4a3cc9', '#392eb7'],
+            ['#fd79a8', '#e84393', '#d63031', '#c0392b', '#a93226'],
+            ['#00cec9', '#00b5b2', '#009c9b', '#008384', '#006a6a'],
+            ['#fab1a0', '#e17055', '#d63031', '#c0392b', '#a93226'],
+        ];
+
+        function init() {
+            randomPalette();
+            generateArt();
+            setupPalette();
+            setupDrawing();
+        }
+
+        function randomPalette() {
+            currentPalette = palettes[Math.floor(Math.random() * palettes.length)];
+            selectedColor = currentPalette[0];
+            setupPalette();
+        }
+
+        function setupPalette() {
+            paletteEl.innerHTML = '';
+            currentPalette.forEach((color, index) => {
+                const swatch = document.createElement('div');
+                swatch.className = 'color-swatch' + (index === 0 ? ' selected' : '');
+                swatch.style.backgroundColor = color;
+                swatch.onclick = () => selectColor(color, swatch);
+                paletteEl.appendChild(swatch);
+            });
+        }
+
+        function selectColor(color, swatch) {
+            selectedColor = color;
+            document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+            swatch.classList.add('selected');
+        }
+
+        function setupDrawing() {
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseout', stopDrawing);
+
+            canvas.addEventListener('touchstart', handleTouch);
+            canvas.addEventListener('touchmove', handleTouchMove);
+            canvas.addEventListener('touchend', stopDrawing);
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            draw(e);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / PIXEL_SIZE) * PIXEL_SIZE;
+            const y = Math.floor((e.clientY - rect.top) / PIXEL_SIZE) * PIXEL_SIZE;
+
+            ctx.fillStyle = selectedColor;
+            ctx.fillRect(x, y, PIXEL_SIZE, PIXEL_SIZE);
+            ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+            ctx.strokeRect(x, y, PIXEL_SIZE, PIXEL_SIZE);
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        function handleTouch(e) {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('mousedown', {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            canvas.dispatchEvent(mouseEvent);
+        }
+
+        function handleTouchMove(e) {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('mousemove', {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            canvas.dispatchEvent(mouseEvent);
+        }
+
+        function generateArt() {
+            clearCanvas();
+
+            // Generate different patterns randomly
+            const patterns = ['blocks', 'gradient', 'noise', 'circles', 'lines'];
+            const pattern = patterns[Math.floor(Math.random() * patterns.length)];
+
+            switch(pattern) {
+                case 'blocks':
+                    generateBlocks();
+                    break;
+                case 'gradient':
+                    generateGradient();
+                    break;
+                case 'noise':
+                    generateNoise();
+                    break;
+                case 'circles':
+                    generateCircles();
+                    break;
+                case 'lines':
+                    generateLines();
+                    break;
+            }
+        }
+
+        function generateBlocks() {
+            const blockSize = Math.floor(Math.random() * 3) + 2;
+
+            for (let i = 0; i < 20; i++) {
+                const color = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+                const x = Math.floor(Math.random() * (GRID_SIZE / blockSize)) * blockSize * PIXEL_SIZE;
+                const y = Math.floor(Math.random() * (GRID_SIZE / blockSize)) * blockSize * PIXEL_SIZE;
+
+                for (let dx = 0; dx < blockSize; dx++) {
+                    for (let dy = 0; dy < blockSize; dy++) {
+                        if (Math.random() > 0.2) {
+                            ctx.fillStyle = color;
+                            ctx.fillRect(x + dx * PIXEL_SIZE, y + dy * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+                            ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+                            ctx.strokeRect(x + dx * PIXEL_SIZE, y + dy * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+                        }
+                    }
+                }
+            }
+        }
+
+        function generateGradient() {
+            for (let x = 0; x < GRID_SIZE; x++) {
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    const colorIndex = Math.floor((x + y) / (GRID_SIZE * 2) * currentPalette.length);
+                    const color = currentPalette[Math.min(colorIndex, currentPalette.length - 1)];
+
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+                    ctx.strokeStyle = 'rgba(0,0,0,0.05)';
+                    ctx.strokeRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+                }
+            }
+        }
+
+        function generateNoise() {
+            for (let x = 0; x < GRID_SIZE; x++) {
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    if (Math.random() > 0.7) {
+                        const color = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+                        ctx.fillStyle = color;
+                        ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+                        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+                        ctx.strokeRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+                    }
+                }
+            }
+        }
+
+        function generateCircles() {
+            const centerX = Math.floor(GRID_SIZE / 2);
+            const centerY = Math.floor(GRID_SIZE / 2);
+            const maxRadius = Math.floor(GRID_SIZE / 2);
+
+            for (let r = maxRadius; r > 0; r--) {
+                const color = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+
+                for (let angle = 0; angle < Math.PI * 2; angle += 0.1) {
+                    const x = Math.floor(centerX + Math.cos(angle) * r);
+                    const y = Math.floor(centerY + Math.sin(angle) * r);
+
+                    if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+                        if (Math.random() > 0.3) {
+                            ctx.fillStyle = color;
+                            ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+                            ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+                            ctx.strokeRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+                        }
+                    }
+                }
+            }
+        }
+
+        function generateLines() {
+            for (let i = 0; i < 15; i++) {
+                const color = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+                const startX = Math.floor(Math.random() * GRID_SIZE);
+                const startY = Math.floor(Math.random() * GRID_SIZE);
+                const length = Math.floor(Math.random() * 10) + 5;
+                const horizontal = Math.random() > 0.5;
+
+                for (let j = 0; j < length; j++) {
+                    const x = horizontal ? startX + j : startX;
+                    const y = horizontal ? startY : startY + j;
+
+                    if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+                        ctx.fillStyle = color;
+                        ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+                        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+                        ctx.strokeRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+                    }
+                }
+            }
+        }
+
+        function clearCanvas() {
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            for (let x = 0; x <= canvas.width; x += PIXEL_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= canvas.height; y += PIXEL_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        function downloadArt() {
+            const link = document.createElement('a');
+            link.download = 'pixel-art.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
+        init();
+    </script>
+</body>
+</html>
