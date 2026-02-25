@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Water Ripples Art - 水面の揺らぎ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #0a1628 0%, #1a2a4a 50%, #0d1f3c 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 15px 20px;
+            border-radius: 12px;
+            color: white;
+            z-index: 100;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .controls h2 {
+            font-size: 18px;
+            margin-bottom: 12px;
+            color: #7dd3fc;
+        }
+        
+        .controls p {
+            font-size: 13px;
+            opacity: 0.8;
+            margin-bottom: 8px;
+        }
+        
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+        
+        .fullscreen-btn:hover {
+            background: rgba(0, 0, 0, 0.8);
+            transform: scale(1.05);
+        }
+        
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="controls">
+        <h2>🌊 Water Ripples Art</h2>
+        <p>クリック/タップで波紋を広げよう</p>
+        <p>ダブルタップで色を変更</p>
+    </div>
+    
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ 全画面</button>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let ripples = [];
+        let particles = [];
+        let colorHue = 200;
+        
+        // 設定
+        const config = {
+            rippleSpeed: 3,
+            rippleDecay: 0.015,
+            maxRipples: 15,
+            particleCount: 3,
+            waterColor: { h: 200, s: 70, l: 50 }
+        };
+        
+        // リサイズ処理
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        
+        // 波紋クラス
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = Math.max(width, height) * 0.4;
+                this.alpha = 1;
+                this.hue = colorHue + Math.random() * 40 - 20;
+                this.lineWidth = 3;
+            }
+            
+            update() {
+                this.radius += config.rippleSpeed;
+                this.alpha -= config.rippleDecay;
+                this.lineWidth = 3 * this.alpha;
+                
+                // パーティクルを生成
+                if (Math.random() < 0.3 && particles.length < 100) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = this.radius + Math.random() * 20;
+                    particles.push(new Particle(
+                        this.x + Math.cos(angle) * dist,
+                        this.y + Math.sin(angle) * dist,
+                        this.hue
+                    ));
+                }
+                
+                return this.alpha > 0 && this.radius < this.maxRadius;
+            }
+            
+            draw(ctx) {
+                ctx.save();
+                
+                // 外側の円
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${this.alpha})`;
+                ctx.lineWidth = this.lineWidth;
+                ctx.stroke();
+                
+                // 内側の円
+                if (this.radius > 20) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius - 20, 0, Math.PI * 2);
+                    ctx.strokeStyle = `hsla(${this.hue}, 70%, 50%, ${this.alpha * 0.5})`;
+                    ctx.lineWidth = this.lineWidth * 0.5;
+                    ctx.stroke();
+                }
+                
+                // グロー効果
+                if (this.radius < 100) {
+                    const gradient = ctx.createRadialGradient(
+                        this.x, this.y, 0,
+                        this.x, this.y, this.radius
+                    );
+                    gradient.addColorStop(0, `hsla(${this.hue}, 80%, 60%, ${this.alpha * 0.3})`);
+                    gradient.addColorStop(1, `hsla(${this.hue}, 80%, 60%, 0)`);
+                    
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+                }
+                
+                ctx.restore();
+            }
+        }
+        
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2 - 0.5;
+                this.radius = Math.random() * 3 + 1;
+                this.alpha = 1;
+                this.hue = hue;
+                this.decay = 0.02 + Math.random() * 0.02;
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= this.decay;
+                this.radius *= 0.98;
+                
+                return this.alpha > 0 && this.radius > 0.5;
+            }
+            
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 70%, ${this.alpha})`;
+                ctx.fill();
+                
+                // グロー
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${this.alpha * 0.3})`;
+                ctx.fill();
+            }
+        }
+        
+        // 背景の水の効果
+        let waterOffset = 0;
+        function drawWaterBackground() {
+            waterOffset += 0.01;
+            
+            // グラデーション背景
+            const gradient = ctx.createRadialGradient(
+                width / 2, height / 2, 0,
+                width / 2, height / 2, Math.max(width, height) / 2
+            );
+            gradient.addColorStop(0, `hsla(${colorHue}, 50%, 15%, 1)`);
+            gradient.addColorStop(0.5, `hsla(${colorHue}, 60%, 10%, 1)`);
+            gradient.addColorStop(1, `hsla(${colorHue + 30}, 40%, 5%, 1)`);
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+            
+            // 水面の波
+            ctx.strokeStyle = `hsla(${colorHue}, 60%, 40%, 0.1)`;
+            ctx.lineWidth = 1;
+            
+            for (let y = 0; y < height; y += 30) {
+                ctx.beginPath();
+                for (let x = 0; x <= width; x += 5) {
+                    const waveY = y + Math.sin(x * 0.02 + waterOffset + y * 0.01) * 5;
+                    if (x === 0) {
+                        ctx.moveTo(x, waveY);
+                    } else {
+                        ctx.lineTo(x, waveY);
+                    }
+                }
+                ctx.stroke();
+            }
+        }
+        
+        // クリック/タップイベント
+        let lastClickTime = 0;
+        const doubleClickDelay = 300;
+        
+        function createRipple(x, y) {
+            ripples.push(new Ripple(x, y));
+            
+            // あまりにも多い場合は古いものを削除
+            if (ripples.length > config.maxRipples) {
+                ripples.shift();
+            }
+        }
+        
+        canvas.addEventListener('click', (e) => {
+            const now = Date.now();
+            if (now - lastClickTime < doubleClickDelay) {
+                // ダブルクリック - 色変更
+                colorHue = (colorHue + 60) % 360;
+                config.waterColor.h = colorHue;
+            } else {
+                createRipple(e.clientX, e.clientY);
+            }
+            lastClickTime = now;
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const now = Date.now();
+            if (now - lastClickTime < doubleClickDelay) {
+                colorHue = (colorHue + 60) % 360;
+                config.waterColor.h = colorHue;
+            } else {
+                for (let touch of e.touches) {
+                    createRipple(touch.clientX, touch.clientY);
+                }
+            }
+            lastClickTime = now;
+        });
+        
+        // アニメーションループ
+        function animate() {
+            // 背景を描画（少し残すことでトレイル効果）
+            drawWaterBackground();
+            
+            // 波紋を更新・描画
+            ripples = ripples.filter(ripple => {
+                ripple.update();
+                ripple.draw(ctx);
+                return ripple.alpha > 0;
+            });
+            
+            // パーティクルを更新・描画
+            particles = particles.filter(particle => {
+                particle.update();
+                particle.draw(ctx);
+                return particle.alpha > 0;
+            });
+            
+            // 定期的に自動で波紋
+            if (Math.random() < 0.008 && ripples.length < 3) {
+                createRipple(
+                    Math.random() * width,
+                    Math.random() * height
+                );
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // 開始
+        animate();
+        
+        // 最初の波紋
+        setTimeout(() => {
+            createRipple(width / 2, height / 2);
+        }, 500);
+    </script>
+</body>
+</html>
