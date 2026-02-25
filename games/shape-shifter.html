@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shape Shifter - Shape Switching Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 9/16;
+            max-height: 95vh;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid #fff;
+            color: #fff;
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.3s;
+            border-radius: 10px;
+        }
+
+        #fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.4);
+            transform: scale(1.05);
+        }
+
+        #instructions {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-size: 14px;
+            text-align: center;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div id="instructions">
+        Press SPACE or TAP to switch shapes
+    </div>
+
+    <button id="fullscreen-btn">⛶ Fullscreen</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+        // Set canvas size
+        function resize() {
+            const container = document.getElementById('container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Game state
+        const game = {
+            state: 'playing', // playing, gameover
+            score: 0,
+            highScore: parseInt(localStorage.getItem('shapeShifterHighScore')) || 0,
+            speed: 3,
+            spawnRate: 120,
+            spawnTimer: 0
+        };
+
+        // Player
+        const player = {
+            x: 100,
+            y: 0,
+            size: 30,
+            shape: 'circle', // circle, square, triangle
+            targetY: 0
+        };
+
+        player.y = canvas.height / 2;
+        player.targetY = player.y;
+
+        // Obstacles
+        const obstacles = [];
+
+        // Particles
+        const particles = [];
+
+        // Shapes
+        const shapes = ['circle', 'square', 'triangle'];
+        const shapeColors = {
+            circle: '#ff6b6b',
+            square: '#4ecdc4',
+            triangle: '#ffe66d'
+        };
+
+        function spawnObstacle() {
+            const shape = shapes[Math.floor(Math.random() * shapes.length)];
+            obstacles.push({
+                x: canvas.width + 50,
+                y: Math.random() * (canvas.height - 100) + 50,
+                size: 25 + Math.random() * 15,
+                shape: shape,
+                speed: game.speed
+            });
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    life: 1,
+                    color: color
+                });
+            }
+        }
+
+        function switchShape() {
+            if (game.state !== 'playing') return;
+            
+            const currentIndex = shapes.indexOf(player.shape);
+            player.shape = shapes[(currentIndex + 1) % shapes.length];
+            createParticles(player.x, player.y, shapeColors[player.shape]);
+        }
+
+        function drawShape(ctx, shape, x, y, size, color) {
+            ctx.fillStyle = color;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+
+            switch (shape) {
+                case 'circle':
+                    ctx.beginPath();
+                    ctx.arc(x, y, size, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    break;
+                case 'square':
+                    ctx.fillRect(x - size, y - size, size * 2, size * 2);
+                    ctx.strokeRect(x - size, y - size, size * 2, size * 2);
+                    break;
+                case 'triangle':
+                    ctx.beginPath();
+                    ctx.moveTo(x, y - size);
+                    ctx.lineTo(x + size, y + size);
+                    ctx.lineTo(x - size, y + size);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                    break;
+            }
+        }
+
+        function checkCollision(obs) {
+            const dx = player.x - obs.x;
+            const dy = player.y - obs.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Simple collision detection
+            return distance < (player.size + obs.size) * 0.7;
+        }
+
+        function update() {
+            if (game.state !== 'playing') return;
+
+            // Spawn obstacles
+            game.spawnTimer++;
+            if (game.spawnTimer >= game.spawnRate) {
+                spawnObstacle();
+                game.spawnTimer = 0;
+            }
+
+            // Update obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.x -= obs.speed;
+
+                // Check collision
+                if (checkCollision(obs)) {
+                    if (player.shape === obs.shape) {
+                        // Collect!
+                        game.score += 10;
+                        createParticles(obs.x, obs.y, shapeColors[obs.shape]);
+                        obstacles.splice(i, 1);
+
+                        // Increase difficulty
+                        if (game.score % 50 === 0) {
+                            game.speed += 0.5;
+                            game.spawnRate = Math.max(60, game.spawnRate - 5);
+                        }
+                    } else {
+                        // Game over
+                        game.state = 'gameover';
+                        if (game.score > game.highScore) {
+                            game.highScore = game.score;
+                            localStorage.setItem('shapeShifterHighScore', game.highScore);
+                        }
+                    }
+                    continue;
+                }
+
+                // Remove off-screen obstacles
+                if (obs.x < -50) {
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // Update particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function draw() {
+            // Clear
+            ctx.fillStyle = 'rgba(30, 60, 114, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < canvas.width; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            // Draw particles
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+
+            // Draw obstacles
+            obstacles.forEach(obs => {
+                drawShape(ctx, obs.shape, obs.x, obs.y, obs.size, shapeColors[obs.shape]);
+            });
+
+            // Draw player
+            drawShape(ctx, player.shape, player.x, player.y, player.size, '#fff');
+
+            // Draw score
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 24px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`Score: ${game.score}`, 20, 40);
+
+            ctx.font = '16px Arial';
+            ctx.fillText(`High Score: ${game.highScore}`, 20, 65);
+
+            // Game over screen
+            if (game.state === 'gameover') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 36px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 40);
+
+                ctx.font = '24px Arial';
+                ctx.fillText(`Score: ${game.score}`, canvas.width / 2, canvas.height / 2 + 10);
+
+                if (game.score >= game.highScore) {
+                    ctx.fillStyle = '#ffd700';
+                    ctx.fillText('NEW HIGH SCORE!', canvas.width / 2, canvas.height / 2 + 45);
+                }
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '18px Arial';
+                ctx.fillText('Tap or press SPACE to restart', canvas.width / 2, canvas.height / 2 + 85);
+            }
+
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
+        }
+
+        function restart() {
+            game.state = 'playing';
+            game.score = 0;
+            game.speed = 3;
+            game.spawnRate = 120;
+            obstacles.length = 0;
+            particles.length = 0;
+            player.shape = 'circle';
+            player.y = canvas.height / 2;
+        }
+
+        // Event listeners
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (game.state === 'gameover') {
+                    restart();
+                } else {
+                    switchShape();
+                }
+            }
+        });
+
+        canvas.addEventListener('click', () => {
+            if (game.state === 'gameover') {
+                restart();
+            } else {
+                switchShape();
+            }
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (game.state === 'gameover') {
+                restart();
+            } else {
+                switchShape();
+            }
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // Start game
+        draw();
+    </script>
+</body>
+</html>
