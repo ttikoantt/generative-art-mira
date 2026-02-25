@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Neon Fluid Flow - Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            font-size: 14px;
+            text-shadow: 0 0 10px #0ff;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .info h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+            text-shadow: 0 0 20px #0ff, 0 0 30px #0ff;
+        }
+
+        .info p {
+            opacity: 0.8;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 255, 255, 0.2);
+            border: 2px solid #0ff;
+            color: #0ff;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.4);
+            box-shadow: 0 0 20px #0ff;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                top: 10px;
+                left: 10px;
+            }
+
+            .info h1 {
+                font-size: 18px;
+            }
+
+            .info p {
+                font-size: 12px;
+            }
+
+            .fullscreen-btn {
+                bottom: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h1>Neon Fluid Flow</h1>
+        <p>Touch or move mouse to interact</p>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // パーティクル設定
+        const PARTICLE_COUNT = 300;
+        const INTERACTION_RADIUS = 150;
+        const INTERACTION_FORCE = 0.5;
+
+        // ネオンカラーパレット
+        const colors = [
+            { r: 0, g: 255, b: 255 },    // Cyan
+            { r: 255, g: 0, b: 255 },    // Magenta
+            { r: 255, g: 255, b: 0 },    // Yellow
+            { r: 0, g: 255, b: 128 },    // Spring Green
+            { r: 255, g: 0, b: 128 },    // Deep Pink
+            { r: 128, g: 0, b: 255 }     // Purple
+        ];
+
+        // マウス/タッチ位置
+        let mouse = {
+            x: width / 2,
+            y: height / 2,
+            active: false
+        };
+
+        // パーティクルクラス
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 3 + 1;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.alpha = Math.random() * 0.5 + 0.5;
+                this.life = Math.random() * 100 + 100;
+            }
+
+            update(particles) {
+                // マウス/タッチとの相互作用
+                if (mouse.active) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < INTERACTION_RADIUS) {
+                        const force = (INTERACTION_RADIUS - dist) / INTERACTION_RADIUS;
+                        const angle = Math.atan2(dy, dx);
+
+                        this.vx -= Math.cos(angle) * force * INTERACTION_FORCE;
+                        this.vy -= Math.sin(angle) * force * INTERACTION_FORCE;
+                    }
+                }
+
+                // 近くのパーティクルとの相互作用（簡易流体）
+                for (let other of particles) {
+                    if (other === this) continue;
+
+                    const dx = other.x - this.x;
+                    const dy = other.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 50 && dist > 0) {
+                        const force = (50 - dist) / 50 * 0.02;
+                        const angle = Math.atan2(dy, dx);
+
+                        this.vx += Math.cos(angle) * force;
+                        this.vy += Math.sin(angle) * force;
+                    }
+                }
+
+                // 速度制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 5) {
+                    this.vx = (this.vx / speed) * 5;
+                    this.vy = (this.vy / speed) * 5;
+                }
+
+                // 減速
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+
+                // 移動
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 画面外に出たら反対側から
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+
+                // ライフ減少
+                this.life--;
+                if (this.life <= 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const { r, g, b } = this.color;
+
+                // グロー効果
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius * 3
+                );
+
+                gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${this.alpha})`);
+                gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${this.alpha * 0.3})`);
+                gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 3, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // コア
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${this.alpha})`;
+                ctx.fill();
+            }
+        }
+
+        // パーティクル配列
+        const particles = [];
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            particles.push(new Particle());
+        }
+
+        // 線を引く関数
+        function drawLines() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 80) {
+                        const alpha = (1 - dist / 80) * 0.2;
+                        const { r: r1, g: g1, b: b1 } = particles[i].color;
+                        const { r: r2, g: g2, b: b2 } = particles[j].color;
+
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `rgba(${(r1 + r2) / 2}, ${(g1 + g2) / 2}, ${(b1 + b2) / 2}, ${alpha})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // アニメーションループ
+        function animate() {
+            // トレイル効果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 線を描く
+            drawLines();
+
+            // パーティクルを更新・描画
+            for (let particle of particles) {
+                particle.update(particles);
+                particle.draw();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.active = false;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.active = false;
+        });
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // 全画面表示
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 開始
+        animate();
+    </script>
+</body>
+</html>
