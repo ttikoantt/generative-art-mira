@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>L-System Art - 植物の成長パターン</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        #header {
+            background: rgba(255,255,255,0.05);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        h1 {
+            color: #00ffaa;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        #controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: linear-gradient(135deg, #00ff88, #00ddff);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            color: #0a0a0f;
+            font-family: inherit;
+            font-size: 0.85em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0,255,136,0.5);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        select {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(0,255,136,0.3);
+            padding: 10px 15px;
+            border-radius: 20px;
+            color: #00ffaa;
+            font-family: inherit;
+            font-size: 0.85em;
+            cursor: pointer;
+        }
+
+        select option {
+            background: #0a0a0f;
+            color: #00ffaa;
+        }
+
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #00ff88, #00ddff);
+            border: none;
+            font-size: 1.5em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(0,255,136,0.4);
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+
+        #fullscreen-btn:hover {
+            transform: scale(1.1);
+        }
+
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px 20px;
+            border-radius: 15px;
+            color: #00ffaa;
+            font-size: 0.85em;
+            max-width: 300px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0,255,136,0.2);
+        }
+
+        #info strong {
+            color: #00ff88;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1em;
+            }
+
+            button, select {
+                padding: 8px 15px;
+                font-size: 0.8em;
+            }
+
+            #info {
+                font-size: 0.75em;
+                padding: 10px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>🌿 L-System Art</h1>
+        <div id="controls">
+            <select id="pattern-select">
+                <option value="tree">🌳 木</option>
+                <option value="fern">🌿 シダ</option>
+                <option value="triangle">📐 シェルピンスキー三角形</option>
+                <option value="curve">🌀 ドラゴンカーブ</option>
+                <option value="plant">🌱 植物</option>
+            </select>
+            <button id="generate-btn">生成</button>
+            <button id="random-btn">ランダム</button>
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <button id="fullscreen-btn">⛶</button>
+
+    <div id="info">
+        <strong id="pattern-name">🌳 木</strong><br>
+        <span id="pattern-desc"></span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let currentPattern = 'tree';
+        let animationProgress = 0;
+        let lines = [];
+        let currentLineIndex = 0;
+        let animationId = null;
+
+        // L-Systemパターン定義
+        const patterns = {
+            tree: {
+                name: '🌳 木',
+                desc: '自然界の木の成長パターン',
+                axiom: 'F',
+                rules: { 'F': 'FF+[+F-F-F]-[-F+F+F]' },
+                angle: 25,
+                iterations: 4,
+                length: 8,
+                startAngle: -90,
+                colors: ['#00ff88', '#00ddff', '#ff00aa']
+            },
+            fern: {
+                name: '🌿 シダ',
+                desc: 'シダ植物のフラクタル構造',
+                axiom: 'X',
+                rules: { 'X': 'F+[[X]-X]-F[-FX]+X', 'F': 'FF' },
+                angle: 25,
+                iterations: 5,
+                length: 5,
+                startAngle: -90,
+                colors: ['#00ffaa', '#00ff88', '#88ff00']
+            },
+            triangle: {
+                name: '📐 シェルピンスキー三角形',
+                desc: '自己相似なフラクタル図形',
+                axiom: 'F-G-G',
+                rules: { 'F': 'F-G+F+G-F', 'G': 'GG' },
+                angle: 120,
+                iterations: 5,
+                length: 8,
+                startAngle: 0,
+                colors: ['#ff0066', '#ff6600', '#ffff00']
+            },
+            curve: {
+                name: '🌀 ドラゴンカーブ',
+                desc: 'ドラゴンの形に似たフラクタル曲線',
+                axiom: 'FX',
+                rules: { 'X': 'X+YF+', 'Y': '-FX-Y' },
+                angle: 90,
+                iterations: 10,
+                length: 8,
+                startAngle: 0,
+                colors: ['#aa00ff', '#ff00aa', '#00aaff']
+            },
+            plant: {
+                name: '🌱 植物',
+                desc: '複雑な植物の分枝パターン',
+                axiom: 'X',
+                rules: { 'X': 'F+[[X]-X]-F[-FX]+X' },
+                angle: 30,
+                iterations: 5,
+                length: 6,
+                startAngle: -90,
+                colors: ['#ffaa00', '#ff6600', '#ff0066']
+            }
+        };
+
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+
+        function generateLSystem(pattern, iterations) {
+            let result = pattern.axiom;
+            for (let i = 0; i < iterations; i++) {
+                let nextResult = '';
+                for (let char of result) {
+                    nextResult += pattern.rules[char] || char;
+                }
+                result = nextResult;
+            }
+            return result;
+        }
+
+        function createLines(lsystem, pattern) {
+            lines = [];
+            const stack = [];
+            let x = canvas.width / 2;
+            let y = canvas.height;
+            let angle = pattern.startAngle * Math.PI / 180;
+            const length = pattern.length;
+            const rad = pattern.angle * Math.PI / 180;
+            const step = canvas.width > 600 ? length : length * 0.6;
+
+            // 色のグラデーションを計算
+            const colorStops = pattern.colors;
+            let colorIndex = 0;
+            let lineCount = 0;
+            const linesPerColor = Math.floor(lsystem.length / colorStops.length) + 1;
+
+            for (let i = 0; i < lsystem.length; i++) {
+                const char = lsystem[i];
+
+                if (char === 'F' || char === 'G') {
+                    const newX = x + Math.cos(angle) * step;
+                    const newY = y + Math.sin(angle) * step;
+
+                    lines.push({
+                        x1: x,
+                        y1: y,
+                        x2: newX,
+                        y2: newY,
+                        color: colorStops[colorIndex],
+                        alpha: 0.8
+                    });
+
+                    x = newX;
+                    y = newY;
+                    lineCount++;
+
+                    if (lineCount >= linesPerColor) {
+                        lineCount = 0;
+                        colorIndex = (colorIndex + 1) % colorStops.length;
+                    }
+                } else if (char === '+') {
+                    angle += rad;
+                } else if (char === '-') {
+                    angle -= rad;
+                } else if (char === '[') {
+                    stack.push({ x, y, angle });
+                } else if (char === ']') {
+                    const state = stack.pop();
+                    x = state.x;
+                    y = state.y;
+                    angle = state.angle;
+                }
+            }
+
+            return lines;
+        }
+
+        function drawLines(progress) {
+            const numLines = Math.floor(lines.length * progress);
+            const glowIntensity = Math.sin(progress * Math.PI) * 20;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // グロー効果
+            ctx.shadowBlur = glowIntensity;
+            ctx.shadowColor = '#00ff88';
+
+            for (let i = 0; i < numLines; i++) {
+                const line = lines[i];
+                ctx.beginPath();
+                ctx.moveTo(line.x1, line.y1);
+                ctx.lineTo(line.x2, line.y2);
+                ctx.strokeStyle = line.color;
+                ctx.lineWidth = 1.5;
+                ctx.globalAlpha = line.alpha;
+                ctx.stroke();
+            }
+
+            ctx.globalAlpha = 1;
+            ctx.shadowBlur = 0;
+        }
+
+        function animate() {
+            animationProgress += 0.02;
+
+            if (animationProgress >= 1) {
+                animationProgress = 1;
+                drawLines(1);
+                cancelAnimationFrame(animationId);
+                return;
+            }
+
+            drawLines(animationProgress);
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function generate() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+
+            animationProgress = 0;
+            currentLineIndex = 0;
+
+            const pattern = patterns[currentPattern];
+            const lsystem = generateLSystem(pattern, pattern.iterations);
+
+            // キャンバスサイズに応じて繰り返し回数を調整
+            const iterations = canvas.width > 600 ? pattern.iterations : pattern.iterations - 1;
+            const adjustedLSystem = generateLSystem(pattern, iterations);
+
+            createLines(adjustedLSystem, pattern);
+
+            document.getElementById('pattern-name').textContent = pattern.name;
+            document.getElementById('pattern-desc').textContent = pattern.desc;
+
+            animate();
+        }
+
+        // イベントリスナー
+        document.getElementById('generate-btn').addEventListener('click', generate);
+
+        document.getElementById('random-btn').addEventListener('click', () => {
+            const patternKeys = Object.keys(patterns);
+            currentPattern = patternKeys[Math.floor(Math.random() * patternKeys.length)];
+            document.getElementById('pattern-select').value = currentPattern;
+            generate();
+        });
+
+        document.getElementById('pattern-select').addEventListener('change', (e) => {
+            currentPattern = e.target.value;
+            generate();
+        });
+
+        document.getElementById('fullscreen-btn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            generate();
+        });
+
+        // 初期化
+        resizeCanvas();
+        generate();
+    </script>
+</body>
+</html>
