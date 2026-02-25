@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Typing Rain - タイピング雨</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(to bottom, #0a0a2a, #1a1a4a);
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+        }
+
+        .hud {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(100, 150, 255, 0.5);
+        }
+
+        .hud div {
+            margin: 5px 0;
+        }
+
+        .start-screen, .game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 42, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: white;
+        }
+
+        .start-screen h1, .game-over-screen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(100, 150, 255, 0.8);
+        }
+
+        .start-screen p, .game-over-screen p {
+            font-size: 18px;
+            margin: 10px 0;
+            opacity: 0.8;
+        }
+
+        .start-btn {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: 20px;
+            background: rgba(100, 150, 255, 0.4);
+            border: 2px solid rgba(100, 150, 255, 0.8);
+            color: white;
+            border-radius: 30px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.3s;
+        }
+
+        .start-btn:hover {
+            background: rgba(100, 150, 255, 0.6);
+            transform: scale(1.1);
+        }
+
+        .game-over-screen {
+            display: none;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(100, 150, 255, 0.3);
+            border: 1px solid rgba(100, 150, 255, 0.5);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            z-index: 10;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(100, 150, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 600px) {
+            .start-screen h1, .game-over-screen h1 {
+                font-size: 32px;
+            }
+            .hud {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="hud">
+        <div>Score: <span id="score">0</span></div>
+        <div>Lives: <span id="lives">❤️❤️❤️</span></div>
+        <div>Level: <span id="level">1</span></div>
+    </div>
+
+    <div class="start-screen" id="startScreen">
+        <h1>⌨️ Typing Rain</h1>
+        <p>雨粒の文字をタイピングして消そう！</p>
+        <p>キーボードの同じキーを押してね</p>
+        <button class="start-btn" id="startBtn">スタート</button>
+    </div>
+
+    <div class="game-over-screen" id="gameOverScreen">
+        <h1>Game Over</h1>
+        <p>Final Score: <span id="finalScore">0</span></p>
+        <p>Level Reached: <span id="finalLevel">1</span></p>
+        <button class="start-btn" id="restartBtn">もう一度</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">🖥️ Fullscreen</button>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const scoreEl = document.getElementById('score');
+        const livesEl = document.getElementById('lives');
+        const levelEl = document.getElementById('level');
+        const finalScoreEl = document.getElementById('finalScore');
+        const finalLevelEl = document.getElementById('finalLevel');
+
+        let gameState = 'start'; // start, playing, gameover
+        let score = 0;
+        let lives = 3;
+        let level = 1;
+        let drops = [];
+        let particles = [];
+        let spawnRate = 2000;
+        let lastSpawn = 0;
+        let combo = 0;
+        let lastTypedChar = '';
+
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Rain drop with character
+        class CharDrop {
+            constructor() {
+                this.char = chars[Math.floor(Math.random() * chars.length)];
+                this.x = 50 + Math.random() * (canvas.width - 100);
+                this.y = -30;
+                this.speed = 1 + level * 0.3 + Math.random() * 0.5;
+                this.fontSize = 24 + Math.random() * 12;
+                this.hue = Math.random() * 60 + 180; // Blue-cyan range
+                this.isMatched = false;
+                this.opacity = 1;
+            }
+
+            update() {
+                if (!this.isMatched) {
+                    this.y += this.speed;
+                } else {
+                    this.opacity -= 0.1;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+                ctx.font = `bold ${this.fontSize}px 'Courier New', monospace`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                // Glow effect
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = `hsl(${this.hue}, 80%, 60%)`;
+
+                // Text color
+                if (this.isMatched) {
+                    ctx.fillStyle = '#00ff00';
+                } else {
+                    ctx.fillStyle = `hsl(${this.hue}, 80%, 70%)`;
+                }
+
+                ctx.fillText(this.char, this.x, this.y);
+
+                // Underline for matched
+                if (this.isMatched) {
+                    ctx.strokeStyle = '#00ff00';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - 15, this.y + this.fontSize/2 + 5);
+                    ctx.lineTo(this.x + 15, this.y + this.fontSize/2 + 5);
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+
+            isOffScreen() {
+                return this.y > canvas.height + 50 || this.opacity <= 0;
+            }
+        }
+
+        // Particle effect
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() - 0.5) * 8;
+                this.life = 1;
+                this.color = color;
+                this.size = 3 + Math.random() * 4;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 0.03;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Create particles
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        // Update HUD
+        function updateHUD() {
+            scoreEl.textContent = score;
+            livesEl.textContent = '❤️'.repeat(Math.max(0, lives));
+            levelEl.textContent = level;
+        }
+
+        // Start game
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            lives = 3;
+            level = 1;
+            combo = 0;
+            drops = [];
+            particles = [];
+            spawnRate = 2000;
+            updateHUD();
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            gameOverScreen.style.display = 'none';
+        }
+
+        // Game over
+        function endGame() {
+            gameState = 'gameover';
+            finalScoreEl.textContent = score;
+            finalLevelEl.textContent = level;
+            gameOverScreen.style.display = 'flex';
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        // Input handling
+        document.addEventListener('keydown', (e) => {
+            if (gameState !== 'playing') return;
+
+            const key = e.key.toUpperCase();
+
+            // Find matching drops
+            const matches = drops.filter(d => 
+                !d.isMatched && d.char === key && d.y > 0 && d.y < canvas.height - 50
+            );
+
+            if (matches.length > 0) {
+                // Get lowest matching drop
+                const target = matches.reduce((a, b) => a.y > b.y ? a : b);
+                target.isMatched = true;
+
+                combo++;
+                const comboBonus = Math.min(combo, 10);
+                score += 10 * comboBonus;
+
+                createParticles(target.x, target.y, '#00ff00');
+
+                // Level up
+                if (score >= level * 100) {
+                    level++;
+                    spawnRate = Math.max(500, 2000 - level * 150);
+                }
+            } else {
+                combo = 0;
+            }
+
+            updateHUD();
+        });
+
+        // Button handlers
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // Game loop
+        function gameLoop(timestamp) {
+            // Clear
+            ctx.fillStyle = 'rgba(10, 10, 42, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (gameState === 'playing') {
+                // Spawn drops
+                if (timestamp - lastSpawn > spawnRate) {
+                    drops.push(new CharDrop());
+                    lastSpawn = timestamp;
+                }
+
+                // Update drops
+                drops.forEach(drop => drop.update());
+
+                // Check for drops that hit bottom
+                drops.forEach(drop => {
+                    if (!drop.isMatched && drop.y > canvas.height - 30) {
+                        drop.isMatched = true;
+                        lives--;
+                        combo = 0;
+                        updateHUD();
+
+                        if (lives <= 0) {
+                            endGame();
+                        }
+                    }
+                });
+
+                // Update particles
+                particles.forEach(p => p.update());
+                particles = particles.filter(p => p.life > 0);
+            }
+
+            // Remove off-screen drops
+            drops = drops.filter(d => !d.isOffScreen());
+
+            // Draw everything
+            drops.forEach(drop => drop.draw());
+            particles.forEach(p => p.draw());
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start game loop
+        requestAnimationFrame(gameLoop);
+
+        // Mobile note
+        if ('ontouchstart' in window) {
+            const note = document.createElement('div');
+            note.style.cssText = `
+                position: fixed;
+                bottom: 70px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(255, 100, 100, 0.8);
+                color: white;
+                padding: 10px 20px;
+                border-radius: 20px;
+                font-size: 12px;
+                z-index: 1000;
+            `;
+            note.textContent = '⚠️ キーボードが必要です';
+            document.body.appendChild(note);
+        }
+    </script>
+</body>
+</html>
