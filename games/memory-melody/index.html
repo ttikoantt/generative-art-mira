@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Memory Melody - 音楽記憶ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Arial', sans-serif;
+            touch-action: manipulation;
+        }
+        
+        #game-container {
+            text-align: center;
+            padding: 20px;
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #e94560;
+            margin-bottom: 10px;
+            font-size: 2em;
+            text-shadow: 0 0 20px rgba(233, 69, 96, 0.5);
+        }
+        
+        #score {
+            color: #fff;
+            font-size: 1.2em;
+            margin-bottom: 20px;
+        }
+        
+        #message {
+            color: #64c8ff;
+            font-size: 1.1em;
+            margin-bottom: 20px;
+            min-height: 30px;
+        }
+        
+        #pads {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin: 20px auto;
+            max-width: 400px;
+        }
+        
+        .pad {
+            width: 100%;
+            aspect-ratio: 1;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .pad::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2em;
+        }
+        
+        .pad.active {
+            transform: scale(0.95);
+            box-shadow: 0 0 30px currentColor;
+        }
+        
+        #pad1 { background: #ff6b6b; color: #ff6b6b; }
+        #pad1::before { content: '🔴'; }
+        
+        #pad2 { background: #4ecdc4; color: #4ecdc4; }
+        #pad2::before { content: '🟢'; }
+        
+        #pad3 { background: #ffe66d; color: #ffe66d; }
+        #pad3::before { content: '🟡'; }
+        
+        #pad4 { background: #a8e6cf; color: #a8e6cf; }
+        #pad4::before { content: '🔵'; }
+        
+        #start-btn {
+            background: linear-gradient(135deg, #e94560 0%, #ff6b6b 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2em;
+            border-radius: 30px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: all 0.3s;
+            box-shadow: 0 5px 20px rgba(233, 69, 96, 0.4);
+        }
+        
+        #start-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(233, 69, 96, 0.6);
+        }
+        
+        #start-btn:active {
+            transform: translateY(0);
+        }
+        
+        #fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(100, 200, 255, 0.2);
+            border: 2px solid rgba(100, 200, 255, 0.5);
+            color: #64c8ff;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 5px;
+            z-index: 1000;
+        }
+        
+        @media (max-width: 480px) {
+            h1 { font-size: 1.5em; }
+            #pads { gap: 10px; }
+            .pad { border-radius: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <button id="fullscreen-btn">全画面</button>
+    
+    <div id="game-container">
+        <h1>🎵 Memory Melody</h1>
+        <div id="score">レベル: <span id="level">1</span> | スコア: <span id="points">0</span></div>
+        <div id="message">スタートボタンを押してね！</div>
+        
+        <div id="pads">
+            <div class="pad" id="pad1" data-pad="1"></div>
+            <div class="pad" id="pad2" data-pad="2"></div>
+            <div class="pad" id="pad3" data-pad="3"></div>
+            <div class="pad" id="pad4" data-pad="4"></div>
+        </div>
+        
+        <button id="start-btn">🎮 ゲームスタート</button>
+    </div>
+
+    <script>
+        // Audio Context for generating sounds
+        let audioCtx = null;
+        
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+        
+        function playTone(frequency, duration = 0.3) {
+            if (!audioCtx) return;
+            
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            oscillator.frequency.value = frequency;
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + duration);
+        }
+        
+        const tones = {
+            1: 261.63,  // C4
+            2: 293.66,  // D4
+            3: 329.63,  // E4
+            4: 349.23   // F4
+        };
+        
+        // Game state
+        let sequence = [];
+        let playerSequence = [];
+        let level = 1;
+        let score = 0;
+        let isPlaying = false;
+        let isDemonstrating = false;
+        
+        const pads = document.querySelectorAll('.pad');
+        const messageEl = document.getElementById('message');
+        const levelEl = document.getElementById('level');
+        const pointsEl = document.getElementById('points');
+        const startBtn = document.getElementById('start-btn');
+        
+        function activatePad(padNum) {
+            const pad = document.getElementById(`pad${padNum}`);
+            pad.classList.add('active');
+            playTone(tones[padNum]);
+            
+            setTimeout(() => {
+                pad.classList.remove('active');
+            }, 300);
+        }
+        
+        function addToSequence() {
+            const randomPad = Math.floor(Math.random() * 4) + 1;
+            sequence.push(randomPad);
+        }
+        
+        async function playSequence() {
+            isDemonstrating = true;
+            messageEl.textContent = 'よく見てね...';
+            
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            for (let padNum of sequence) {
+                activatePad(padNum);
+                await new Promise(resolve => setTimeout(resolve, 600));
+            }
+            
+            isDemonstrating = false;
+            messageEl.textContent = 'あなたの番！';
+        }
+        
+        function checkPlayerInput(padNum) {
+            if (isDemonstrating) return;
+            
+            activatePad(padNum);
+            playerSequence.push(padNum);
+            
+            const currentIndex = playerSequence.length - 1;
+            
+            if (playerSequence[currentIndex] !== sequence[currentIndex]) {
+                gameOver();
+                return;
+            }
+            
+            if (playerSequence.length === sequence.length) {
+                // 正解！
+                score += level * 10;
+                pointsEl.textContent = score;
+                level++;
+                levelEl.textContent = level;
+                
+                playerSequence = [];
+                messageEl.textContent = '素晴らしい！次のレベルへ...';
+                
+                setTimeout(() => {
+                    addToSequence();
+                    playSequence();
+                }, 1500);
+            }
+        }
+        
+        function gameOver() {
+            messageEl.textContent = `ゲームオーバー！ スコア: ${score}`;
+            startBtn.textContent = '🔄 もう一度';
+            startBtn.style.display = 'inline-block';
+            isPlaying = false;
+        }
+        
+        function startGame() {
+            initAudio();
+            
+            sequence = [];
+            playerSequence = [];
+            level = 1;
+            score = 0;
+            isPlaying = true;
+            
+            levelEl.textContent = level;
+            pointsEl.textContent = score;
+            startBtn.style.display = 'none';
+            
+            addToSequence();
+            playSequence();
+        }
+        
+        // Event listeners
+        pads.forEach(pad => {
+            pad.addEventListener('click', () => {
+                if (!isPlaying || isDemonstrating) return;
+                const padNum = parseInt(pad.dataset.pad);
+                checkPlayerInput(padNum);
+            });
+            
+            pad.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (!isPlaying || isDemonstrating) return;
+                const padNum = parseInt(pad.dataset.pad);
+                checkPlayerInput(padNum);
+            });
+        });
+        
+        startBtn.addEventListener('click', startGame);
+        
+        // Fullscreen
+        document.getElementById('fullscreen-btn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+        
+        // Prevent zoom on double tap
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', (e) => {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) {
+                e.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+    </script>
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Harmonic Web - 調和のウェーブ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0e27;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            touch-action: none;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        #fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(100, 200, 255, 0.2);
+            border: 2px solid rgba(100, 200, 255, 0.5);
+            color: #64c8ff;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 5px;
+            z-index: 1000;
+            transition: all 0.3s;
+        }
+        
+        #fullscreen-btn:hover {
+            background: rgba(100, 200, 255, 0.3);
+            border-color: rgba(100, 200, 255, 0.8);
+        }
+        
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(100, 200, 255, 0.7);
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <button id="fullscreen-btn">全画面</button>
+    <div id="info">クリック/タップで調和を変化</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        
+        let width, height, centerX, centerY;
+        let time = 0;
+        let harmonicPhase = 0;
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        
+        // 複数の振り子パラメータ
+        const pendulums = [];
+        const numPendulums = 8;
+        
+        for (let i = 0; i < numPendulums; i++) {
+            pendulums.push({
+                length: 50 + i * 30,
+                speed: 0.02 + i * 0.005,
+                amplitude: 80 + i * 20,
+                phase: (Math.PI * 2 * i) / numPendulums,
+                hue: 200 + i * 20
+            });
+        }
+        
+        // 軌跡を保存
+        const trails = [];
+        const maxTrailLength = 500;
+        
+        function update() {
+            time += 1;
+            harmonicPhase += 0.01;
+            
+            // 各振り子の位置を計算
+            let x = centerX;
+            let y = centerY;
+            
+            for (let p of pendulums) {
+                const angle = Math.sin(time * p.speed + p.phase + harmonicPhase) * p.amplitude / p.length;
+                x += Math.cos(angle) * p.length;
+                y += Math.sin(angle) * p.length;
+            }
+            
+            // 軌跡に追加
+            trails.push({ x, y, age: 0 });
+            
+            // 古い軌跡を削除
+            if (trails.length > maxTrailLength) {
+                trails.shift();
+            }
+            
+            // 軌跡の年齢を更新
+            for (let t of trails) {
+                t.age++;
+            }
+        }
+        
+        function draw() {
+            // 背景をフェード
+            ctx.fillStyle = 'rgba(10, 14, 39, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 軌跡を描画
+            if (trails.length > 1) {
+                for (let i = 1; i < trails.length; i++) {
+                    const t1 = trails[i - 1];
+                    const t2 = trails[i];
+                    const alpha = (1 - t2.age / maxTrailLength) * 0.8;
+                    const hue = (200 + t2.age * 0.5) % 360;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(t1.x, t1.y);
+                    ctx.lineTo(t2.x, t2.y);
+                    ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+            
+            // 現在の点を描画
+            if (trails.length > 0) {
+                const current = trails[trails.length - 1];
+                
+                // グロー効果
+                const gradient = ctx.createRadialGradient(
+                    current.x, current.y, 0,
+                    current.x, current.y, 20
+                );
+                gradient.addColorStop(0, 'rgba(100, 200, 255, 1)');
+                gradient.addColorStop(0.5, 'rgba(100, 200, 255, 0.3)');
+                gradient.addColorStop(1, 'rgba(100, 200, 255, 0)');
+                
+                ctx.beginPath();
+                ctx.arc(current.x, current.y, 20, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+        
+        function animate() {
+            update();
+            draw();
+            requestAnimationFrame(animate);
+        }
+        
+        // クリック/タップで調和を変化
+        function changeHarmonic(e) {
+            e.preventDefault();
+            harmonicPhase += Math.PI / 4;
+            
+            // ランダムにパラメータを変化
+            for (let p of pendulums) {
+                p.speed = 0.02 + Math.random() * 0.03;
+            }
+            
+            // 軌跡をクリア
+            trails.length = 0;
+        }
+        
+        canvas.addEventListener('click', changeHarmonic);
+        canvas.addEventListener('touchstart', changeHarmonic);
+        
+        // 全画面ボタン
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+        
+        // ダブルタップで全画面
+        let lastTap = 0;
+        canvas.addEventListener('touchend', (e) => {
+            const now = Date.now();
+            if (now - lastTap < 300) {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen();
+                } else {
+                    document.exitFullscreen();
+                }
+            }
+            lastTap = now;
+        });
+        
+        animate();
+    </script>
+</body>
+</html>
