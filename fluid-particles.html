@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Fluid Particles - 有機的なパーティクルアート</title>
+    <title>Fluid Particles | Mira's Generative Art</title>
     <style>
         * {
             margin: 0;
@@ -12,204 +12,215 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            background: #000;
             overflow: hidden;
+            font-family: 'Courier New', monospace;
         }
 
-        .container {
-            text-align: center;
-            padding: 20px;
-            width: 100%;
-            max-width: 800px;
+        canvas {
+            display: block;
         }
 
-        h1 {
-            color: #fff;
-            font-size: 2rem;
-            margin-bottom: 10px;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            font-size: 14px;
+            text-shadow: 0 0 10px #0ff;
+            z-index: 100;
+            pointer-events: none;
         }
 
-        .subtitle {
-            color: #a0a0a0;
-            font-size: 0.9rem;
-            margin-bottom: 20px;
+        .info h1 {
+            font-size: 18px;
+            margin-bottom: 8px;
         }
 
-        #canvas {
-            background: #0a0a0a;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-            max-width: 100%;
-            height: auto;
-            cursor: crosshair;
-        }
-
-        .controls {
-            margin-top: 20px;
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        button:active {
-            transform: translateY(0);
+        .info p {
+            font-size: 12px;
+            opacity: 0.8;
         }
 
         .fullscreen-btn {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid #0ff;
+            color: #0ff;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.3s;
         }
 
-        @media (max-width: 600px) {
-            h1 {
-                font-size: 1.5rem;
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.4);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                top: 10px;
+                left: 10px;
+                font-size: 12px;
+            }
+
+            .info h1 {
+                font-size: 14px;
+            }
+
+            .info p {
+                font-size: 10px;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 10px 16px;
+                font-size: 12px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
         <h1>🌊 Fluid Particles</h1>
-        <p class="subtitle">有機的なパーティクルが流体のように動く</p>
-        
-        <canvas id="canvas"></canvas>
-        
-        <div class="controls">
-            <button onclick="resetParticles()">リセット</button>
-            <button onclick="changeColorScheme()">配色変更</button>
-            <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
-        </div>
+        <p>流体のようなパーティクル</p>
+        <p>Touch/Move to interact</p>
     </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
-        // Canvas size
-        function resizeCanvas() {
-            const size = Math.min(window.innerWidth - 40, 700);
-            canvas.width = size;
-            canvas.height = size * 0.75;
-        }
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-
-        // Color schemes
-        const colorSchemes = [
-            ['#667eea', '#764ba2', '#f093fb', '#f5576c'],
-            ['#11998e', '#38ef7d', '#00b4db', '#0083b0'],
-            ['#fc4a1a', '#f7b733', '#4facfe', '#00f2fe'],
-            ['#ee0979', '#ff6a00', '#8e2de2', '#4a00e0'],
-            ['#000000', '#ffffff', '#333333', '#666666']
-        ];
-        let currentScheme = 0;
-
-        // Particles
+        let width, height;
         let particles = [];
-        const PARTICLE_COUNT = 150;
+        let mouse = { x: null, y: null, active: false };
 
-        // Mouse position
-        let mouse = { x: null, y: null };
+        const PARTICLE_COUNT = 400;
+        const INTERACTION_RADIUS = 150;
+        const REPULSION_FORCE = 2;
 
+        // Particle class
         class Particle {
-            constructor() {
-                this.reset();
-            }
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 2 + 1;
+                this.baseX = x;
+                this.baseY = y;
+                this.density = Math.random() * 30 + 1;
 
-            reset() {
-                this.x = Math.random() * canvas.width;
-                this.y = Math.random() * canvas.height;
-                this.baseX = this.x;
-                this.baseY = this.y;
-                this.size = Math.random() * 3 + 1;
-                this.speedX = (Math.random() - 0.5) * 0.5;
-                this.speedY = (Math.random() - 0.5) * 0.5;
-                this.angle = Math.random() * Math.PI * 2;
-                this.angleSpeed = (Math.random() - 0.5) * 0.02;
-                this.amplitude = Math.random() * 30 + 10;
-                this.color = colorSchemes[currentScheme][Math.floor(Math.random() * 4)];
-                this.alpha = Math.random() * 0.5 + 0.3;
-            }
-
-            update(time) {
-                // Organic motion using sine waves
-                this.angle += this.angleSpeed;
-                
-                let targetX = this.baseX + Math.sin(this.angle) * this.amplitude + Math.cos(time * 0.001 + this.angle) * 20;
-                let targetY = this.baseY + Math.cos(this.angle) * this.amplitude + Math.sin(time * 0.0015 + this.angle) * 20;
-
-                // Mouse interaction
-                if (mouse.x !== null && mouse.y !== null) {
-                    const dx = mouse.x - this.x;
-                    const dy = mouse.y - this.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (distance < 150) {
-                        const force = (150 - distance) / 150;
-                        targetX -= dx * force * 0.5;
-                        targetY -= dy * force * 0.5;
-                    }
-                }
-
-                // Smooth movement
-                this.x += (targetX - this.x) * 0.05;
-                this.y += (targetY - this.y) * 0.05;
-
-                // Pulsing size
-                this.currentSize = this.size + Math.sin(time * 0.003 + this.angle) * 0.5;
-
-                // Fade in/out
-                this.currentAlpha = this.alpha + Math.sin(time * 0.002 + this.angle) * 0.2;
+                // Color based on position
+                this.hue = Math.random() * 60 + 180; // Blue-cyan range
             }
 
             draw() {
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, Math.max(0, this.currentSize), 0, Math.PI * 2);
-                
-                // Create gradient for each particle
-                const gradient = ctx.createRadialGradient(
-                    this.x, this.y, 0,
-                    this.x, this.y, Math.max(0, this.currentSize) * 2
-                );
-                gradient.addColorStop(0, this.color + Math.max(0, Math.min(1, this.currentAlpha)).toString(16).padStart(2, '0'));
-                gradient.addColorStop(1, this.color + '00');
-                
-                ctx.fillStyle = gradient;
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, 0.8)`;
                 ctx.fill();
+
+                // Glow effect
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsla(${this.hue}, 100%, 60%, 0.5)`;
+            }
+
+            update() {
+                // Mouse interaction
+                if (mouse.active && mouse.x !== null) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < INTERACTION_RADIUS) {
+                        const force = (INTERACTION_RADIUS - distance) / INTERACTION_RADIUS;
+                        const directionX = dx / distance;
+                        const directionY = dy / distance;
+                        const repulsion = force * REPULSION_FORCE * this.density;
+
+                        this.vx -= directionX * repulsion;
+                        this.vy -= directionY * repulsion;
+
+                        // Color shift on interaction
+                        this.hue = 180 + (distance / INTERACTION_RADIUS) * 60;
+                    }
+                }
+
+                // Attraction to nearby particles (fluid-like behavior)
+                particles.forEach(particle => {
+                    if (particle === this) return;
+
+                    const dx = particle.x - this.x;
+                    const dy = particle.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < 100 && distance > 30) {
+                        const force = 0.01;
+                        this.vx += (dx / distance) * force;
+                        this.vy += (dy / distance) * force;
+                    }
+
+                    // Repulsion when too close
+                    if (distance < 30) {
+                        const force = 0.05;
+                        this.vx -= (dx / distance) * force;
+                        this.vy -= (dy / distance) * force;
+                    }
+                });
+
+                // Apply velocity with damping
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+
+                // Wrap around edges
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+
+                this.draw();
             }
         }
 
-        function initParticles() {
+        // Initialize particles
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+
             particles = [];
             for (let i = 0; i < PARTICLE_COUNT; i++) {
-                particles.push(new Particle());
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                particles.push(new Particle(x, y));
             }
         }
 
-        function drawConnections() {
+        // Animation loop
+        function animate() {
+            // Semi-transparent background for trail effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(particle => {
+                particle.update();
+            });
+
+            // Draw connections between nearby particles
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
+            ctx.lineWidth = 0.5;
+
             for (let i = 0; i < particles.length; i++) {
                 for (let j = i + 1; j < particles.length; j++) {
                     const dx = particles[i].x - particles[j].x;
@@ -217,86 +228,64 @@
                     const distance = Math.sqrt(dx * dx + dy * dy);
 
                     if (distance < 80) {
-                        const alpha = (1 - distance / 80) * 0.3;
                         ctx.beginPath();
-                        ctx.strokeStyle = colorSchemes[currentScheme][0] + 
-                            Math.floor(alpha * 255).toString(16).padStart(2, '0');
-                        ctx.lineWidth = 0.5;
                         ctx.moveTo(particles[i].x, particles[i].y);
                         ctx.lineTo(particles[j].x, particles[j].y);
                         ctx.stroke();
                     }
                 }
             }
-        }
-
-        function animate(time) {
-            // Create trail effect
-            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Update and draw particles
-            particles.forEach(particle => {
-                particle.update(time);
-                particle.draw();
-            });
-
-            // Draw connections
-            drawConnections();
 
             requestAnimationFrame(animate);
         }
 
-        function resetParticles() {
-            particles.forEach(p => p.reset());
-        }
+        // Mouse/Touch events
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
 
-        function changeColorScheme() {
-            currentScheme = (currentScheme + 1) % colorSchemes.length;
-            particles.forEach(p => {
-                p.color = colorSchemes[currentScheme][Math.floor(Math.random() * 4)];
-            });
-        }
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            mouse.active = true;
+        });
 
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.active = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.active = false;
+        });
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // Fullscreen toggle
         function toggleFullscreen() {
             if (!document.fullscreenElement) {
-                canvas.requestFullscreen().catch(err => {
-                    console.log('Fullscreen error:', err);
-                });
+                document.documentElement.requestFullscreen();
             } else {
                 document.exitFullscreen();
             }
         }
 
-        // Mouse events
-        canvas.addEventListener('mousemove', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            mouse.x = (e.clientX - rect.left) * (canvas.width / rect.width);
-            mouse.y = (e.clientY - rect.top) * (canvas.height / rect.height);
-        });
-
-        canvas.addEventListener('mouseleave', () => {
-            mouse.x = null;
-            mouse.y = null;
-        });
-
-        // Touch events
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            const rect = canvas.getBoundingClientRect();
-            const touch = e.touches[0];
-            mouse.x = (touch.clientX - rect.left) * (canvas.width / rect.width);
-            mouse.y = (touch.clientY - rect.top) * (canvas.height / rect.height);
-        });
-
-        canvas.addEventListener('touchend', () => {
-            mouse.x = null;
-            mouse.y = null;
-        });
-
         // Start
-        initParticles();
-        animate(0);
+        init();
+        animate();
     </script>
 </body>
 </html>
