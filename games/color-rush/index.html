@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Color Rush - 反射神経ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        #gameCanvas {
+            display: block;
+            cursor: pointer;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .overlay h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        .overlay p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            opacity: 0.8;
+        }
+
+        .overlay .score {
+            font-size: 72px;
+            font-weight: bold;
+            margin: 20px 0;
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.7);
+        }
+
+        .btn {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+        }
+
+        .hud {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        .hud div {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 101;
+            background: rgba(255, 255, 255, 0.3);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 768px) {
+            .overlay h1 {
+                font-size: 32px;
+            }
+
+            .overlay .score {
+                font-size: 48px;
+            }
+
+            .hud {
+                font-size: 18px;
+                flex-direction: column;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 12px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="hud">
+        <div id="score">スコア: 0</div>
+        <div id="time">時間: 30</div>
+        <div id="combo"></div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div id="startOverlay" class="overlay">
+        <h1>🎨 Color Rush</h1>
+        <p>表示された色と同じ色のボタンをタップ！</p>
+        <p>連続正解でコンボボーナス！</p>
+        <button class="btn" onclick="startGame()">スタート</button>
+    </div>
+
+    <div id="gameOverOverlay" class="overlay hidden">
+        <h1>ゲームオーバー</h1>
+        <div class="score" id="finalScore">0</div>
+        <p id="highScoreText">ハイスコア: 0</p>
+        <button class="btn" onclick="startGame()">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // ゲーム設定
+        const GAME_TIME = 30; // ゲーム時間（秒）
+        const COLORS = [
+            { name: '赤', value: '#ff4757', id: 'red' },
+            { name: '青', value: '#3742fa', id: 'blue' },
+            { name: '緑', value: '#2ed573', id: 'green' },
+            { name: '黄', value: '#ffa502', id: 'yellow' }
+        ];
+
+        let gameState = 'menu'; // menu, playing, gameover
+        let score = 0;
+        let timeLeft = GAME_TIME;
+        let combo = 0;
+        let highScore = parseInt(localStorage.getItem('colorRushHighScore')) || 0;
+
+        let targetColor = null;
+        let buttons = [];
+        let particles = [];
+        let lastTime = 0;
+        let timerInterval = null;
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10 - 5;
+                this.size = Math.random() * 10 + 5;
+                this.life = 1;
+                this.decay = Math.random() * 0.02 + 0.02;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.3; // 重力
+                this.life -= this.decay;
+                this.size *= 0.98;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // ボタンクラス
+        class ColorButton {
+            constructor(color, x, y, size) {
+                this.color = color;
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.scale = 1;
+                this.pulse = 0;
+            }
+
+            draw() {
+                this.pulse += 0.05;
+                const pulseScale = Math.sin(this.pulse) * 0.05;
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.scale(this.scale + pulseScale, this.scale + pulseScale);
+
+                // ボタン背景
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color.value;
+                ctx.fill();
+
+                // 光り効果
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size);
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+                gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // 影
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.color.value;
+                ctx.fill();
+
+                // 色名
+                ctx.fillStyle = 'white';
+                ctx.font = `bold ${this.size * 0.5}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.color.name, 0, 0);
+
+                ctx.restore();
+
+                // スケールを戻す
+                this.scale += (1 - this.scale) * 0.2;
+            }
+
+            isClicked(x, y) {
+                const dist = Math.sqrt((x - this.x) ** 2 + (y - this.y) ** 2);
+                return dist < this.size;
+            }
+
+            click() {
+                this.scale = 1.2;
+            }
+        }
+
+        function initGame() {
+            // 新しいターゲット色を選択
+            targetColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+
+            // ボタンのサイズと位置
+            const buttonSize = Math.min(width, height) * 0.15;
+            const spacing = buttonSize * 1.5;
+
+            buttons = [];
+            COLORS.forEach((color, index) => {
+                const row = Math.floor(index / 2);
+                const col = index % 2;
+                const x = width / 2 + (col - 0.5) * spacing;
+                const y = height * 0.6 + row * spacing;
+                buttons.push(new ColorButton(color, x, y, buttonSize));
+            });
+
+            particles = [];
+        }
+
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            timeLeft = GAME_TIME;
+            combo = 0;
+
+            document.getElementById('startOverlay').classList.add('hidden');
+            document.getElementById('gameOverOverlay').classList.add('hidden');
+
+            updateHUD();
+
+            initGame();
+
+            // タイマー開始
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (gameState === 'playing') {
+                    timeLeft--;
+                    updateHUD();
+
+                    if (timeLeft <= 0) {
+                        endGame();
+                    }
+                }
+            }, 1000);
+
+            lastTime = performance.now();
+            gameLoop();
+        }
+
+        function endGame() {
+            gameState = 'gameover';
+            clearInterval(timerInterval);
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('colorRushHighScore', highScore);
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('highScoreText').textContent = `ハイスコア: ${highScore}`;
+            document.getElementById('gameOverOverlay').classList.remove('hidden');
+        }
+
+        function handleClick(x, y) {
+            if (gameState !== 'playing') return;
+
+            for (const button of buttons) {
+                if (button.isClicked(x, y)) {
+                    button.click();
+
+                    if (button.color.id === targetColor.id) {
+                        // 正解
+                        combo++;
+                        const baseScore = 100;
+                        const comboBonus = Math.floor(combo * 10);
+                        const timeBonus = Math.floor(timeLeft * 5);
+                        score += baseScore + comboBonus + timeBonus;
+
+                        // パーティクル
+                        for (let i = 0; i < 20; i++) {
+                            particles.push(new Particle(x, y, button.color.value));
+                        }
+
+                        // 次のターゲット
+                        targetColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+                    } else {
+                        // 不正解
+                        combo = 0;
+                        // ペナルティ
+                        score = Math.max(0, score - 50);
+
+                        // 間違ったパーティクル
+                        for (let i = 0; i < 10; i++) {
+                            particles.push(new Particle(x, y, '#333'));
+                        }
+                    }
+
+                    updateHUD();
+                    break;
+                }
+            }
+        }
+
+        function updateHUD() {
+            document.getElementById('score').textContent = `スコア: ${score}`;
+            document.getElementById('time').textContent = `時間: ${timeLeft}`;
+
+            const comboEl = document.getElementById('combo');
+            if (combo > 1) {
+                comboEl.textContent = `🔥 ${combo} コンボ!`;
+                comboEl.style.opacity = '1';
+            } else {
+                comboEl.textContent = '';
+            }
+        }
+
+        function gameLoop(timestamp = 0) {
+            if (gameState !== 'playing') return;
+
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+
+            // クリア
+            ctx.fillStyle = 'rgba(102, 126, 234, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            // ターゲット色を表示
+            ctx.save();
+            ctx.font = 'bold 48px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // ターゲット色の背景
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.beginPath();
+            ctx.arc(width / 2, height * 0.25, 100, 0, Math.PI * 2);
+            ctx.fill();
+
+            // ターゲット色
+            ctx.fillStyle = targetColor.value;
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = targetColor.value;
+            ctx.font = 'bold 72px Arial';
+            ctx.fillText(targetColor.name, width / 2, height * 0.25);
+
+            // 「これをタップ！」テキスト
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = 'white';
+            ctx.font = '24px Arial';
+            ctx.fillText('これと同じ色をタップ！', width / 2, height * 0.35);
+            ctx.restore();
+
+            // ボタンを描画
+            buttons.forEach(button => button.draw());
+
+            // パーティクルを更新・描画
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            handleClick(x, y);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            handleClick(x, y);
+        });
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            if (gameState === 'playing') {
+                initGame();
+            }
+        });
+
+        // 初期化
+        initGame();
+    </script>
+</body>
+</html>
