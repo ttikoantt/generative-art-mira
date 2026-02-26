@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fishing Game - 釣りゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(180deg, #87CEEB 0%, #1E90FF 50%, #000080 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: manipulation;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+        }
+
+        .ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .score {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px 25px;
+            border-radius: 25px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #1E90FF;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            color: #1E90FF;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            pointer-events: auto;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: #1E90FF;
+            color: white;
+            transform: scale(1.05);
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 12px 25px;
+            border-radius: 25px;
+            font-size: 14px;
+            color: #333;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        @media (max-width: 768px) {
+            .score {
+                font-size: 18px;
+                padding: 10px 20px;
+                top: 10px;
+                left: 10px;
+            }
+
+            .fullscreen-btn {
+                padding: 10px 20px;
+                font-size: 14px;
+                top: 10px;
+                right: 10px;
+            }
+
+            .instructions {
+                font-size: 12px;
+                padding: 8px 20px;
+                bottom: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div class="ui-overlay">
+        <div class="score">🐟 Score: <span id="score">0</span></div>
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+        <div class="instructions">Tap to drop hook • Catch fish!</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+
+        let width, height;
+        let score = 0;
+        let boat, hook, fishes = [];
+        let gameState = 'idle'; // idle, dropping, reeling, caught
+        let bubbleParticles = [];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initGame();
+        }
+
+        function initGame() {
+            boat = {
+                x: width / 2,
+                y: 100,
+                width: 100,
+                height: 40
+            };
+
+            hook = {
+                x: boat.x,
+                y: boat.y + 40,
+                width: 20,
+                height: 25,
+                speed: 5,
+                originalY: boat.y + 40
+            };
+
+            // Create fish
+            fishes = [];
+            for (let i = 0; i < 8; i++) {
+                createFish();
+            }
+        }
+
+        function createFish() {
+            const colors = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FF8C00', '#9B59B6', '#2ECC71'];
+            const fish = {
+                x: Math.random() * width,
+                y: 200 + Math.random() * (height - 250),
+                width: 40 + Math.random() * 30,
+                height: 25 + Math.random() * 15,
+                speed: (1 + Math.random() * 2) * (Math.random() > 0.5 ? 1 : -1),
+                color: colors[Math.floor(Math.random() * colors.length)],
+                direction: Math.random() > 0.5 ? 1 : -1,
+                wobble: Math.random() * Math.PI * 2,
+                points: Math.floor(Math.random() * 3) + 1
+            };
+            fishes.push(fish);
+        }
+
+        function createBubble(x, y) {
+            bubbleParticles.push({
+                x: x + (Math.random() - 0.5) * 20,
+                y: y,
+                radius: 2 + Math.random() * 4,
+                speed: 1 + Math.random() * 2,
+                alpha: 0.6
+            });
+        }
+
+        function drawSky() {
+            // Sky gradient
+            const skyGradient = ctx.createLinearGradient(0, 0, 0, 200);
+            skyGradient.addColorStop(0, '#87CEEB');
+            skyGradient.addColorStop(1, '#B0E0E6');
+            ctx.fillStyle = skyGradient;
+            ctx.fillRect(0, 0, width, 200);
+
+            // Sun
+            ctx.beginPath();
+            ctx.arc(width - 80, 60, 40, 0, Math.PI * 2);
+            const sunGradient = ctx.createRadialGradient(width - 80, 60, 0, width - 80, 60, 40);
+            sunGradient.addColorStop(0, '#FFE66D');
+            sunGradient.addColorStop(1, '#FF8C00');
+            ctx.fillStyle = sunGradient;
+            ctx.fill();
+
+            // Clouds
+            drawCloud(100, 50, 1.2);
+            drawCloud(width - 250, 80, 0.9);
+            drawCloud(width / 2, 40, 1.0);
+        }
+
+        function drawCloud(x, y, scale) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.beginPath();
+            ctx.arc(x, y, 25 * scale, 0, Math.PI * 2);
+            ctx.arc(x + 25 * scale, y - 10 * scale, 20 * scale, 0, Math.PI * 2);
+            ctx.arc(x + 50 * scale, y, 25 * scale, 0, Math.PI * 2);
+            ctx.arc(x + 25 * scale, y + 10 * scale, 20 * scale, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawWater() {
+            // Water gradient
+            const waterGradient = ctx.createLinearGradient(0, 200, 0, height);
+            waterGradient.addColorStop(0, '#1E90FF');
+            waterGradient.addColorStop(0.3, '#4169E1');
+            waterGradient.addColorStop(0.7, '#0000CD');
+            waterGradient.addColorStop(1, '#000080');
+            ctx.fillStyle = waterGradient;
+            ctx.fillRect(0, 200, width, height - 200);
+
+            // Water surface line
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, 200);
+            for (let x = 0; x < width; x += 50) {
+                ctx.lineTo(x, 200 + Math.sin(Date.now() / 500 + x / 50) * 5);
+            }
+            ctx.stroke();
+        }
+
+        function drawBoat() {
+            // Boat body
+            ctx.fillStyle = '#8B4513';
+            ctx.beginPath();
+            ctx.moveTo(boat.x - boat.width / 2, boat.y);
+            ctx.lineTo(boat.x + boat.width / 2, boat.y);
+            ctx.lineTo(boat.x + boat.width / 2 - 15, boat.y + boat.height);
+            ctx.lineTo(boat.x - boat.width / 2 + 15, boat.y + boat.height);
+            ctx.closePath();
+            ctx.fill();
+
+            // Boat detail
+            ctx.fillStyle = '#A0522D';
+            ctx.fillRect(boat.x - 15, boat.y + 10, 30, 8);
+
+            // Fishing rod
+            ctx.strokeStyle = '#4A4A4A';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(boat.x + 20, boat.y);
+            ctx.lineTo(boat.x + 50, boat.y - 30);
+            ctx.stroke();
+        }
+
+        function drawHook() {
+            // Fishing line
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(boat.x + 50, boat.y - 30);
+            ctx.lineTo(hook.x, hook.y);
+            ctx.stroke();
+
+            // Hook
+            ctx.strokeStyle = '#C0C0C0';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(hook.x, hook.y);
+            ctx.lineTo(hook.x, hook.y + 15);
+            ctx.arc(hook.x - 5, hook.y + 20, 5, 0, Math.PI, true);
+            ctx.stroke();
+        }
+
+        function drawFish(fish) {
+            ctx.save();
+            ctx.translate(fish.x, fish.y);
+            if (fish.direction < 0) {
+                ctx.scale(-1, 1);
+            }
+
+            // Body
+            ctx.fillStyle = fish.color;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, fish.width / 2, fish.height / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Tail
+            ctx.beginPath();
+            const tailWag = Math.sin(fish.wobble) * 5;
+            ctx.moveTo(fish.width / 2 - 5, 0);
+            ctx.lineTo(fish.width / 2 + 15, -10 + tailWag);
+            ctx.lineTo(fish.width / 2 + 15, 10 + tailWag);
+            ctx.closePath();
+            ctx.fill();
+
+            // Fin
+            ctx.beginPath();
+            ctx.moveTo(-5, -fish.height / 2);
+            ctx.lineTo(5, -fish.height / 2 - 8);
+            ctx.lineTo(10, -fish.height / 2);
+            ctx.closePath();
+            ctx.fill();
+
+            // Eye
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(-fish.width / 4, -fish.height / 6, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.arc(-fish.width / 4 + 1, -fish.height / 6, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Points indicator
+            if (fish.points > 1) {
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('×' + fish.points, 0, -fish.height / 2 - 5);
+            }
+
+            ctx.restore();
+        }
+
+        function drawBubbles() {
+            bubbleParticles = bubbleParticles.filter(bubble => {
+                bubble.y -= bubble.speed;
+                bubble.alpha -= 0.01;
+
+                if (bubble.alpha > 0 && bubble.y > 200) {
+                    ctx.beginPath();
+                    ctx.arc(bubble.x, bubble.y, bubble.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 255, 255, ${bubble.alpha})`;
+                    ctx.fill();
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        function updateFish() {
+            fishes.forEach(fish => {
+                fish.x += fish.speed;
+                fish.wobble += 0.1;
+
+                // Bounce off walls
+                if (fish.x < -fish.width) {
+                    fish.x = width + fish.width;
+                } else if (fish.x > width + fish.width) {
+                    fish.x = -fish.width;
+                }
+            });
+        }
+
+        function checkCollision() {
+            for (let i = fishes.length - 1; i >= 0; i--) {
+                const fish = fishes[i];
+                const dx = hook.x - fish.x;
+                const dy = hook.y - fish.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < fish.width / 2 + 10) {
+                    // Caught!
+                    score += fish.points;
+                    scoreElement.textContent = score;
+
+                    // Create bubbles
+                    for (let j = 0; j < 10; j++) {
+                        createBubble(fish.x, fish.y);
+                    }
+
+                    // Remove fish and create new one
+                    fishes.splice(i, 1);
+                    setTimeout(createFish, 2000);
+
+                    // Reel in
+                    gameState = 'caught';
+                    hook.caughtFish = { ...fish };
+                    return;
+                }
+            }
+        }
+
+        function update() {
+            if (gameState === 'dropping') {
+                hook.y += hook.speed;
+
+                // Check collision
+                checkCollision();
+
+                // Reached bottom
+                if (hook.y > height - 50) {
+                    gameState = 'reeling';
+                }
+            } else if (gameState === 'reeling' || gameState === 'caught') {
+                hook.y -= hook.speed * 1.5;
+
+                if (hook.y <= hook.originalY) {
+                    hook.y = hook.originalY;
+                    gameState = 'idle';
+                    hook.caughtFish = null;
+                }
+            }
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw scene
+            drawSky();
+            drawWater();
+            drawBubbles();
+
+            // Draw fish
+            fishes.forEach(fish => {
+                if (hook.caughtFish && fish === hook.caughtFish) {
+                    // Don't draw the caught fish (it's attached to hook)
+                } else {
+                    drawFish(fish);
+                }
+            });
+
+            // Draw boat and hook
+            drawBoat();
+            drawHook();
+
+            // Draw caught fish on hook
+            if (hook.caughtFish) {
+                ctx.save();
+                ctx.translate(hook.x, hook.y + 20);
+                ctx.scale(0.6, 0.6);
+                drawFish(hook.caughtFish);
+                ctx.restore();
+            }
+        }
+
+        function gameLoop() {
+            updateFish();
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Input handling
+        function dropHook() {
+            if (gameState === 'idle') {
+                gameState = 'dropping';
+            }
+        }
+
+        canvas.addEventListener('click', dropHook);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            dropHook();
+        });
+
+        // Keyboard
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                dropHook();
+            }
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Initialize
+        window.addEventListener('resize', resize);
+        resize();
+        gameLoop();
+    </script>
+</body>
+</html>
