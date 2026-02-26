@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bioluminescent Flow Field</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            font-size: 12px;
+            z-index: 10;
+            background: rgba(0, 20, 40, 0.8);
+            padding: 15px;
+            border: 1px solid #0ff;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+
+        .controls h2 {
+            margin-bottom: 10px;
+            font-size: 16px;
+            text-shadow: 0 0 10px #0ff;
+        }
+
+        .controls p {
+            margin: 5px 0;
+            opacity: 0.8;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            background: rgba(0, 255, 255, 0.2);
+            border: 2px solid #0ff;
+            color: #0ff;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            z-index: 10;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.4);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: #0ff;
+            font-size: 11px;
+            z-index: 10;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <h2>🔬 Bioluminescent Flow</h2>
+        <p>粒子：数千</p>
+        <p>フローフィールド生成中...</p>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="info">マウス/タッチで流れを変える</div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let flowField = [];
+        let rows, cols;
+        const scale = 20;
+        let mouseX = 0, mouseY = 0;
+        let isMouseDown = false;
+
+        // 色のパレット（生物発光風）
+        const colors = [
+            { h: 160, s: 100, l: 60 }, // シアン
+            { h: 180, s: 100, l: 55 }, // 明るいシアン
+            { h: 200, s: 80, l: 60 },  // ブルー
+            { h: 280, s: 70, l: 65 },  // 紫
+            { h: 320, s: 60, l: 70 },  // ピンク
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.floor(width / scale) + 1;
+            rows = Math.floor(height / scale) + 1;
+            initFlowField();
+        }
+
+        function initFlowField() {
+            flowField = [];
+            let yoff = 0;
+            for (let y = 0; y < rows; y++) {
+                let row = [];
+                let xoff = 0;
+                for (let x = 0; x < cols; x++) {
+                    // パーリンノイズのような角度生成
+                    const angle = (Math.cos(xoff) + Math.sin(yoff)) * Math.PI * 2;
+                    row.push(angle);
+                    xoff += 0.1;
+                }
+                flowField.push(row);
+                yoff += 0.1;
+            }
+        }
+
+        function updateFlowField() {
+            const time = Date.now() * 0.0001;
+            let yoff = 0;
+            for (let y = 0; y < rows; y++) {
+                let xoff = 0;
+                for (let x = 0; x < cols; x++) {
+                    // ノイズを時間で変化
+                    let angle = (Math.cos(xoff + time) + Math.sin(yoff + time)) * Math.PI * 2;
+
+                    // マウス/タッチの影響
+                    if (isMouseDown) {
+                        const px = x * scale;
+                        const py = y * scale;
+                        const dx = px - mouseX;
+                        const dy = py - mouseY;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < 200) {
+                            angle = Math.atan2(dy, dx) + Math.PI / 2;
+                        }
+                    }
+
+                    flowField[y][x] = angle;
+                    xoff += 0.1;
+                }
+                yoff += 0.1;
+            }
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.life = Math.random() * 200 + 100;
+                this.maxLife = this.life;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.size = Math.random() * 2 + 1;
+                this.speed = Math.random() * 1 + 0.5;
+            }
+
+            update() {
+                const col = Math.floor(this.x / scale);
+                const row = Math.floor(this.y / scale);
+
+                if (col >= 0 && col < cols && row >= 0 && row < rows) {
+                    const angle = flowField[row][col];
+                    this.vx += Math.cos(angle) * 0.3;
+                    this.vy += Math.sin(angle) * 0.3;
+                }
+
+                // 速度制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > this.speed * 2) {
+                    this.vx = (this.vx / speed) * this.speed * 2;
+                    this.vy = (this.vy / speed) * this.speed * 2;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 摩擦
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+
+                this.life--;
+
+                // 画面外または寿命でリセット
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height || this.life <= 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = this.life / this.maxLife;
+                const glow = alpha * 0.8;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.color.h}, ${this.color.s}%, ${this.color.l}%, ${alpha})`;
+                ctx.fill();
+
+                // 生物発光のグロー効果
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.color.h}, ${this.color.s}%, ${this.color.l}%, ${glow * 0.3})`;
+                ctx.fill();
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            const numParticles = Math.floor((width * height) / 300);
+            for (let i = 0; i < numParticles; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function drawBackground() {
+            // フェード効果で軌跡を残す
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        function animate() {
+            drawBackground();
+            updateFlowField();
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', () => {
+            resize();
+            initParticles();
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mousedown', () => isMouseDown = true);
+        canvas.addEventListener('mouseup', () => isMouseDown = false);
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', (e) => {
+            isMouseDown = true;
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', () => isMouseDown = false);
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        resize();
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>
