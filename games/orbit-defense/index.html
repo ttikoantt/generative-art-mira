@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Orbit Defense - オービットディフェンス</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+            cursor: none;
+        }
+
+        .game-ui {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #7dd3fc;
+            text-align: center;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .game-ui h1 {
+            font-size: 20px;
+            margin-bottom: 10px;
+            color: #38bdf8;
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(10, 10, 26, 0.95);
+            padding: 40px;
+            border-radius: 20px;
+            border: 2px solid #38bdf8;
+            text-align: center;
+            display: none;
+        }
+
+        .game-over.show {
+            display: block;
+        }
+
+        .game-over h2 {
+            color: #38bdf8;
+            font-size: 32px;
+            margin-bottom: 20px;
+        }
+
+        .game-over p {
+            color: #7dd3fc;
+            font-size: 18px;
+            margin: 10px 0;
+        }
+
+        .restart-btn {
+            margin-top: 20px;
+            background: rgba(56, 189, 248, 0.3);
+            color: #38bdf8;
+            border: 1px solid #38bdf8;
+            padding: 15px 30px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .restart-btn:hover {
+            background: rgba(56, 189, 248, 0.5);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(56, 189, 248, 0.2);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.5);
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            pointer-events: auto;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(56, 189, 248, 0.4);
+        }
+
+        .instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: #7dd3fc;
+            font-size: 12px;
+            opacity: 0.7;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="game-ui">
+        <h1>🛡️ Orbit Defense</h1>
+        <div class="stats">
+            <div class="stat">
+                <span class="stat-label">SCORE</span>
+                <span class="stat-value" id="score">0</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">HP</span>
+                <span class="stat-value" id="health">100</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">WAVE</span>
+                <span class="stat-value" id="wave">1</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <h2>GAME OVER</h2>
+        <p>Score: <span id="finalScore">0</span></p>
+        <p>Wave: <span id="finalWave">0</span></p>
+        <button class="restart-btn" onclick="restartGame()">🔄 もう一度</button>
+    </div>
+
+    <div class="instructions">
+        マウス/タッチで戦士を回転させて敵を撃退
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let centerX, centerY;
+        let orbitRadius;
+
+        // ゲーム状態
+        let gameState = {
+            score: 0,
+            health: 100,
+            wave: 1,
+            isGameOver: false,
+            enemies: [],
+            bullets: [],
+            particles: [],
+            warriorAngle: 0,
+            lastShot: 0,
+            shootCooldown: 200,
+            enemySpawnRate: 2000,
+            lastEnemySpawn: 0
+        };
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+            orbitRadius = Math.min(width, height) * 0.3;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 敵クラス
+        class Enemy {
+            constructor() {
+                this.angle = Math.random() * Math.PI * 2;
+                this.distance = Math.max(width, height) * 0.6;
+                this.speed = 0.5 + Math.random() * 0.5 + gameState.wave * 0.1;
+                this.size = 8 + Math.random() * 8;
+                this.health = 1;
+                this.color = `hsl(${0 + Math.random() * 30}, 80%, 50%)`;
+            }
+
+            update() {
+                this.distance -= this.speed;
+                return this.distance > orbitRadius * 0.5;
+            }
+
+            draw() {
+                const x = centerX + Math.cos(this.angle) * this.distance;
+                const y = centerY + Math.sin(this.angle) * this.distance;
+
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                // グロー効果
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, this.size * 2);
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(1, 'transparent');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(x, y, this.size * 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // 弾丸クラス
+        class Bullet {
+            constructor(angle) {
+                this.angle = angle;
+                this.distance = orbitRadius;
+                this.speed = 8;
+                this.size = 4;
+            }
+
+            update() {
+                this.distance += this.speed;
+                return this.distance < Math.max(width, height);
+            }
+
+            draw() {
+                const x = centerX + Math.cos(this.angle) * this.distance;
+                const y = centerY + Math.sin(this.angle) * this.distance;
+
+                ctx.fillStyle = '#7dd3fc';
+                ctx.beginPath();
+                ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                // トレイル
+                ctx.fillStyle = 'rgba(125, 211, 252, 0.5)';
+                ctx.beginPath();
+                ctx.arc(x - Math.cos(this.angle) * 10, y - Math.sin(this.angle) * 10, this.size * 0.7, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 6;
+                this.vy = (Math.random() - 0.5) * 6;
+                this.life = 1;
+                this.color = color;
+                this.size = 2 + Math.random() * 3;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 0.02;
+                return this.life > 0;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color.replace(')', `, ${this.life})`).replace('rgb', 'rgba');
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // 敵をスポーン
+        function spawnEnemy() {
+            gameState.enemies.push(new Enemy());
+        }
+
+        // 射撃
+        function shoot() {
+            const now = Date.now();
+            if (now - gameState.lastShot > gameState.shootCooldown) {
+                gameState.bullets.push(new Bullet(gameState.warriorAngle));
+                gameState.lastShot = now;
+            }
+        }
+
+        // パーティクル生成
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                gameState.particles.push(new Particle(x, y, color));
+            }
+        }
+
+        // コリジョン判定
+        function checkCollisions() {
+            // 弾丸 vs 敵
+            for (let i = gameState.bullets.length - 1; i >= 0; i--) {
+                const bullet = gameState.bullets[i];
+                for (let j = gameState.enemies.length - 1; j >= 0; j--) {
+                    const enemy = gameState.enemies[j];
+                    const bulletX = centerX + Math.cos(bullet.angle) * bullet.distance;
+                    const bulletY = centerY + Math.sin(bullet.angle) * bullet.distance;
+                    const enemyX = centerX + Math.cos(enemy.angle) * enemy.distance;
+                    const enemyY = centerY + Math.sin(enemy.angle) * enemy.distance;
+
+                    const dx = bulletX - enemyX;
+                    const dy = bulletY - enemyY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < bullet.size + enemy.size) {
+                        createExplosion(enemyX, enemyY, enemy.color);
+                        gameState.enemies.splice(j, 1);
+                        gameState.bullets.splice(i, 1);
+                        gameState.score += 10;
+                        updateUI();
+                        break;
+                    }
+                }
+            }
+
+            // 敵 vs 中心
+            for (let i = gameState.enemies.length - 1; i >= 0; i--) {
+                const enemy = gameState.enemies[i];
+                if (enemy.distance < orbitRadius * 0.6) {
+                    gameState.health -= 10;
+                    createExplosion(centerX, centerY, 'rgb(239, 68, 68)');
+                    gameState.enemies.splice(i, 1);
+                    updateUI();
+
+                    if (gameState.health <= 0) {
+                        endGame();
+                    }
+                }
+            }
+        }
+
+        // UI更新
+        function updateUI() {
+            document.getElementById('score').textContent = gameState.score;
+            document.getElementById('health').textContent = gameState.health;
+            document.getElementById('wave').textContent = gameState.wave;
+        }
+
+        // ゲームオーバー
+        function endGame() {
+            gameState.isGameOver = true;
+            document.getElementById('finalScore').textContent = gameState.score;
+            document.getElementById('finalWave').textContent = gameState.wave;
+            document.getElementById('gameOver').classList.add('show');
+        }
+
+        // リスタート
+        function restartGame() {
+            gameState = {
+                score: 0,
+                health: 100,
+                wave: 1,
+                isGameOver: false,
+                enemies: [],
+                bullets: [],
+                particles: [],
+                warriorAngle: 0,
+                lastShot: 0,
+                shootCooldown: 200,
+                enemySpawnRate: 2000,
+                lastEnemySpawn: 0
+            };
+            document.getElementById('gameOver').classList.remove('show');
+            updateUI();
+        }
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('mousemove', (e) => {
+            if (!gameState.isGameOver) {
+                gameState.warriorAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+                shoot();
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!gameState.isGameOver && e.touches.length > 0) {
+                const touch = e.touches[0];
+                gameState.warriorAngle = Math.atan2(touch.clientY - centerY, touch.clientX - centerX);
+                shoot();
+            }
+        });
+
+        canvas.addEventListener('click', () => {
+            if (!gameState.isGameOver) {
+                shoot();
+            }
+        });
+
+        // 描画
+        function draw() {
+            // 背景をクリア
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 軌道を描画
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, orbitRadius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // 中心の核を描画
+            const coreGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 40);
+            coreGradient.addColorStop(0, `rgba(56, 189, 248, ${gameState.health / 100})`);
+            coreGradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = coreGradient;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 40, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 25 + Math.sin(Date.now() * 0.003) * 3, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // 戦士を描画
+            if (!gameState.isGameOver) {
+                const warriorX = centerX + Math.cos(gameState.warriorAngle) * orbitRadius;
+                const warriorY = centerY + Math.sin(gameState.warriorAngle) * orbitRadius;
+
+                // 戦士の体
+                ctx.fillStyle = '#7dd3fc';
+                ctx.beginPath();
+                ctx.arc(warriorX, warriorY, 12, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 戦士のグロー
+                const warriorGradient = ctx.createRadialGradient(warriorX, warriorY, 0, warriorX, warriorY, 20);
+                warriorGradient.addColorStop(0, 'rgba(125, 211, 252, 0.5)');
+                warriorGradient.addColorStop(1, 'transparent');
+                ctx.fillStyle = warriorGradient;
+                ctx.beginPath();
+                ctx.arc(warriorX, warriorY, 20, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 敵を更新・描画
+            gameState.enemies = gameState.enemies.filter(enemy => enemy.update());
+            gameState.enemies.forEach(enemy => enemy.draw());
+
+            // 弾丸を更新・描画
+            gameState.bullets = gameState.bullets.filter(bullet => bullet.update());
+            gameState.bullets.forEach(bullet => bullet.draw());
+
+            // パーティクルを更新・描画
+            gameState.particles = gameState.particles.filter(particle => particle.update());
+            gameState.particles.forEach(particle => particle.draw());
+
+            // コリジョン判定
+            if (!gameState.isGameOver) {
+                checkCollisions();
+
+                // 敵をスポーン
+                const now = Date.now();
+                if (now - gameState.lastEnemySpawn > gameState.enemySpawnRate) {
+                    spawnEnemy();
+                    gameState.lastEnemySpawn = now;
+                }
+
+                // ウェーブ進行
+                if (gameState.score > gameState.wave * 100) {
+                    gameState.wave++;
+                    gameState.enemySpawnRate = Math.max(500, 2000 - gameState.wave * 100);
+                    updateUI();
+                }
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        // ゲーム開始
+        updateUI();
+        draw();
+    </script>
+</body>
+</html>
