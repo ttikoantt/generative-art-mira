@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animated Text Rain - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .container {
+            text-align: center;
+            z-index: 10;
+            padding: 20px;
+        }
+
+        h1 {
+            color: white;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes glow {
+            from {
+                text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            }
+            to {
+                text-shadow: 0 0 30px rgba(255, 255, 255, 0.8), 0 0 40px rgba(255, 255, 255, 0.6);
+            }
+        }
+
+        .info {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1rem;
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+            max-width: 100%;
+            height: auto;
+            touch-action: none;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 50px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <div class="container">
+        <h1>🌧️ Animated Text Rain</h1>
+        <p class="info">文字たちが雨のように降り注ぐ...</p>
+        <canvas id="canvas"></canvas>
+        <div class="controls">
+            <button class="btn" onclick="changeMode()">モード変更</button>
+            <button class="btn" onclick="changeColors()">色変更</button>
+            <button class="btn" onclick="changeSpeed()">速度変更</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // キャンバスサイズ設定
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 800);
+            const maxHeight = Math.min(window.innerHeight - 300, 600);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 設定
+        let mode = 0; // 0: ひらがな, 1: カタカナ, 2: 漢字, 3: 絵文字
+        const modes = ['ひらがな', 'カタカナ', '漢字', '絵文字'];
+
+        const characterSets = {
+            hiragana: 'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん',
+            katakana: 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン',
+            kanji: '日月火水木金土山川田人本目力手口足耳心石雨風雲花鳥虫魚馬牛犬猫',
+            emoji: '⭐🌟✨💫⚡🔥💧🌸🌺🌻🌷🌹🍀🌲🌳🌴🌵🌾🌿☘️🍁🍂🍃❄️⛄'
+        };
+
+        let colorScheme = 0;
+        const colorSchemes = [
+            ['#ff006e', '#8338ec', '#3a86ff', '#06ffa5'],
+            ['#f72585', '#7209b7', '#3a0ca3', '#4361ee'],
+            ['#ffbe0b', '#fb5607', '#ff006e', '#8338ec'],
+            ['#00f5d4', '#00bbf9', '#00a6fb', '#0582ca'],
+            ['#ffffff', '#cccccc', '#999999', '#666666']
+        ];
+
+        let speed = 1;
+        const speeds = [0.5, 1, 1.5, 2];
+        let speedIndex = 1;
+
+        // テキストの雨粒
+        class RainDrop {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * -canvas.height;
+                this.speed = (Math.random() * 2 + 1) * speed;
+                this.text = this.getRandomChar();
+                this.size = Math.random() * 20 + 16;
+                this.color = this.getRandomColor();
+                this.opacity = Math.random() * 0.5 + 0.5;
+                this.rotation = (Math.random() - 0.5) * 0.3;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.02;
+            }
+
+            getRandomChar() {
+                let chars;
+                switch(mode) {
+                    case 0: chars = characterSets.hiragana; break;
+                    case 1: chars = characterSets.katakana; break;
+                    case 2: chars = characterSets.kanji; break;
+                    case 3: chars = characterSets.emoji; break;
+                }
+                return chars[Math.floor(Math.random() * chars.length)];
+            }
+
+            getRandomColor() {
+                const colors = colorSchemes[colorScheme];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update() {
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+
+                // 時々文字を変更
+                if (Math.random() < 0.02) {
+                    this.text = this.getRandomChar();
+                }
+
+                // 画面外に出たらリセット
+                if (this.y > canvas.height + 50) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.globalAlpha = this.opacity;
+                ctx.fillStyle = this.color;
+                ctx.font = `${this.size}px "Courier New", monospace`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.text, 0, 0);
+
+                // グロー効果
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 15;
+                ctx.fillText(this.text, 0, 0);
+
+                ctx.restore();
+            }
+        }
+
+        // 雨粒の配列
+        const drops = [];
+        const numDrops = 150;
+
+        for (let i = 0; i < numDrops; i++) {
+            const drop = new RainDrop();
+            drop.y = Math.random() * canvas.height; // 初期位置は画面全体に
+            drops.push(drop);
+        }
+
+        // アニメーション
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drops.forEach(drop => {
+                drop.update();
+                drop.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        // コントロール関数
+        function changeMode() {
+            mode = (mode + 1) % 4;
+            drops.forEach(drop => {
+                drop.text = drop.getRandomChar();
+            });
+        }
+
+        function changeColors() {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+            drops.forEach(drop => {
+                drop.color = drop.getRandomColor();
+            });
+        }
+
+        function changeSpeed() {
+            speedIndex = (speedIndex + 1) % speeds.length;
+            speed = speeds[speedIndex];
+        }
+
+        // 全画面表示
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // タッチ操作対応
+        let lastTouchTime = 0;
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const now = Date.now();
+            if (now - lastTouchTime < 300) {
+                // ダブルタップ
+                const touch = e.touches[0];
+                for (let i = 0; i < 10; i++) {
+                    const drop = new RainDrop();
+                    drop.x = touch.clientX - canvas.getBoundingClientRect().left;
+                    drop.y = touch.clientY - canvas.getBoundingClientRect().top;
+                    drop.speed = Math.random() * 3 + 2;
+                    drops.push(drop);
+                }
+                if (drops.length > 200) {
+                    drops.splice(0, 10);
+                }
+            }
+            lastTouchTime = now;
+        });
+
+        // マウス操作
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            for (let i = 0; i < 10; i++) {
+                const drop = new RainDrop();
+                drop.x = x + (Math.random() - 0.5) * 50;
+                drop.y = y + (Math.random() - 0.5) * 50;
+                drop.speed = Math.random() * 3 + 2;
+                drops.push(drop);
+            }
+            if (drops.length > 200) {
+                drops.splice(0, 10);
+            }
+        });
+    </script>
+</body>
+</html>
