@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ネオン・パーティクル・システム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: bold;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-primary {
+            background: rgba(0, 255, 255, 0.2);
+            color: #0ff;
+            border: 2px solid #0ff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+
+        .btn-primary:hover {
+            background: rgba(0, 255, 255, 0.4);
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 0, 255, 0.2);
+            color: #f0f;
+            border: 2px solid #f0f;
+            box-shadow: 0 0 20px rgba(255, 0, 255, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 0, 255, 0.4);
+            box-shadow: 0 0 30px rgba(255, 0, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            font-size: 14px;
+            text-shadow: 0 0 10px #0ff;
+            z-index: 100;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-wrap: wrap;
+                justify-content: center;
+                bottom: 10px;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 12px;
+            }
+
+            .info {
+                font-size: 12px;
+                top: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <div>パーティクル数: <span id="particleCount">0</span></div>
+        <div>FPS: <span id="fps">0</span></div>
+    </div>
+
+    <div class="controls">
+        <button class="btn-primary" onclick="burst()">爆発</button>
+        <button class="btn-secondary" onclick="clearAll()">クリア</button>
+    </div>
+
+    <button class="btn-primary fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const particleCountEl = document.getElementById('particleCount');
+        const fpsEl = document.getElementById('fps');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+        let particles = [];
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 0;
+
+        // ネオンカラー
+        const colors = [
+            '#ff006e', // ピンク
+            '#00f5ff', // シアン
+            '#ffbe0b', // イエロー
+            '#8338ec', // パープル
+            '#3a86ff', // ブルー
+            '#fb5607', // オレンジ
+            '#ff006e', // マゼンタ
+            '#06ffa5', // グリーン
+        ];
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.color = color || colors[Math.floor(Math.random() * colors.length)];
+                this.size = Math.random() * 4 + 2;
+                this.speedX = (Math.random() - 0.5) * 4;
+                this.speedY = (Math.random() - 0.5) * 4;
+                this.life = 1;
+                this.decay = Math.random() * 0.005 + 0.002;
+                this.trail = [];
+                this.maxTrail = 10;
+            }
+
+            update() {
+                // トレイルを記録
+                this.trail.push({ x: this.x, y: this.y, life: this.life });
+                if (this.trail.length > this.maxTrail) {
+                    this.trail.shift();
+                }
+
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.speedY += 0.05; // 重力
+                this.speedX *= 0.99;
+                this.speedY *= 0.99;
+                this.life -= this.decay;
+
+                // 壁で跳ね返る
+                if (this.x < 0 || this.x > width) {
+                    this.speedX *= -0.8;
+                    this.x = Math.max(0, Math.min(width, this.x));
+                }
+                if (this.y < 0 || this.y > height) {
+                    this.speedY *= -0.8;
+                    this.y = Math.max(0, Math.min(height, this.y));
+                }
+            }
+
+            draw() {
+                // トレイルを描画
+                ctx.beginPath();
+                ctx.moveTo(this.trail[0]?.x || this.x, this.trail[0]?.y || this.y);
+                for (let point of this.trail) {
+                    ctx.lineTo(point.x, point.y);
+                }
+                ctx.strokeStyle = this.color + Math.floor(this.life * 50).toString(16).padStart(2, '0');
+                ctx.lineWidth = this.size * this.life * 0.5;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+
+                // パーティクルを描画
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // グロー効果
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life * 2, 0, Math.PI * 2);
+                ctx.fillStyle = this.color + '33';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function burst(x, y) {
+            const burstX = x || width / 2;
+            const burstY = y || height / 2;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            for (let i = 0; i < 50; i++) {
+                const particle = new Particle(burstX, burstY, color);
+                const angle = (Math.PI * 2 / 50) * i;
+                const speed = Math.random() * 8 + 4;
+                particle.speedX = Math.cos(angle) * speed;
+                particle.speedY = Math.sin(angle) * speed;
+                particles.push(particle);
+            }
+        }
+
+        function clearAll() {
+            particles = [];
+        }
+
+        function animate() {
+            // 背景を少し透明にしてトレイル効果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // パーティクルを更新・描画
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // 自動的にパーティクルを追加
+            if (Math.random() < 0.1 && particles.length < 200) {
+                particles.push(new Particle());
+            }
+
+            // 情報更新
+            particleCountEl.textContent = particles.length;
+
+            // FPS計算
+            frameCount++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+                fpsEl.textContent = fps;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', (e) => {
+            burst(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            burst(touch.clientX, touch.clientY);
+        });
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // 初期バースト
+        setTimeout(() => {
+            burst(width / 2, height / 2);
+        }, 500);
+
+        animate();
+    </script>
+</body>
+</html>
