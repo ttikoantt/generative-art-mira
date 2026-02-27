@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Color Trail Runner - 色の軌跡</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .score {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            display: none;
+            z-index: 100;
+        }
+
+        .game-over h2 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .game-over p {
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .restart-btn {
+            padding: 15px 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: #fff;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 12px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div class="score">スコア: <span id="score">0</span></div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="info">ドラッグ or スワイプで移動</div>
+
+    <div class="game-over" id="gameOver">
+        <h2>ゲームオーバー</h2>
+        <p>スコア: <span id="finalScore">0</span></p>
+        <button class="restart-btn" onclick="restart()">再挑戦</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let score = 0;
+        let gameOver = false;
+
+        // プレイヤー
+        const player = {
+            x: 0,
+            y: 0,
+            radius: 15,
+            color: { r: 255, g: 255, b: 255 },
+            trail: []
+        };
+
+        // 色チェンジャー
+        let colorChangers = [];
+
+        // 障害物
+        let obstacles = [];
+
+        // 色パレット
+        const colors = [
+            { r: 255, g: 107, b: 107 },  // Red
+            { r: 78, g: 205, b: 196 },    // Teal
+            { r: 255, g: 230, b: 109 },   // Yellow
+            { r: 26, g: 83, b: 92 },      // Dark
+            { r: 247, g: 255, b: 247 },   // White
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+
+            if (player.x === 0 && player.y === 0) {
+                player.x = width / 2;
+                player.y = height / 2;
+            }
+        }
+
+        function createColorChanger() {
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            colorChangers.push({
+                x: Math.random() * (width - 60) + 30,
+                y: Math.random() * (height - 60) + 30,
+                radius: 20,
+                color: color,
+                pulse: 0
+            });
+        }
+
+        function createObstacle() {
+            obstacles.push({
+                x: Math.random() * (width - 80) + 40,
+                y: Math.random() * (height - 80) + 40,
+                radius: Math.random() * 15 + 10,
+                speedX: (Math.random() - 0.5) * 2,
+                speedY: (Math.random() - 0.5) * 2
+            });
+        }
+
+        function spawnEntities() {
+            if (colorChangers.length < 5) {
+                createColorChanger();
+            }
+            if (obstacles.length < 8 && score > 5) {
+                createObstacle();
+            }
+            if (obstacles.length < 12 && score > 15) {
+                createObstacle();
+            }
+        }
+
+        function update() {
+            if (gameOver) return;
+
+            // トレイルを追加
+            player.trail.push({
+                x: player.x,
+                y: player.y,
+                color: { ...player.color },
+                opacity: 1,
+                radius: player.radius
+            });
+
+            // トレイルが長すぎないように
+            if (player.trail.length > 50) {
+                player.trail.shift();
+            }
+
+            // 色チェンジャーとの衝突判定
+            colorChangers = colorChangers.filter(changer => {
+                const dist = Math.hypot(player.x - changer.x, player.y - changer.y);
+                if (dist < player.radius + changer.radius) {
+                    player.color = changer.color;
+                    score += 10;
+                    document.getElementById('score').textContent = score;
+                    return false;
+                }
+
+                changer.pulse += 0.1;
+                return true;
+            });
+
+            // 障害物の移動
+            obstacles.forEach(obstacle => {
+                obstacle.x += obstacle.speedX;
+                obstacle.y += obstacle.speedY;
+
+                // 壁で跳ね返る
+                if (obstacle.x < obstacle.radius || obstacle.x > width - obstacle.radius) {
+                    obstacle.speedX *= -1;
+                }
+                if (obstacle.y < obstacle.radius || obstacle.y > height - obstacle.radius) {
+                    obstacle.speedY *= -1;
+                }
+
+                // プレイヤーとの衝突
+                const dist = Math.hypot(player.x - obstacle.x, player.y - obstacle.y);
+                if (dist < player.radius + obstacle.radius - 5) {
+                    endGame();
+                }
+            });
+
+            spawnEntities();
+        }
+
+        function draw() {
+            // 背景をクリア（半透明で残像効果）
+            ctx.fillStyle = 'rgba(102, 126, 234, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // トレイルを描画
+            player.trail.forEach((point, index) => {
+                const ratio = index / player.trail.length;
+                point.opacity = ratio;
+                point.radius = player.radius * ratio;
+
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, point.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${point.color.r}, ${point.color.g}, ${point.color.b}, ${point.opacity * 0.5})`;
+                ctx.fill();
+            });
+
+            // 色チェンジャーを描画
+            colorChangers.forEach(changer => {
+                const pulseRadius = changer.radius + Math.sin(changer.pulse) * 3;
+
+                ctx.beginPath();
+                ctx.arc(changer.x, changer.y, pulseRadius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${changer.color.r}, ${changer.color.g}, ${changer.color.b}, 0.3)`;
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(changer.x, changer.y, changer.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgb(${changer.color.r}, ${changer.color.g}, ${changer.color.b})`;
+                ctx.fill();
+            });
+
+            // 障害物を描画
+            obstacles.forEach(obstacle => {
+                ctx.beginPath();
+                ctx.arc(obstacle.x, obstacle.y, obstacle.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fill();
+            });
+
+            // プレイヤーを描画
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgb(${player.color.r}, ${player.color.g}, ${player.color.b})`;
+            ctx.fill();
+
+            // プレイヤーの光る効果
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius + 5, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(${player.color.r}, ${player.color.g}, ${player.color.b}, 0.5)`;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function endGame() {
+            gameOver = true;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        function restart() {
+            score = 0;
+            gameOver = false;
+            player.trail = [];
+            player.color = { r: 255, g: 255, b: 255 };
+            player.x = width / 2;
+            player.y = height / 2;
+            colorChangers = [];
+            obstacles = [];
+            document.getElementById('score').textContent = '0';
+            document.getElementById('gameOver').style.display = 'none';
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        let isDragging = false;
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!gameOver && isDragging) {
+                player.x = e.clientX;
+                player.y = e.clientY;
+            }
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isDragging = true;
+            const touch = e.touches[0];
+            player.x = touch.clientX;
+            player.y = touch.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!gameOver && isDragging) {
+                const touch = e.touches[0];
+                player.x = touch.clientX;
+                player.y = touch.clientY;
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+
+        window.addEventListener('resize', resize);
+
+        // 初期化
+        resize();
+        for (let i = 0; i < 3; i++) {
+            createColorChanger();
+        }
+        gameLoop();
+    </script>
+</body>
+</html>
