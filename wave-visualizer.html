@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音波可視化 | Wave Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Arial', sans-serif;
+            color: #fff;
+            overflow: hidden;
+        }
+        #canvas {
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 255, 255, 0.3);
+            background: rgba(0, 0, 0, 0.3);
+            max-width: 100%;
+            height: auto;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        button {
+            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 5px 15px rgba(0, 212, 255, 0.3);
+        }
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 7px 20px rgba(0, 212, 255, 0.5);
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .info {
+            margin-top: 20px;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+        }
+        .color-scheme {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .color-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .color-btn:hover {
+            transform: scale(1.1);
+        }
+        .color-btn.active {
+            border-color: white;
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" width="800" height="400"></canvas>
+    
+    <div class="controls">
+        <button id="startBtn">🎤 開始</button>
+        <button id="stopBtn" disabled>⏹ 停止</button>
+    </div>
+    
+    <div class="color-scheme">
+        <button class="color-btn active" data-scheme="cyan" style="background: linear-gradient(135deg, #00d4ff, #0099cc);"></button>
+        <button class="color-btn" data-scheme="pink" style="background: linear-gradient(135deg, #ff6b9d, #c44569);"></button>
+        <button class="color-btn" data-scheme="green" style="background: linear-gradient(135deg, #00ff88, #00cc6a);"></button>
+        <button class="color-btn" data-scheme="orange" style="background: linear-gradient(135deg, #ff9f43, #ee5a24);"></button>
+    </div>
+    
+    <div class="info">
+        マイクを許可して音に反応する美しい波形をお楽しみください
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const colorBtns = document.querySelectorAll('.color-btn');
+        
+        // レスポンシブ対応
+        function resizeCanvas() {
+            const maxWidth = Math.min(800, window.innerWidth - 40);
+            const ratio = 400 / 800;
+            canvas.width = maxWidth;
+            canvas.height = maxWidth * ratio;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        let audioContext;
+        let analyser;
+        let microphone;
+        let animationId;
+        let colorScheme = 'cyan';
+        
+        const colorSchemes = {
+            cyan: { primary: '#00d4ff', secondary: '#0099cc', glow: 'rgba(0, 212, 255, 0.5)' },
+            pink: { primary: '#ff6b9d', secondary: '#c44569', glow: 'rgba(255, 107, 157, 0.5)' },
+            green: { primary: '#00ff88', secondary: '#00cc6a', glow: 'rgba(0, 255, 136, 0.5)' },
+            orange: { primary: '#ff9f43', secondary: '#ee5a24', glow: 'rgba(255, 159, 67, 0.5)' }
+        };
+        
+        colorBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                colorBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                colorScheme = btn.dataset.scheme;
+            });
+        });
+        
+        async function startVisualization() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                microphone = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                
+                microphone.connect(analyser);
+                
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+                draw();
+            } catch (err) {
+                alert('マイクへのアクセスが許可されませんでした: ' + err.message);
+            }
+        }
+        
+        function stopVisualization() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            // キャンバスをクリア
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        function draw() {
+            animationId = requestAnimationFrame(draw);
+            
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            analyser.getByteTimeDomainData(dataArray);
+            
+            const colors = colorSchemes[colorScheme];
+            
+            // 背景をフェードさせる
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 波形を描画
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = colors.primary;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = colors.glow;
+            
+            ctx.beginPath();
+            
+            const sliceWidth = canvas.width * 1.0 / bufferLength;
+            let x = 0;
+            
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = v * canvas.height / 2;
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                
+                x += sliceWidth;
+            }
+            
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
+            
+            // 中心線を描画
+            ctx.shadowBlur = 10;
+            ctx.strokeStyle = colors.secondary;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height / 2);
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
+        }
+        
+        startBtn.addEventListener('click', startVisualization);
+        stopBtn.addEventListener('click', stopVisualization);
+    </script>
+</body>
+</html>
