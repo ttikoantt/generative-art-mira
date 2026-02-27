@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sonic Particles - 音声反応パーティクル</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .start-btn {
+            padding: 15px 40px;
+            font-size: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .start-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.4);
+        }
+
+        .start-btn:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+            z-index: 100;
+            letter-spacing: 3px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            font-size: 14px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 25px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="title">✨ Sonic Particles</div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="controls" id="controls">
+        <button class="start-btn" onclick="startAudio()">🎤 音声を開始</button>
+        <div class="info">マイクへのアクセスを許可してください</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let audioContext, analyser, microphone, dataArray;
+        let particles = [];
+        let isAudioStarted = false;
+        let bassEnergy = 0;
+        let midEnergy = 0;
+        let trebleEnergy = 0;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        async function startAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                analyser.smoothingTimeConstant = 0.8;
+                microphone.connect(analyser);
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                isAudioStarted = true;
+                document.getElementById('controls').classList.add('hidden');
+                initParticles();
+            } catch (err) {
+                alert('マイクへのアクセスが必要です');
+            }
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.baseSize = Math.random() * 2 + 1;
+                this.size = this.baseSize;
+                this.speedX = (Math.random() - 0.5) * 0.5;
+                this.speedY = (Math.random() - 0.5) * 0.5;
+                this.baseHue = Math.random() * 60 + 240; // Blue to purple
+                this.hue = this.baseHue;
+                this.alpha = Math.random() * 0.5 + 0.3;
+                this.life = 0;
+                this.maxLife = Math.random() * 200 + 100;
+            }
+
+            update(bass, mid, treble) {
+                this.life++;
+                if (this.life > this.maxLife) {
+                    this.reset();
+                }
+
+                // 音声エネルギーに応じて動きを変化
+                const energyBoost = (bass + mid + treble) / 3 / 255;
+                this.x += this.speedX * (1 + energyBoost * 3);
+                this.y += this.speedY * (1 + energyBoost * 3);
+
+                // 画面外に出たらリセット
+                if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+                    this.reset();
+                }
+
+                // 音声エネルギーに応じてサイズを変化
+                this.size = this.baseSize * (1 + energyBoost * 2);
+
+                // 色を変化
+                this.hue = this.baseHue + treble / 255 * 60;
+            }
+
+            draw(bass, mid, treble) {
+                const energyBoost = (bass + mid + treble) / 3 / 255;
+                const alpha = this.alpha * (1 - this.life / this.maxLife) * (1 + energyBoost);
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, ${alpha})`;
+                ctx.fill();
+
+                // グロー効果
+                if (energyBoost > 0.5) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, ${alpha * 0.3})`;
+                    ctx.fill();
+                }
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            const count = Math.floor((canvas.width * canvas.height) / 8000);
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function getEnergyByBand(dataArray, start, end) {
+            let sum = 0;
+            for (let i = start; i < end; i++) {
+                sum += dataArray[i];
+            }
+            return sum / (end - start);
+        }
+
+        function drawFlowField(bass, mid, treble) {
+            const gridSize = 30;
+            const time = Date.now() * 0.001;
+            const energyBoost = (bass + mid + treble) / 3 / 255;
+
+            ctx.strokeStyle = `rgba(102, 126, 234, ${0.1 + energyBoost * 0.2})`;
+            ctx.lineWidth = 1 + energyBoost;
+
+            for (let x = 0; x < canvas.width; x += gridSize) {
+                for (let y = 0; y < canvas.height; y += gridSize) {
+                    const angle = Math.sin(x * 0.01 + time) * Math.cos(y * 0.01 + time) * Math.PI * 2;
+                    const length = gridSize * 0.5 * (1 + energyBoost);
+
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function drawWaveform(dataArray) {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(118, 75, 162, 0.3)';
+            ctx.lineWidth = 2;
+
+            const sliceWidth = canvas.width / dataArray.length;
+            let x = 0;
+
+            for (let i = 0; i < dataArray.length; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = v * canvas.height / 2;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                x += sliceWidth;
+            }
+
+            ctx.stroke();
+        }
+
+        function animate() {
+            // 半透明の黒でフェード効果
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (isAudioStarted) {
+                analyser.getByteFrequencyData(dataArray);
+
+                // 周波数帯域ごとのエネルギーを計算
+                bassEnergy = getEnergyByBand(dataArray, 0, 10);
+                midEnergy = getEnergyByBand(dataArray, 10, 50);
+                trebleEnergy = getEnergyByBand(dataArray, 50, 128);
+
+                // 波形を描画
+                drawWaveform(dataArray);
+
+                // フロー場を描画
+                if (bassEnergy > 100) {
+                    drawFlowField(bassEnergy, midEnergy, trebleEnergy);
+                }
+
+                // パーティクルを更新・描画
+                particles.forEach(p => {
+                    p.update(bassEnergy, midEnergy, trebleEnergy);
+                    p.draw(bassEnergy, midEnergy, trebleEnergy);
+                });
+
+                // 中心にサークルエフェクト
+                if (bassEnergy > 150) {
+                    const radius = (bassEnergy - 150) * 2;
+                    ctx.beginPath();
+                    ctx.arc(canvas.width / 2, canvas.height / 2, radius, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(102, 126, 234, ${(bassEnergy - 150) / 255})`;
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // 初期パーティクルを作成（デモ用）
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>

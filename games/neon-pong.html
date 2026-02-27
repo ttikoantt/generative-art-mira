@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Neon Pong - ピンポンゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        canvas {
+            border: 2px solid rgba(102, 126, 234, 0.3);
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(102, 126, 234, 0.2);
+        }
+
+        .score {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 50px;
+            color: white;
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+            z-index: 100;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            font-size: 14px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 25px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .start-screen, .game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 15, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+
+        .start-screen h1, .game-over-screen h1 {
+            color: white;
+            font-size: 36px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+        }
+
+        .start-btn {
+            padding: 15px 40px;
+            font-size: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+            margin: 10px;
+        }
+
+        .start-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.4);
+        }
+
+        .instructions {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            margin-top: 30px;
+            text-align: center;
+            line-height: 1.8;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .final-score {
+            color: #667eea;
+            font-size: 72px;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+
+        .winner {
+            color: #4ade80;
+            font-size: 24px;
+            margin-bottom: 30px;
+        }
+
+        .mode-select {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="score">
+        <div id="playerScore">0</div>
+        <div id="aiScore">0</div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="start-screen" id="startScreen">
+        <h1>🏓 Neon Pong</h1>
+        <button class="start-btn" onclick="startGame('easy')">Easy</button>
+        <button class="start-btn" onclick="startGame('normal')">Normal</button>
+        <button class="start-btn" onclick="startGame('hard')">Hard</button>
+        <div class="instructions">
+            PC: マウスでパドルを移動<br>
+            モバイル: 画面をタッチしてスライイド
+        </div>
+    </div>
+
+    <div class="game-over-screen hidden" id="gameOverScreen">
+        <h1>Game Over</h1>
+        <div class="winner" id="winner"></div>
+        <div class="final-score" id="finalScore">0 - 0</div>
+        <button class="start-btn" onclick="restartGame()">もう一度</button>
+        <button class="start-btn" onclick="showStartScreen()">メニューへ</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let playerScore = 0;
+        let aiScore = 0;
+        let gameRunning = false;
+        let difficulty = 'normal';
+        let aiSpeed = 0.08;
+
+        const paddleWidth = 10;
+        const paddleHeight = 80;
+        const ballSize = 10;
+
+        let player = { x: 0, y: 0, score: 0 };
+        let ai = { x: 0, y: 0, score: 0, targetY: 0 };
+        let ball = { x: 0, y: 0, vx: 0, vy: 0, speed: 6 };
+
+        let particles = [];
+        let trail = [];
+
+        function resize() {
+            canvas.width = Math.min(800, window.innerWidth - 40);
+            canvas.height = Math.min(600, window.innerHeight - 100);
+
+            // パドルとボールの位置をリセット
+            player.x = 20;
+            player.y = canvas.height / 2 - paddleHeight / 2;
+
+            ai.x = canvas.width - 30;
+            ai.y = canvas.height / 2 - paddleHeight / 2;
+
+            resetBall();
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function resetBall() {
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height / 2;
+            ball.speed = 6;
+            ball.vx = (Math.random() > 0.5 ? 1 : -1) * ball.speed;
+            ball.vy = (Math.random() - 0.5) * ball.speed;
+            trail = [];
+        }
+
+        function setDifficulty(diff) {
+            difficulty = diff;
+            switch (diff) {
+                case 'easy':
+                    aiSpeed = 0.05;
+                    ball.speed = 5;
+                    break;
+                case 'normal':
+                    aiSpeed = 0.08;
+                    ball.speed = 6;
+                    break;
+                case 'hard':
+                    aiSpeed = 0.12;
+                    ball.speed = 7;
+                    break;
+            }
+        }
+
+        function startGame(diff) {
+            setDifficulty(diff);
+            playerScore = 0;
+            aiScore = 0;
+            updateScore();
+            gameRunning = true;
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            resetBall();
+        }
+
+        function restartGame() {
+            playerScore = 0;
+            aiScore = 0;
+            updateScore();
+            gameRunning = true;
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            resetBall();
+        }
+
+        function showStartScreen() {
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            document.getElementById('startScreen').classList.remove('hidden');
+        }
+
+        function updateScore() {
+            document.getElementById('playerScore').textContent = playerScore;
+            document.getElementById('aiScore').textContent = aiScore;
+        }
+
+        function gameOver(winner) {
+            gameRunning = false;
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+            document.getElementById('finalScore').textContent = `${playerScore} - ${aiScore}`;
+            document.getElementById('winner').textContent = winner === 'player' ? '🎉 You Win!' : '😢 AI Wins';
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 30,
+                    color: color
+                });
+            }
+        }
+
+        function updateParticles() {
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+                return p.life > 0;
+            });
+        }
+
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life / 30;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            });
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            // トレイルを記録
+            trail.push({ x: ball.x, y: ball.y });
+            if (trail.length > 10) trail.shift();
+
+            // ボールの移動
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+
+            // 上下の壁との衝突
+            if (ball.y - ballSize < 0 || ball.y + ballSize > canvas.height) {
+                ball.vy *= -1;
+                ball.y = ball.y - ballSize < 0 ? ballSize : canvas.height - ballSize;
+            }
+
+            // プレイヤーのパドルとの衝突
+            if (ball.x - ballSize < player.x + paddleWidth &&
+                ball.y > player.y && ball.y < player.y + paddleHeight &&
+                ball.vx < 0) {
+                ball.vx *= -1;
+                ball.speed = Math.min(ball.speed * 1.05, 15); // スピードアップ
+
+                // パドルの位置に応じて角度を変化
+                const relativeY = ball.y - (player.y + paddleHeight / 2);
+                ball.vy = relativeY * 0.3;
+
+                createParticles(ball.x, ball.y, '#667eea');
+            }
+
+            // AIのパドルとの衝突
+            if (ball.x + ballSize > ai.x &&
+                ball.y > ai.y && ball.y < ai.y + paddleHeight &&
+                ball.vx > 0) {
+                ball.vx *= -1;
+                ball.speed = Math.min(ball.speed * 1.05, 15);
+
+                const relativeY = ball.y - (ai.y + paddleHeight / 2);
+                ball.vy = relativeY * 0.3;
+
+                createParticles(ball.x, ball.y, '#764ba2');
+            }
+
+            // スコア更新
+            if (ball.x < 0) {
+                aiScore++;
+                updateScore();
+                if (aiScore >= 10) {
+                    gameOver('ai');
+                } else {
+                    resetBall();
+                }
+            } else if (ball.x > canvas.width) {
+                playerScore++;
+                updateScore();
+                if (playerScore >= 10) {
+                    gameOver('player');
+                } else {
+                    resetBall();
+                }
+            }
+
+            // AIの移動
+            if (ball.vx > 0) {
+                ai.targetY = ball.y - paddleHeight / 2;
+            } else {
+                ai.targetY = canvas.height / 2 - paddleHeight / 2;
+            }
+            ai.y += (ai.targetY - ai.y) * aiSpeed;
+
+            // AIのパドルを画面内に収める
+            ai.y = Math.max(0, Math.min(canvas.height - paddleHeight, ai.y));
+
+            updateParticles();
+        }
+
+        function draw() {
+            // 背景
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // グリッド
+            ctx.strokeStyle = 'rgba(102, 126, 234, 0.1)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < canvas.width; x += 40) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += 40) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            // 中央ライン
+            ctx.strokeStyle = 'rgba(102, 126, 234, 0.3)';
+            ctx.setLineDash([10, 10]);
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // トレイル
+            trail.forEach((pos, i) => {
+                const alpha = i / trail.length * 0.5;
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, ballSize * (i / trail.length), 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(102, 126, 234, ${alpha})`;
+                ctx.fill();
+            });
+
+            // パドル
+            ctx.fillStyle = '#667eea';
+            ctx.shadowColor = '#667eea';
+            ctx.shadowBlur = 20;
+            ctx.fillRect(player.x, player.y, paddleWidth, paddleHeight);
+
+            ctx.fillStyle = '#764ba2';
+            ctx.shadowColor = '#764ba2';
+            ctx.fillRect(ai.x, ai.y, paddleWidth, paddleHeight);
+
+            ctx.shadowBlur = 0;
+
+            // ボール
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ballSize, 0, Math.PI * 2);
+            ctx.fillStyle = 'white';
+            ctx.shadowColor = 'white';
+            ctx.shadowBlur = 15;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            drawParticles();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // マウス操作
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            player.y = e.clientY - rect.top - paddleHeight / 2;
+            player.y = Math.max(0, Math.min(canvas.height - paddleHeight, player.y));
+        });
+
+        // タッチ操作
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            player.y = touch.clientY - rect.top - paddleHeight / 2;
+            player.y = Math.max(0, Math.min(canvas.height - paddleHeight, player.y));
+        }, { passive: false });
+
+        gameLoop();
+    </script>
+</body>
+</html>
