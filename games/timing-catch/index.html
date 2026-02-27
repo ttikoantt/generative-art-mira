@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Timing Catch</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            height: 100vh;
+            max-height: 800px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+
+        .stats {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 10;
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 25px;
+            backdrop-filter: blur(10px);
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            z-index: 100;
+            transition: opacity 0.3s;
+        }
+
+        .overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .overlay h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #f093fb, #f5576c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .overlay p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .overlay .score {
+            font-size: 72px;
+            font-weight: bold;
+            margin: 20px 0;
+            background: linear-gradient(45deg, #4facfe, #00f2fe);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        button {
+            background: linear-gradient(45deg, #f093fb, #f5576c);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 5px 20px rgba(240, 147, 251, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 25px rgba(240, 147, 251, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 50;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .catch-effect {
+            position: absolute;
+            pointer-events: none;
+            animation: catchPop 0.5s ease-out forwards;
+        }
+
+        @keyframes catchPop {
+            0% {
+                transform: scale(0);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(2);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+        <div class="stats">
+            <div class="stat">スコア: <span id="score">0</span></div>
+            <div class="stat">コンボ: <span id="combo">0</span>x</div>
+            <div class="stat">ハイスコア: <span id="highscore">0</span></div>
+        </div>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="overlay" id="start-screen">
+            <h1>⚾ Timing Catch</h1>
+            <p>ボールをタップしてキャッチ！</p>
+            <button onclick="startGame()">スタート</button>
+        </div>
+
+        <div class="overlay hidden" id="gameover-screen">
+            <h1>ゲームオーバー</h1>
+            <p>あなたのスコア</p>
+            <div class="score" id="final-score">0</div>
+            <p>最大コンボ: <span id="max-combo">0</span></p>
+            <button onclick="startGame()">もう一度</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('game-container');
+
+        let width, height;
+
+        function resizeCanvas() {
+            const rect = container.getBoundingClientRect();
+            width = canvas.width = rect.width;
+            height = canvas.height = rect.height;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ゲーム状態
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let highScore = localStorage.getItem('timingCatchHighScore') || 0;
+        let gameRunning = false;
+        let balls = [];
+        let particles = [];
+        let spawnTimer = 0;
+        let spawnInterval = 120; // フレーム数
+        let baseSpeed = 2;
+
+        document.getElementById('highscore').textContent = highScore;
+
+        class Ball {
+            constructor() {
+                this.radius = 30 + Math.random() * 20;
+                this.x = this.radius + Math.random() * (width - this.radius * 2);
+                this.y = -this.radius;
+
+                // 複数の移動パターン
+                const pattern = Math.floor(Math.random() * 3);
+                this.speed = baseSpeed + Math.random() * 2 + (score * 0.05);
+
+                switch(pattern) {
+                    case 0: // 真っ直ぐ
+                        this.vx = 0;
+                        this.vy = this.speed;
+                        break;
+                    case 1: // 斜め
+                        this.vx = (Math.random() - 0.5) * this.speed;
+                        this.vy = this.speed * 0.8;
+                        break;
+                    case 2: // ジグザグ
+                        this.vx = 0;
+                        this.vy = this.speed;
+                        this.zigzag = true;
+                        this.zigzagTimer = 0;
+                        break;
+                }
+
+                this.hue = Math.random() * 360;
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+            }
+
+            update() {
+                if (this.zigzag) {
+                    this.zigzagTimer++;
+                    this.vx = Math.sin(this.zigzagTimer * 0.1) * 3;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+                this.rotation += this.rotationSpeed;
+
+                // 壁で跳ね返る
+                if (this.x - this.radius < 0 || this.x + this.radius > width) {
+                    this.vx *= -1;
+                    this.x = Math.max(this.radius, Math.min(width - this.radius, this.x));
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // グロー効果
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = `hsl(${this.hue}, 100%, 50%)`;
+
+                // ボール
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+                gradient.addColorStop(0, `hsl(${this.hue}, 100%, 70%)`);
+                gradient.addColorStop(0.5, `hsl(${this.hue}, 100%, 50%)`);
+                gradient.addColorStop(1, `hsl(${this.hue}, 100%, 30%)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // ハイライト
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.beginPath();
+                ctx.arc(-this.radius * 0.3, -this.radius * 0.3, this.radius * 0.2, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            isClicked(x, y) {
+                const dx = this.x - x;
+                const dy = this.y - y;
+                return Math.sqrt(dx * dx + dy * dy) < this.radius + 20;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 8 + 4;
+                this.speedX = (Math.random() - 0.5) * 10;
+                this.speedY = (Math.random() - 0.5) * 10;
+                this.life = 1;
+                this.decay = Math.random() * 0.02 + 0.02;
+                this.hue = hue;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.speedY += 0.3;
+                this.life -= this.decay;
+                this.size *= 0.95;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsl(${this.hue}, 100%, 50%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function createParticles(x, y, hue, count = 15) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, hue));
+            }
+        }
+
+        function spawnBall() {
+            balls.push(new Ball());
+        }
+
+        function handleClick(x, y) {
+            if (!gameRunning) return;
+
+            let caught = false;
+
+            for (let i = balls.length - 1; i >= 0; i--) {
+                if (balls[i].isClicked(x, y)) {
+                    // キャッチ成功
+                    combo++;
+                    maxCombo = Math.max(maxCombo, combo);
+                    const comboBonus = Math.floor(combo * 10);
+                    const points = 100 + comboBonus;
+                    score += points;
+
+                    // パーティクル
+                    createParticles(balls[i].x, balls[i].y, balls[i].hue, 20);
+
+                    // テキストエフェクト
+                    showCatchEffect(balls[i].x, balls[i].y, `+${points}`);
+
+                    balls.splice(i, 1);
+                    caught = true;
+                    break;
+                }
+            }
+
+            if (!caught) {
+                // ミス
+                combo = 0;
+            }
+
+            updateUI();
+        }
+
+        function showCatchEffect(x, y, text) {
+            const effect = document.createElement('div');
+            effect.className = 'catch-effect';
+            effect.style.left = x + 'px';
+            effect.style.top = y + 'px';
+            effect.style.color = 'white';
+            effect.style.fontSize = '24px';
+            effect.style.fontWeight = 'bold';
+            effect.style.textShadow = '0 0 10px rgba(255,255,255,0.8)';
+            effect.textContent = text;
+            container.appendChild(effect);
+
+            setTimeout(() => effect.remove(), 500);
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('combo').textContent = combo;
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            // クリア
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // ボールをスポーン
+            spawnTimer++;
+            if (spawnTimer >= spawnInterval) {
+                spawnBall();
+                spawnTimer = 0;
+                // 徐々に難しくなる
+                spawnInterval = Math.max(60, 120 - score * 0.1);
+            }
+
+            // ボール更新
+            for (let i = balls.length - 1; i >= 0; i--) {
+                balls[i].update();
+                balls[i].draw();
+
+                // 画面外に出たらゲームオーバー
+                if (balls[i].y - balls[i].radius > height) {
+                    gameOver();
+                    return;
+                }
+            }
+
+            // パーティクル更新
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            balls = [];
+            particles = [];
+            spawnTimer = 0;
+            spawnInterval = 120;
+            gameRunning = true;
+
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('gameover-screen').classList.add('hidden');
+            updateUI();
+
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('timingCatchHighScore', highScore);
+                document.getElementById('highscore').textContent = highScore;
+            }
+
+            document.getElementById('final-score').textContent = score;
+            document.getElementById('max-combo').textContent = maxCombo;
+            document.getElementById('gameover-screen').classList.remove('hidden');
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            handleClick(e.clientX - rect.left, e.clientY - rect.top);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            handleClick(touch.clientX - rect.left, touch.clientY - rect.top);
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
