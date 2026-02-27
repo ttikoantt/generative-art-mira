@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grid Explosion | Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0f 0%, #1a0a2e 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            padding: 20px;
+        }
+
+        #fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 1000;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+
+        #fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+            color: #fff;
+            font-size: 18px;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ffd700;
+        }
+
+        #game-canvas {
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            cursor: pointer;
+            box-shadow: 0 0 30px rgba(138, 43, 226, 0.3);
+        }
+
+        .combo-display {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+            pointer-events: none;
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .combo-display.show {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+
+        .buttons {
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 12px 25px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .instructions {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            text-align: center;
+            max-width: 400px;
+        }
+    </style>
+</head>
+<body>
+    <button id="fullscreen-btn">全画面表示</button>
+
+    <div class="game-container">
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-label">スコア</div>
+                <div class="stat-value" id="score">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">残りクリック</div>
+                <div class="stat-value" id="clicks">10</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">最大コンボ</div>
+                <div class="stat-value" id="max-combo">0</div>
+            </div>
+        </div>
+
+        <canvas id="game-canvas"></canvas>
+
+        <div class="buttons">
+            <button class="btn" id="restart-btn">リスタート</button>
+            <button class="btn" id="size-btn">サイズ変更</button>
+        </div>
+
+        <div class="instructions">
+            ブロックをクリックして爆発させよう！連鎖反応で高スコアを目指せ！
+        </div>
+    </div>
+
+    <div class="combo-display" id="combo-display"></div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+
+        let GRID_SIZE = 8;
+        let CELL_SIZE;
+        let grid = [];
+        let particles = [];
+        let score = 0;
+        let clicksRemaining = 10;
+        let maxCombo = 0;
+        let currentCombo = 0;
+        let gridSizeLevel = 0;
+        const gridSizeOptions = [6, 8, 10];
+
+        function init() {
+            resizeCanvas();
+            initGrid();
+            updateStats();
+            draw();
+        }
+
+        function resizeCanvas() {
+            const maxSize = Math.min(window.innerWidth - 40, window.innerHeight - 250, 500);
+            canvas.width = maxSize;
+            canvas.height = maxSize;
+            CELL_SIZE = canvas.width / GRID_SIZE;
+        }
+
+        function initGrid() {
+            grid = [];
+            for (let y = 0; y < GRID_SIZE; y++) {
+                grid[y] = [];
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    grid[y][x] = {
+                        active: true,
+                        color: getRandomColor(),
+                        explosionRadius: 0,
+                        exploding: false,
+                        alpha: 1
+                    };
+                }
+            }
+        }
+
+        function getRandomColor() {
+            const hue = Math.random() * 360;
+            return {
+                hue: hue,
+                saturation: 70 + Math.random() * 30,
+                lightness: 50 + Math.random() * 20
+            };
+        }
+
+        function draw() {
+            // 背景
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.95)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // グリッド
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    const cell = grid[y][x];
+                    if (!cell.active) continue;
+
+                    const centerX = x * CELL_SIZE + CELL_SIZE / 2;
+                    const centerY = y * CELL_SIZE + CELL_SIZE / 2;
+
+                    if (cell.exploding) {
+                        // 爆発エフェクト
+                        ctx.beginPath();
+                        ctx.arc(centerX, centerY, cell.explosionRadius, 0, Math.PI * 2);
+                        const gradient = ctx.createRadialGradient(
+                            centerX, centerY, 0,
+                            centerX, centerY, cell.explosionRadius
+                        );
+                        gradient.addColorStop(0, `hsla(${cell.color.hue}, ${cell.color.saturation}%, ${cell.color.lightness}%, ${cell.alpha})`);
+                        gradient.addColorStop(0.5, `hsla(${(cell.color.hue + 30) % 360}, ${cell.color.saturation}%, ${cell.color.lightness}%, ${cell.alpha * 0.5})`);
+                        gradient.addColorStop(1, `hsla(${(cell.color.hue + 60) % 360}, ${cell.color.saturation}%, ${cell.color.lightness}%, 0)`);
+                        ctx.fillStyle = gradient;
+                        ctx.fill();
+
+                        cell.explosionRadius += 3;
+                        cell.alpha -= 0.05;
+
+                        if (cell.alpha <= 0) {
+                            cell.active = false;
+                        }
+                    } else {
+                        // 通常のブロック
+                        const size = CELL_SIZE - 6;
+                        const gradient = ctx.createLinearGradient(
+                            centerX - size / 2, centerY - size / 2,
+                            centerX + size / 2, centerY + size / 2
+                        );
+                        gradient.addColorStop(0, `hsl(${cell.color.hue}, ${cell.color.saturation}%, ${cell.color.lightness}%)`);
+                        gradient.addColorStop(1, `hsl(${(cell.color.hue + 20) % 360}, ${cell.color.saturation}%, ${cell.color.lightness - 10}%)`);
+
+                        ctx.fillStyle = gradient;
+                        ctx.beginPath();
+                        ctx.roundRect(centerX - size / 2, centerY - size / 2, size, size, 5);
+                        ctx.fill();
+
+                        // ハイライト
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                        ctx.beginPath();
+                        ctx.roundRect(centerX - size / 2 + 3, centerY - size / 2 + 3, size / 3, size / 3, 3);
+                        ctx.fill();
+                    }
+                }
+            }
+
+            // パーティクル
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${p.hue}, ${p.saturation}%, ${p.lightness}%, ${p.life})`;
+                ctx.fill();
+
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                p.size *= 0.98;
+            });
+
+            // 爆発中のセルがある場合はアニメーション継続
+            const hasExplosion = grid.some(row => 
+                row.some(cell => cell.exploding && cell.active)
+            );
+
+            if (hasExplosion) {
+                requestAnimationFrame(draw);
+            }
+        }
+
+        function explode(x, y, chain = false) {
+            if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return;
+            if (!grid[y][x].active || grid[y][x].exploding) return;
+
+            const cell = grid[y][x];
+            cell.exploding = true;
+
+            if (!chain) {
+                currentCombo = 1;
+            } else {
+                currentCombo++;
+                score += currentCombo * 10;
+            }
+
+            // パーティクル生成
+            const centerX = x * CELL_SIZE + CELL_SIZE / 2;
+            const centerY = y * CELL_SIZE + CELL_SIZE / 2;
+
+            for (let i = 0; i < 8; i++) {
+                const angle = (Math.PI * 2 / 8) * i;
+                particles.push({
+                    x: centerX,
+                    y: centerY,
+                    vx: Math.cos(angle) * (2 + Math.random() * 2),
+                    vy: Math.sin(angle) * (2 + Math.random() * 2),
+                    size: 3 + Math.random() * 3,
+                    hue: cell.color.hue,
+                    saturation: cell.color.saturation,
+                    lightness: cell.color.lightness,
+                    life: 1
+                });
+            }
+
+            // 連鎖反応
+            setTimeout(() => {
+                explode(x - 1, y, true);
+                explode(x + 1, y, true);
+                explode(x, y - 1, true);
+                explode(x, y + 1, true);
+                
+                // コンボ更新
+                if (currentCombo > 1) {
+                    showCombo(currentCombo);
+                }
+                
+                updateStats();
+                requestAnimationFrame(draw);
+            }, 100);
+        }
+
+        function showCombo(combo) {
+            const display = document.getElementById('combo-display');
+            display.textContent = `${combo} COMBO!`;
+            display.classList.add('show');
+
+            if (combo > maxCombo) {
+                maxCombo = combo;
+            }
+
+            setTimeout(() => {
+                display.classList.remove('show');
+            }, 500);
+        }
+
+        function updateStats() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('clicks').textContent = clicksRemaining;
+            document.getElementById('max-combo').textContent = maxCombo;
+        }
+
+        function checkGameOver() {
+            if (clicksRemaining <= 0) {
+                // ゲームオーバー
+                setTimeout(() => {
+                    alert(`ゲームオーバー！\n\nスコア: ${score}\n最大コンボ: ${maxCombo}`);
+                    restart();
+                }, 500);
+                return true;
+            }
+
+            // 全てのブロックが消えた場合
+            const hasActiveCells = grid.some(row => 
+                row.some(cell => cell.active)
+            );
+
+            if (!hasActiveCells) {
+                // ボーナススコア
+                const bonus = clicksRemaining * 100;
+                score += bonus;
+                updateStats();
+                
+                setTimeout(() => {
+                    alert(`全クリア！🎉\n\nスコア: ${score}\n最大コンボ: ${maxCombo}\n残りクリックボーナス: +${bonus}`);
+                    restart();
+                }, 500);
+                return true;
+            }
+
+            return false;
+        }
+
+        function restart() {
+            score = 0;
+            clicksRemaining = 10;
+            maxCombo = 0;
+            currentCombo = 0;
+            particles = [];
+            initGrid();
+            updateStats();
+            draw();
+        }
+
+        function changeGridSize() {
+            gridSizeLevel = (gridSizeLevel + 1) % gridSizeOptions.length;
+            GRID_SIZE = gridSizeOptions[gridSizeLevel];
+            resizeCanvas();
+            restart();
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', (e) => {
+            if (clicksRemaining <= 0) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / CELL_SIZE);
+            const y = Math.floor((e.clientY - rect.top) / CELL_SIZE);
+
+            if (grid[y] && grid[y][x] && grid[y][x].active && !grid[y][x].exploding) {
+                clicksRemaining--;
+                explode(x, y);
+                updateStats();
+                
+                setTimeout(() => {
+                    if (!checkGameOver()) {
+                        requestAnimationFrame(draw);
+                    }
+                }, 200);
+            }
+        });
+
+        document.getElementById('fullscreen-btn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.getElementById('restart-btn').addEventListener('click', restart);
+        document.getElementById('size-btn').addEventListener('click', changeGridSize);
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            draw();
+        });
+
+        // ゲーム開始
+        init();
+    </script>
+</body>
+</html>
