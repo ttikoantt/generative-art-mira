@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Mandala Art Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        #canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .controls button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .controls button:active {
+            transform: scale(0.95);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            pointer-events: none;
+        }
+
+        .title {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            pointer-events: none;
+        }
+
+        #fullscreenBtn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: row;
+                flex-wrap: wrap;
+                max-width: 200px;
+            }
+
+            .title {
+                font-size: 18px;
+            }
+
+            .info {
+                font-size: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <button id="clearBtn">🗑️ クリア</button>
+        <button id="saveBtn">💾 保存</button>
+        <button id="randomBtn">🎲 ランダム</button>
+    </div>
+
+    <div class="title">✨ Mandala Art Generator</div>
+
+    <div class="info">
+        タッチ/ドラッグで描画 | 複数回通ると線が太くなる
+    </div>
+
+    <button id="fullscreenBtn" class="controls">📺 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height, centerX, centerY;
+        let isDrawing = false;
+        let lastX = 0, lastY = 0;
+        let hue = 0;
+        let symmetry = 8;
+        let lineWidth = 2;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+
+        function drawLine(x1, y1, x2, y2, hue, width) {
+            ctx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
+            ctx.lineWidth = width;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+
+            const angle1 = Math.atan2(y1 - centerY, x1 - centerX);
+            const angle2 = Math.atan2(y2 - centerY, x2 - centerX);
+            const dist1 = Math.sqrt((x1 - centerX) ** 2 + (y1 - centerY) ** 2);
+            const dist2 = Math.sqrt((x2 - centerX) ** 2 + (y2 - centerY) ** 2);
+
+            for (let i = 0; i < symmetry; i++) {
+                const rotatedAngle1 = angle1 + (i * 2 * Math.PI / symmetry);
+                const rotatedAngle2 = angle2 + (i * 2 * Math.PI / symmetry);
+
+                const rx1 = centerX + dist1 * Math.cos(rotatedAngle1);
+                const ry1 = centerY + dist1 * Math.sin(rotatedAngle1);
+                const rx2 = centerX + dist2 * Math.cos(rotatedAngle2);
+                const ry2 = centerY + dist2 * Math.sin(rotatedAngle2);
+
+                ctx.beginPath();
+                ctx.moveTo(rx1, ry1);
+                ctx.lineTo(rx2, ry2);
+                ctx.stroke();
+
+                // 鏡像
+                const mirrorAngle1 = -angle1 + (i * 2 * Math.PI / symmetry);
+                const mirrorAngle2 = -angle2 + (i * 2 * Math.PI / symmetry);
+
+                const mx1 = centerX + dist1 * Math.cos(mirrorAngle1);
+                const my1 = centerY + dist1 * Math.sin(mirrorAngle1);
+                const mx2 = centerX + dist2 * Math.cos(mirrorAngle2);
+                const my2 = centerY + dist2 * Math.sin(mirrorAngle2);
+
+                ctx.beginPath();
+                ctx.moveTo(mx1, my1);
+                ctx.lineTo(mx2, my2);
+                ctx.stroke();
+            }
+        }
+
+        function getDistance(x1, y1, x2, y2) {
+            return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            lastX = e.touches ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+            lastY = e.touches ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.touches ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+            const y = e.touches ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+
+            const dist = getDistance(lastX, lastY, x, y);
+            if (dist < 3) return;
+
+            drawLine(lastX, lastY, x, y, hue, lineWidth);
+
+            lastX = x;
+            lastY = y;
+            hue = (hue + 1) % 360;
+
+            if (Math.random() < 0.1) {
+                symmetry = Math.floor(Math.random() * 8) + 4;
+            }
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+            lineWidth = 2;
+        }
+
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startDrawing(e);
+        });
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            draw(e);
+        });
+        canvas.addEventListener('touchend', stopDrawing);
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+            hue = 0;
+            symmetry = 8;
+        });
+
+        document.getElementById('saveBtn').addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = `mandala-${Date.now()}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+
+        document.getElementById('randomBtn').addEventListener('click', () => {
+            symmetry = Math.floor(Math.random() * 10) + 3;
+            hue = Math.random() * 360;
+
+            // ランダムな模様を自動生成
+            for (let i = 0; i < 50; i++) {
+                const x1 = Math.random() * width;
+                const y1 = Math.random() * height;
+                const x2 = Math.random() * width;
+                const y2 = Math.random() * height;
+
+                drawLine(x1, y1, x2, y2, hue + i * 10, Math.random() * 3 + 1);
+            }
+        });
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 初期背景
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, width, height);
+    </script>
+</body>
+</html>
