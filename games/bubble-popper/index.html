@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Bubble Popper</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: manipulation;
+        }
+
+        #gameCanvas {
+            display: block;
+            cursor: pointer;
+        }
+
+        .ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .score-display, .time-display {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 25px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .combo-display {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 100;
+        }
+
+        .combo-display.show {
+            opacity: 1;
+            animation: comboPop 0.5s ease-out;
+        }
+
+        @keyframes comboPop {
+            0% { transform: translate(-50%, -50%) scale(0.5); }
+            50% { transform: translate(-50%, -50%) scale(1.2); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+
+        .game-over, .start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            backdrop-filter: blur(10px);
+        }
+
+        .game-over.hidden, .start-screen.hidden {
+            display: none;
+        }
+
+        .game-over h1, .start-screen h1 {
+            font-size: 48px;
+            color: white;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
+        }
+
+        .final-score {
+            font-size: 72px;
+            color: #ffd700;
+            font-weight: bold;
+            margin: 30px 0;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            padding: 20px 60px;
+            font-size: 24px;
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s;
+            margin: 10px;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .instructions {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 18px;
+            margin-top: 20px;
+            text-align: center;
+            max-width: 300px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui">
+        <div class="score-display">スコア: <span id="score">0</span></div>
+        <div class="time-display">残り: <span id="time">60</span>秒</div>
+    </div>
+
+    <div class="combo-display" id="combo"></div>
+
+    <div class="start-screen" id="startScreen">
+        <h1>🫧 Bubble Popper</h1>
+        <p class="instructions">浮かぶ泡をタップして割るゲーム<br>連続で割るとコンボボーナス！<br>60秒で何個割れる？</p>
+        <button class="btn" onclick="startGame()">スタート</button>
+    </div>
+
+    <div class="game-over hidden" id="gameOver">
+        <h1>ゲームオーバー！</h1>
+        <div class="final-score" id="finalScore">0</div>
+        <p style="color: white; font-size: 18px; margin-bottom: 20px;">最大コンボ: <span id="maxCombo">0</span></p>
+        <button class="btn" onclick="startGame()">もう一度</button>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // ゲーム状態
+        let gameRunning = false;
+        let score = 0;
+        let timeLeft = 60;
+        let combo = 0;
+        let maxCombo = 0;
+        let lastPopTime = 0;
+        let gameLoop;
+        let timerLoop;
+
+        // 泡
+        class Bubble {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.radius = Math.random() * 30 + 30;
+                this.x = Math.random() * (width - this.radius * 2) + this.radius;
+                this.y = height + this.radius;
+                this.speedY = Math.random() * 2 + 1;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.hue = Math.random() * 360;
+                this.popping = false;
+                this.popScale = 1;
+            }
+
+            update() {
+                if (this.popping) {
+                    this.popScale += 0.2;
+                    return this.popScale < 2;
+                }
+
+                this.y -= this.speedY;
+                this.x += this.speedX;
+
+                // 左右の壁で反転
+                if (this.x < this.radius || this.x > width - this.radius) {
+                    this.speedX *= -1;
+                }
+
+                // 画面外に出たらリセット
+                if (this.y < -this.radius) {
+                    this.reset();
+                }
+
+                return true;
+            }
+
+            draw() {
+                ctx.save();
+
+                if (this.popping) {
+                    ctx.globalAlpha = 1 - (this.popScale - 1);
+                }
+
+                // 泡の本体
+                const gradient = ctx.createRadialGradient(
+                    this.x - this.radius * 0.3,
+                    this.y - this.radius * 0.3,
+                    0,
+                    this.x,
+                    this.y,
+                    this.radius * this.popScale
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 70%, 80%, 0.9)`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 70%, 60%, 0.6)`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 70%, 40%, 0.3)`);
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * this.popScale, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // ハイライト
+                ctx.beginPath();
+                ctx.arc(
+                    this.x - this.radius * 0.3,
+                    this.y - this.radius * 0.3,
+                    this.radius * 0.2,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            checkClick(x, y) {
+                if (this.popping) return false;
+
+                const dx = x - this.x;
+                const dy = y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                return dist < this.radius;
+            }
+
+            pop() {
+                this.popping = true;
+            }
+        }
+
+        // 泡の配列
+        const bubbles = [];
+        const bubbleCount = 15;
+
+        for (let i = 0; i < bubbleCount; i++) {
+            const bubble = new Bubble();
+            bubble.y = Math.random() * height;
+            bubbles.push(bubble);
+        }
+
+        // 背景の泡（デコレーション）
+        const bgBubbles = [];
+        for (let i = 0; i < 20; i++) {
+            bgBubbles.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                radius: Math.random() * 20 + 10,
+                speed: Math.random() * 0.5 + 0.2,
+                hue: Math.random() * 360
+            });
+        }
+
+        function drawBackground() {
+            // グラデーション背景
+            const gradient = ctx.createLinearGradient(0, 0, width, height);
+            gradient.addColorStop(0, '#667eea');
+            gradient.addColorStop(1, '#764ba2');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // デコレーション泡
+            bgBubbles.forEach(bubble => {
+                bubble.y -= bubble.speed;
+                if (bubble.y < -bubble.radius) {
+                    bubble.y = height + bubble.radius;
+                    bubble.x = Math.random() * width;
+                }
+
+                ctx.beginPath();
+                ctx.arc(bubble.x, bubble.y, bubble.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${bubble.hue}, 70%, 80%, 0.1)`;
+                ctx.fill();
+            });
+        }
+
+        // ゲーム開始
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            timeLeft = 60;
+            combo = 0;
+            maxCombo = 0;
+
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOver').classList.add('hidden');
+            updateUI();
+
+            // 泡をリセット
+            bubbles.forEach(bubble => bubble.reset());
+
+            // タイマー開始
+            timerLoop = setInterval(() => {
+                timeLeft--;
+                updateUI();
+
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+
+            // ゲームループ開始
+            animate();
+        }
+
+        // ゲーム終了
+        function endGame() {
+            gameRunning = false;
+            clearInterval(timerLoop);
+            cancelAnimationFrame(gameLoop);
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('maxCombo').textContent = maxCombo;
+            document.getElementById('gameOver').classList.remove('hidden');
+        }
+
+        // UI更新
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('time').textContent = timeLeft;
+        }
+
+        // コンボ表示
+        function showCombo() {
+            const comboEl = document.getElementById('combo');
+            if (combo > 1) {
+                comboEl.textContent = `${combo} Combo!`;
+                comboEl.classList.add('show');
+                setTimeout(() => comboEl.classList.remove('show'), 500);
+            }
+        }
+
+        // アニメーションループ
+        function animate() {
+            if (!gameRunning) return;
+
+            drawBackground();
+
+            // 泡の更新と描画
+            bubbles = bubbles.filter(bubble => {
+                const alive = bubble.update();
+                if (alive) {
+                    bubble.draw();
+                }
+                return alive;
+            });
+
+            // 泡が減ったら追加
+            while (bubbles.length < bubbleCount) {
+                bubbles.push(new Bubble());
+            }
+
+            gameLoop = requestAnimationFrame(animate);
+        }
+
+        // クリック/タップ処理
+        function handleClick(x, y) {
+            if (!gameRunning) return;
+
+            // クリックした泡を探す
+            for (let i = bubbles.length - 1; i >= 0; i--) {
+                const bubble = bubbles[i];
+                if (bubble.checkClick(x, y)) {
+                    bubble.pop();
+
+                    // コンボ計算
+                    const now = Date.now();
+                    if (now - lastPopTime < 1500) {
+                        combo++;
+                        if (combo > maxCombo) maxCombo = combo;
+                    } else {
+                        combo = 1;
+                    }
+                    lastPopTime = now;
+
+                    // スコア計算
+                    const baseScore = 100;
+                    const comboBonus = combo > 1 ? (combo - 1) * 50 : 0;
+                    score += baseScore + comboBonus;
+
+                    updateUI();
+                    showCombo();
+                    break;
+                }
+            }
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', (e) => {
+            handleClick(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleClick(touch.clientX, touch.clientY);
+        });
+
+        // リサイズ
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期背景描画
+        drawBackground();
+    </script>
+</body>
+</html>
