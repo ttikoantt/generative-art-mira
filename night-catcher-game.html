@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Night Catcher</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(to bottom, #0a0a1a 0%, #1a1a3a 50%, #0d1f2d 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        .hud {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.9);
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .score {
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(100, 255, 150, 0.8);
+        }
+
+        .combo {
+            font-size: 24px;
+            color: rgba(255, 200, 100, 0.9);
+            margin-top: 5px;
+            text-shadow: 0 0 10px rgba(255, 200, 100, 0.6);
+        }
+
+        .timer {
+            font-size: 20px;
+            margin-top: 10px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .start-screen, .game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 26, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            color: white;
+        }
+
+        .game-over-screen {
+            display: none;
+        }
+
+        h1 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px rgba(100, 255, 150, 0.8);
+        }
+
+        .subtitle {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 40px;
+        }
+
+        .final-score {
+            font-size: 64px;
+            font-weight: bold;
+            margin: 20px 0;
+            text-shadow: 0 0 30px rgba(100, 255, 150, 0.8);
+        }
+
+        .start-btn, .restart-btn {
+            background: linear-gradient(135deg, rgba(100, 255, 150, 0.3), rgba(100, 200, 255, 0.3));
+            border: 2px solid rgba(100, 255, 150, 0.5);
+            color: white;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 10px;
+        }
+
+        .start-btn:hover, .restart-btn:hover {
+            background: linear-gradient(135deg, rgba(100, 255, 150, 0.5), rgba(100, 200, 255, 0.5));
+            transform: scale(1.1);
+            box-shadow: 0 0 30px rgba(100, 255, 150, 0.6);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(100, 255, 150, 0.2);
+            border: 1px solid rgba(100, 255, 150, 0.4);
+            color: rgba(100, 255, 150, 0.8);
+            padding: 10px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(100, 255, 150, 0.3);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 28px; }
+            .score { font-size: 36px; }
+            .combo { font-size: 18px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="hud" id="hud" style="display: none;">
+        <div class="score" id="score">0</div>
+        <div class="combo" id="combo"></div>
+        <div class="timer" id="timer">60</div>
+    </div>
+
+    <div class="start-screen" id="startScreen">
+        <h1>🌙 Night Catcher</h1>
+        <div class="subtitle">飛ぶ蛍をタップしてキャッチ！<br>60秒で何匹キャッチできる？</div>
+        <button class="start-btn" onclick="startGame()">スタート</button>
+    </div>
+
+    <div class="game-over-screen" id="gameOverScreen">
+        <h1>ゲーム終了</h1>
+        <div class="subtitle">キャッチした蛍</div>
+        <div class="final-score" id="finalScore">0</div>
+        <div class="subtitle" id="maxCombo"></div>
+        <button class="restart-btn" onclick="startGame()">もう一度</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let fireflies = [];
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let timeLeft = 60;
+        let gameRunning = false;
+        let gameTimer;
+        let spawnTimer;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Firefly {
+            constructor() {
+                this.size = Math.random() * 15 + 20;
+                this.x = Math.random() * (width - this.size * 2) + this.size;
+                this.y = height + this.size;
+                this.speedY = Math.random() * 2 + 1.5;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.phase = Math.random() * Math.PI * 2;
+                this.frequency = Math.random() * 0.1 + 0.05;
+                this.brightness = Math.random();
+                this.hue = Math.random() * 40 + 100;
+                this.caught = false;
+                this.wobble = Math.random() * Math.PI * 2;
+            }
+
+            update() {
+                this.phase += this.frequency;
+                this.brightness = (Math.sin(this.phase) + 1) / 2;
+                this.wobble += 0.05;
+
+                this.y -= this.speedY;
+                this.x += this.speedX + Math.sin(this.wobble) * 0.5;
+
+                if (this.x < this.size || this.x > width - this.size) {
+                    this.speedX *= -1;
+                }
+            }
+
+            draw() {
+                const alpha = this.brightness * 0.9;
+                
+                // Outer glow
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size * 2
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${alpha})`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 100%, 50%, ${alpha * 0.4})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 50%, 0)`);
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Core
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 0.4, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 90%, ${alpha})`;
+                ctx.fill();
+            }
+
+            checkClick(x, y) {
+                const dist = Math.sqrt((this.x - x) ** 2 + (this.y - y) ** 2);
+                return dist < this.size * 1.5;
+            }
+        }
+
+        function spawnFirefly() {
+            if (!gameRunning) return;
+            fireflies.push(new Firefly());
+        }
+
+        function startGame() {
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            timeLeft = 60;
+            fireflies = [];
+            gameRunning = true;
+
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('gameOverScreen').style.display = 'none';
+            document.getElementById('hud').style.display = 'block';
+            updateHUD();
+
+            gameTimer = setInterval(() => {
+                timeLeft--;
+                updateHUD();
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+
+            spawnTimer = setInterval(spawnFirefly, 500);
+
+            // Initial fireflies
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => spawnFirefly(), i * 200);
+            }
+        }
+
+        function endGame() {
+            gameRunning = false;
+            clearInterval(gameTimer);
+            clearInterval(spawnTimer);
+
+            document.getElementById('hud').style.display = 'none';
+            document.getElementById('gameOverScreen').style.display = 'flex';
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('maxCombo').textContent = `最大コンボ: ${maxCombo}`;
+        }
+
+        function updateHUD() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('combo').textContent = combo > 1 ? `${combo} コンボ!` : '';
+            document.getElementById('timer').textContent = timeLeft;
+        }
+
+        function catchFirefly(firefly) {
+            firefly.caught = true;
+            combo++;
+            maxCombo = Math.max(maxCombo, combo);
+            
+            // Score calculation with combo bonus
+            const baseScore = 10;
+            const comboBonus = Math.min(combo, 10) * 5;
+            score += baseScore + comboBonus;
+
+            updateHUD();
+
+            // Create catch effect
+            createCatchEffect(firefly.x, firefly.y, firefly.hue);
+        }
+
+        let catchEffects = [];
+
+        function createCatchEffect(x, y, hue) {
+            for (let i = 0; i < 10; i++) {
+                catchEffects.push({
+                    x, y,
+                    size: Math.random() * 5 + 2,
+                    speedX: (Math.random() - 0.5) * 10,
+                    speedY: (Math.random() - 0.5) * 10,
+                    hue,
+                    life: 1
+                });
+            }
+        }
+
+        function updateCatchEffects() {
+            catchEffects = catchEffects.filter(effect => {
+                effect.x += effect.speedX;
+                effect.y += effect.speedY;
+                effect.life -= 0.05;
+                effect.speedX *= 0.95;
+                effect.speedY *= 0.95;
+
+                if (effect.life > 0) {
+                    ctx.beginPath();
+                    ctx.arc(effect.x, effect.y, effect.size, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${effect.hue}, 100%, 70%, ${effect.life})`;
+                    ctx.fill();
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        function animate() {
+            // Clear with trail effect
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.15)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (gameRunning) {
+                fireflies = fireflies.filter(f => !f.caught && f.y > -50);
+
+                fireflies.forEach(firefly => {
+                    firefly.update();
+                    firefly.draw();
+                });
+
+                updateCatchEffects();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function handleClick(x, y) {
+            if (!gameRunning) return;
+
+            let caught = false;
+            fireflies.forEach(firefly => {
+                if (!firefly.caught && firefly.checkClick(x, y)) {
+                    catchFirefly(firefly);
+                    caught = true;
+                }
+            });
+
+            if (!caught) {
+                combo = 0;
+                updateHUD();
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('click', (e) => {
+            handleClick(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            for (let touch of e.touches) {
+                handleClick(touch.clientX, touch.clientY);
+            }
+        });
+
+        resize();
+        animate();
+    </script>
+</body>
+</html>
