@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Number Spiral Art - 数字螺旋アート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #fff;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 15px;
+            z-index: 10;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 14px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Courier New', monospace;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #2d3748;
+            color: #a0aec0;
+        }
+
+        .btn-secondary:hover {
+            background: #4a5568;
+        }
+
+        .canvas-container {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            border: 2px solid #2d3748;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .info {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 12px;
+            color: #718096;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.2rem;
+            }
+
+            button {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌀 Number Spiral Art</h1>
+        <div class="controls">
+            <button class="btn-primary" onclick="generateNew()">新しい螺旋</button>
+            <button class="btn-secondary" onclick="toggleAnimation()">一時停止/再生</button>
+            <button class="btn-secondary" onclick="changeColorScheme()">色変更</button>
+        </div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="spiral"></canvas>
+    </div>
+
+    <div class="info">
+        数字が螺旋状に広がり、色彩の調べを奏でます
+    </div>
+
+    <script>
+        const canvas = document.getElementById('spiral');
+        const ctx = canvas.getContext('2d');
+
+        let animationId;
+        let isAnimating = true;
+        let colorScheme = 0;
+        let angle = 0;
+        let numbers = [];
+        let centerX, centerY;
+        let scale;
+
+        const colorSchemes = [
+            // Rainbow
+            (n, total) => {
+                const hue = (n / total) * 360;
+                return `hsl(${hue}, 70%, 60%)`;
+            },
+            // Ocean
+            (n, total) => {
+                const hue = 180 + (n / total) * 60;
+                return `hsl(${hue}, 70%, 50%)`;
+            },
+            // Sunset
+            (n, total) => {
+                const hue = (n / total) * 60;
+                return `hsl(${hue}, 90%, 60%)`;
+            },
+            // Forest
+            (n, total) => {
+                const hue = 80 + (n / total) * 80;
+                return `hsl(${hue}, 60%, 45%)`;
+            },
+            // Purple Dream
+            (n, total) => {
+                const hue = 260 + (n / total) * 80;
+                const light = 40 + (n / total) * 30;
+                return `hsl(${hue}, 70%, ${light}%)`;
+            }
+        ];
+
+        function resize() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 200, 600);
+            canvas.width = size;
+            canvas.height = size;
+            centerX = canvas.width / 2;
+            centerY = canvas.height / 2;
+            scale = (canvas.width / 2) / 20;
+        }
+
+        function generateNumbers() {
+            numbers = [];
+            const total = 100;
+            let x = 0, y = 0;
+            let dx = 1, dy = 0;
+
+            for (let i = 0; i < total; i++) {
+                numbers.push({
+                    x: x,
+                    y: y,
+                    value: i + 1,
+                    targetAngle: Math.atan2(y, x)
+                });
+
+                // Ulam spiral direction change
+                if ((x + y) % 2 === 0) {
+                    if (dx === 0) {
+                        dx = dy;
+                        dy = 0;
+                    } else {
+                        dy = -dx;
+                        dx = 0;
+                    }
+                } else {
+                    if (dy === 0) {
+                        dy = -dx;
+                        dx = 0;
+                    } else {
+                        dx = dy;
+                        dy = 0;
+                    }
+                }
+
+                x += dx;
+                y += dy;
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const total = numbers.length;
+            const colorFn = colorSchemes[colorScheme % colorSchemes.length];
+
+            // Draw spiral path
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(100, 100, 100, 0.2)';
+            ctx.lineWidth = 1;
+            
+            numbers.forEach((n, i) => {
+                const x = centerX + n.x * scale;
+                const y = centerY + n.y * scale;
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.stroke();
+
+            // Draw numbers with animation
+            numbers.forEach((n, i) => {
+                const distance = Math.sqrt(n.x * n.x + n.y * n.y);
+                const animatedAngle = n.targetAngle + angle * (1 - distance / 20);
+                
+                const x = centerX + Math.cos(animatedAngle) * distance * scale;
+                const y = centerY + Math.sin(animatedAngle) * distance * scale;
+
+                const size = Math.max(10, 30 - distance * 1.2);
+                
+                // Draw glow
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+                const color = colorFn(i, total);
+                gradient.addColorStop(0, color);
+                gradient.addColorStop(0.5, color.replace('60%', '40%').replace('50%', '30%').replace('45%', '35%'));
+                gradient.addColorStop(1, 'transparent');
+
+                ctx.beginPath();
+                ctx.fillStyle = gradient;
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw number
+                ctx.fillStyle = '#fff';
+                ctx.font = `${Math.max(8, size * 0.5)}px Courier New`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(n.value, x, y);
+            });
+        }
+
+        function animate() {
+            if (isAnimating) {
+                angle += 0.01;
+            }
+            draw();
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function generateNew() {
+            angle = 0;
+            generateNumbers();
+        }
+
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+        }
+
+        function changeColorScheme() {
+            colorScheme++;
+        }
+
+        function init() {
+            resize();
+            generateNumbers();
+            animate();
+        }
+
+        window.addEventListener('resize', () => {
+            resize();
+        });
+
+        init();
+    </script>
+</body>
+</html>
