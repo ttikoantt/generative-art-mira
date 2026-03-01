@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>量子トンネル・レース | Quantum Tunnel Race</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 100%);
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: #00ffff;
+            font-size: 14px;
+            text-shadow: 0 0 10px #00ffff;
+            z-index: 10;
+        }
+
+        .score {
+            font-size: 24px;
+            font-weight: bold;
+            color: #ff00ff;
+            text-shadow: 0 0 15px #ff00ff;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #00ffff;
+            color: #00ffff;
+            width: 40px;
+            height: 40px;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 10;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 20px #00ffff;
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #00ffff;
+            padding: 30px;
+            text-align: center;
+            display: none;
+            z-index: 100;
+        }
+
+        .game-over h2 {
+            color: #ff00ff;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px #ff00ff;
+        }
+
+        .game-over p {
+            color: #00ffff;
+            margin-bottom: 20px;
+        }
+
+        .game-over button {
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid #00ffff;
+            color: #00ffff;
+            padding: 10px 30px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
+        }
+
+        .game-over button:hover {
+            background: rgba(0, 255, 255, 0.4);
+            box-shadow: 0 0 20px #00ffff;
+        }
+
+        .instructions {
+            position: fixed;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #00ffff;
+            font-size: 12px;
+            text-align: center;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div>Score: <span class="score" id="score">0</span></div>
+        <div>Level: <span id="level">1</span></div>
+        <div>Tunnel: <span id="tunnel">0</span>%</div>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
+
+    <div class="game-over" id="gameOver">
+        <h2>GAME OVER</h2>
+        <p>Final Score: <span id="finalScore">0</span></p>
+        <p>Tunnels: <span id="finalTunnels">0</span></p>
+        <button id="restartBtn">Try Again</button>
+    </div>
+
+    <div class="instructions">
+        Tap or Press SPACE to tunnel through walls
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let score = 0;
+        let level = 1;
+        let tunnelCount = 0;
+        let gameOver = false;
+        let animationId;
+
+        // プレイヤー
+        const player = {
+            x: 100,
+            y: 0,
+            radius: 15,
+            velocityY: 0,
+            gravity: 0.3,
+            jumpStrength: -8,
+            canTunnel: true,
+            tunnelProb: 0.5
+        };
+
+        // 壁
+        let walls = [];
+        let wallSpeed = 3;
+        let wallGap = 180;
+        let wallSpawnTimer = 0;
+        let wallSpawnInterval = 120;
+
+        // 粒子
+        let particles = [];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            player.y = height / 2;
+        }
+
+        class Wall {
+            constructor() {
+                this.x = width;
+                this.width = 40;
+                this.gapY = Math.random() * (height - wallGap - 100) + 50;
+                this.gapHeight = wallGap;
+                this.tunnelable = Math.random() < 0.3; // 30%の確率でトンネル可能
+                this.tunnelHint = false;
+            }
+
+            update() {
+                this.x -= wallSpeed;
+            }
+
+            draw() {
+                // 上部の壁
+                ctx.save();
+                if (this.tunnelable) {
+                    ctx.fillStyle = 'rgba(255, 0, 255, 0.6)';
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = '#ff00ff';
+                } else {
+                    ctx.fillStyle = 'rgba(0, 255, 255, 0.6)';
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = '#00ffff';
+                }
+                ctx.fillRect(this.x, 0, this.width, this.gapY);
+                ctx.restore();
+
+                // 下部の壁
+                ctx.save();
+                if (this.tunnelable) {
+                    ctx.fillStyle = 'rgba(255, 0, 255, 0.6)';
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = '#ff00ff';
+                } else {
+                    ctx.fillStyle = 'rgba(0, 255, 255, 0.6)';
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = '#00ffff';
+                }
+                ctx.fillRect(this.x, this.gapY + this.gapHeight, this.width, height - this.gapY - this.gapHeight);
+                ctx.restore();
+
+                // トンネル可能な壁のヒント
+                if (this.tunnelable && this.tunnelHint) {
+                    ctx.save();
+                    ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.01) * 0.3;
+                    ctx.fillStyle = '#ff00ff';
+                    ctx.font = '20px Courier New';
+                    ctx.fillText('?', this.x + 10, this.gapY + this.gapHeight / 2);
+                    ctx.restore();
+                }
+            }
+
+            checkCollision(px, py, pr) {
+                // 上部の壁との衝突
+                if (px + pr > this.x && px - pr < this.x + this.width) {
+                    if (py - pr < this.gapY || py + pr > this.gapY + this.gapHeight) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.life = 1;
+                this.color = color;
+                this.size = Math.random() * 5 + 2;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 0.02;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function createParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function spawnWall() {
+            walls.push(new Wall());
+        }
+
+        function tunnel() {
+            if (!player.canTunnel) return;
+
+            // 最も近い壁を探す
+            let nearestWall = null;
+            let nearestDist = Infinity;
+
+            walls.forEach(wall => {
+                if (wall.tunnelable && !wall.tunnelHint) {
+                    const dist = wall.x - player.x;
+                    if (dist > 0 && dist < nearestDist) {
+                        nearestDist = dist;
+                        nearestWall = wall;
+                    }
+                }
+            });
+
+            if (nearestWall) {
+                // 量子トンネル成功
+                if (Math.random() < player.tunnelProb) {
+                    // 壁の向こう側に移動
+                    player.x = nearestWall.x + nearestWall.width + 20;
+                    score += 50;
+                    tunnelCount++;
+                    createParticles(player.x, player.y, '#ff00ff', 20);
+                    nearestWall.tunnelHint = true;
+                } else {
+                    // トンネル失敗
+                    createParticles(player.x, player.y, '#ff0000', 10);
+                }
+                player.canTunnel = false;
+                setTimeout(() => player.canTunnel = true, 500);
+            }
+        }
+
+        function jump() {
+            player.velocityY = player.jumpStrength;
+            createParticles(player.x, player.y, '#00ffff', 5);
+        }
+
+        function update() {
+            if (gameOver) return;
+
+            // プレイヤーの物理
+            player.velocityY += player.gravity;
+            player.y += player.velocityY;
+
+            // 上下の境界
+            if (player.y < player.radius) {
+                player.y = player.radius;
+                player.velocityY = 0;
+            }
+            if (player.y > height - player.radius) {
+                player.y = height - player.radius;
+                player.velocityY = 0;
+            }
+
+            // 壁の生成
+            wallSpawnTimer++;
+            if (wallSpawnTimer >= wallSpawnInterval) {
+                spawnWall();
+                wallSpawnTimer = 0;
+            }
+
+            // 壁の更新
+            walls.forEach((wall, index) => {
+                wall.update();
+
+                // 衝突判定
+                if (wall.checkCollision(player.x, player.y, player.radius)) {
+                    endGame();
+                }
+
+                // スコア加算
+                if (wall.x + wall.width < player.x && !wall.passed) {
+                    score += 10;
+                    wall.passed = true;
+                }
+            });
+
+            // 画面外の壁を削除
+            walls = walls.filter(wall => wall.x + wall.width > 0);
+
+            // レベルアップ
+            if (score > level * 100) {
+                level++;
+                wallSpeed += 0.5;
+                wallGap = Math.max(120, wallGap - 10);
+                player.tunnelProb = Math.min(0.9, player.tunnelProb + 0.05);
+            }
+
+            // 粒子の更新
+            particles.forEach((p, index) => {
+                p.update();
+                if (p.life <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+        }
+
+        function draw() {
+            // 背景
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 粒子
+            particles.forEach(p => p.draw());
+
+            // 壁
+            walls.forEach(wall => wall.draw());
+
+            // プレイヤー
+            ctx.save();
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#00ffff';
+            ctx.fillStyle = '#00ffff';
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 量子の輝き
+            ctx.globalAlpha = 0.3;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius + 5 + Math.sin(Date.now() * 0.01) * 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // UI更新
+            document.getElementById('score').textContent = score;
+            document.getElementById('level').textContent = level;
+            document.getElementById('tunnel').textContent = Math.floor(player.tunnelProb * 100);
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function endGame() {
+            gameOver = true;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalTunnels').textContent = tunnelCount;
+            document.getElementById('gameOver').style.display = 'block';
+            createParticles(player.x, player.y, '#ff0000', 30);
+        }
+
+        function restart() {
+            score = 0;
+            level = 1;
+            tunnelCount = 0;
+            gameOver = false;
+            walls = [];
+            particles = [];
+            wallSpeed = 3;
+            wallGap = 180;
+            player.x = 100;
+            player.y = height / 2;
+            player.velocityY = 0;
+            player.tunnelProb = 0.5;
+            document.getElementById('gameOver').style.display = 'none';
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', () => {
+            resize();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (gameOver) {
+                    restart();
+                } else {
+                    jump();
+                }
+            }
+            if (e.code === 'KeyT') {
+                tunnel();
+            }
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameOver) {
+                restart();
+            } else {
+                jump();
+            }
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (gameOver) {
+                restart();
+            }
+        });
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.getElementById('restartBtn').addEventListener('click', restart);
+
+        // 初期化
+        resize();
+        gameLoop();
+    </script>
+</body>
+</html>
