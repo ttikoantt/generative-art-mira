@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Starry Sky</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .ui-overlay {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .title {
+            font-size: 1.5rem;
+            font-weight: 300;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(100, 150, 255, 0.5);
+        }
+
+        .instructions {
+            font-size: 0.9rem;
+            opacity: 0.6;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.7);
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            z-index: 100;
+            transition: all 0.3s;
+            pointer-events: auto;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        @media (max-width: 768px) {
+            .title {
+                font-size: 1.2rem;
+            }
+
+            .instructions {
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="ui-overlay">
+        <div class="title">✨ Interactive Starry Sky</div>
+        <div class="instructions">Move your mouse to create stars</div>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">Full Screen</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let width, height;
+        let stars = [];
+        let mouseX = 0, mouseY = 0;
+        let isMouseMoving = false;
+        let lastMouseX = 0, lastMouseY = 0;
+        let mouseTimeout = null;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+
+        class Star {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 3 + 1;
+                this.life = 1;
+                this.decay = Math.random() * 0.005 + 0.002;
+                this.hue = Math.random() * 60 + 200; // Blue to purple range
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.twinkle = Math.random() * Math.PI * 2;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+                this.hue += 0.1;
+                this.twinkle += 0.05;
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+            }
+
+            draw() {
+                const alpha = this.life * (0.5 + Math.sin(this.twinkle) * 0.3);
+                const glowSize = this.size * 2;
+
+                // Outer glow
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, glowSize
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 80%, ${alpha})`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 100%, 60%, ${alpha * 0.5})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 40%, 0)`);
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, glowSize, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Core
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 90%, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        function createStars(x, y, count) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * 30;
+                stars.push(new Star(
+                    x + Math.cos(angle) * distance,
+                    y + Math.sin(angle) * distance
+                ));
+            }
+        }
+
+        // Mouse events
+        document.addEventListener('mousemove', (e) => {
+            const dx = e.clientX - lastMouseX;
+            const dy = e.clientY - lastMouseY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            createStars(e.clientX, e.clientY, Math.min(3, Math.floor(distance / 5) + 1));
+
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+
+            isMouseMoving = true;
+            clearTimeout(mouseTimeout);
+            mouseTimeout = setTimeout(() => {
+                isMouseMoving = false;
+            }, 100);
+        });
+
+        // Touch events
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const dx = touch.clientX - lastMouseX;
+            const dy = touch.clientY - lastMouseY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            createStars(touch.clientX, touch.clientY, Math.min(3, Math.floor(distance / 5) + 1));
+
+            lastMouseX = touch.clientX;
+            lastMouseY = touch.clientY;
+        }, { passive: false });
+
+        document.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            lastMouseX = touch.clientX;
+            lastMouseY = touch.clientY;
+            createStars(touch.clientX, touch.clientY, 5);
+        });
+
+        // Fullscreen
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Background ambient stars
+        let ambientStars = [];
+        for (let i = 0; i < 100; i++) {
+            ambientStars.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                size: Math.random() * 1.5 + 0.5,
+                twinkle: Math.random() * Math.PI * 2,
+                twinkleSpeed: Math.random() * 0.02 + 0.01
+            });
+        }
+
+        function drawAmbientStars() {
+            ambientStars.forEach(star => {
+                star.twinkle += star.twinkleSpeed;
+                const alpha = 0.3 + Math.sin(star.twinkle) * 0.2;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.fill();
+            });
+        }
+
+        function animate() {
+            // Fade effect for trails
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            drawAmbientStars();
+
+            // Update and draw user-created stars
+            stars = stars.filter(star => star.life > 0);
+            stars.forEach(star => {
+                star.update();
+                star.draw();
+            });
+
+            // Create stars at mouse position if moving
+            if (isMouseMoving) {
+                createStars(lastMouseX, lastMouseY, 1);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
