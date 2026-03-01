@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Rainbow Trail - Mira's Games</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        #canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        #ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .stat {
+            color: #fff;
+            font-size: 16px;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        #score {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        #combo {
+            color: #ffeb3b;
+            font-size: 20px;
+        }
+
+        #fullscreen-btn {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 100;
+            pointer-events: auto;
+        }
+
+        #fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        #fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+
+        #game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            display: none;
+            z-index: 1000;
+        }
+
+        #game-over h2 {
+            color: #fff;
+            font-size: 32px;
+            margin-bottom: 20px;
+        }
+
+        #game-over p {
+            color: #fff;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        #game-over button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: #fff;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 18px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.3s ease;
+        }
+
+        #game-over button:hover {
+            transform: scale(1.05);
+        }
+
+        #start-screen {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            z-index: 1000;
+        }
+
+        #start-screen h2 {
+            color: #fff;
+            font-size: 32px;
+            margin-bottom: 20px;
+        }
+
+        #start-screen p {
+            color: #fff;
+            font-size: 16px;
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+
+        #start-screen button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: #fff;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 18px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.3s ease;
+        }
+
+        #start-screen button:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div class="stat" id="score">Score: 0</div>
+        <div class="stat" id="time">Time: 60</div>
+        <div class="stat" id="combo"></div>
+    </div>
+    <button id="fullscreen-btn">全画面</button>
+    <canvas id="canvas"></canvas>
+
+    <div id="start-screen">
+        <h2>🌈 Rainbow Trail</h2>
+        <p>画面をドラッグして虹のトレイルを描こう！</p>
+        <p>色のターゲットを通過してスコアを稼ごう！</p>
+        <p>制限時間60秒</p>
+        <button id="start-btn">スタート</button>
+    </div>
+
+    <div id="game-over">
+        <h2>🎉 ゲーム終了！</h2>
+        <p id="final-score">Score: 0</p>
+        <p id="high-score">High Score: 0</p>
+        <button id="restart-btn">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const scoreEl = document.getElementById('score');
+        const timeEl = document.getElementById('time');
+        const comboEl = document.getElementById('combo');
+        const gameOverEl = document.getElementById('game-over');
+        const finalScoreEl = document.getElementById('final-score');
+        const highScoreEl = document.getElementById('high-score');
+        const startScreenEl = document.getElementById('start-screen');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        let width, height;
+        let gameRunning = false;
+        let score = 0;
+        let timeLeft = 60;
+        let combo = 0;
+        let lastCollectTime = 0;
+        let trail = [];
+        let targets = [];
+        let particles = [];
+        let isDragging = false;
+        let lastX, lastY;
+        let hue = 0;
+        let gameInterval;
+        let timerInterval;
+        let highScore = localStorage.getItem('rainbowTrailHighScore') || 0;
+
+        // Resize
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Target class
+        class Target {
+            constructor() {
+                this.radius = 40 + Math.random() * 30;
+                this.x = this.radius + Math.random() * (width - this.radius * 2);
+                this.y = this.radius + Math.random() * (height - this.radius * 2);
+                this.hue = Math.random() * 360;
+                this.alpha = 0.3 + Math.random() * 0.4;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+                this.collected = false;
+            }
+
+            update() {
+                this.pulsePhase += 0.05;
+            }
+
+            draw() {
+                if (this.collected) return;
+
+                const pulse = Math.sin(this.pulsePhase) * 0.2 + 1;
+                const currentRadius = this.radius * pulse;
+                const currentAlpha = this.alpha * (0.8 + Math.sin(this.pulsePhase) * 0.2);
+
+                ctx.save();
+
+                // Glow
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentRadius + 15, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${currentAlpha * 0.3})`;
+                ctx.fill();
+
+                // Main circle
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, currentRadius
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${currentAlpha})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 50%, 0)`);
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentRadius, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            checkCollision(x, y) {
+                if (this.collected) return false;
+                const dx = x - this.x;
+                const dy = y - this.y;
+                return Math.sqrt(dx * dx + dy * dy) < this.radius;
+            }
+        }
+
+        // Particle class
+        class Particle {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() - 0.5) * 8;
+                this.radius = 3 + Math.random() * 5;
+                this.hue = hue;
+                this.alpha = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.1;
+                this.alpha -= this.decay;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${this.alpha})`;
+                ctx.fill();
+            }
+
+            isDead() {
+                return this.alpha <= 0;
+            }
+        }
+
+        // Spawn targets
+        function spawnTargets() {
+            targets = [];
+            const numTargets = 5 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < numTargets; i++) {
+                targets.push(new Target());
+            }
+        }
+
+        // Create particles
+        function createParticles(x, y, hue, count = 20) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, hue));
+            }
+        }
+
+        // Start game
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            timeLeft = 60;
+            combo = 0;
+            trail = [];
+            targets = [];
+            particles = [];
+            hue = 0;
+
+            updateUI();
+            spawnTargets();
+
+            startScreenEl.style.display = 'none';
+            gameOverEl.style.display = 'none';
+
+            // Timer
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateUI();
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+
+            // Spawn new targets periodically
+            gameInterval = setInterval(() => {
+                if (targets.filter(t => !t.collected).length < 3) {
+                    spawnTargets();
+                }
+            }, 3000);
+        }
+
+        // End game
+        function endGame() {
+            gameRunning = false;
+            clearInterval(timerInterval);
+            clearInterval(gameInterval);
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('rainbowTrailHighScore', highScore);
+            }
+
+            finalScoreEl.textContent = `Score: ${score}`;
+            highScoreEl.textContent = `High Score: ${highScore}`;
+            gameOverEl.style.display = 'block';
+        }
+
+        // Update UI
+        function updateUI() {
+            scoreEl.textContent = `Score: ${score}`;
+            timeEl.textContent = `Time: ${timeLeft}`;
+            comboEl.textContent = combo > 1 ? `${combo}x Combo!` : '';
+        }
+
+        // Touch/Mouse events
+        function handleStart(x, y) {
+            if (!gameRunning) return;
+            isDragging = true;
+            lastX = x;
+            lastY = y;
+            trail.push({ x, y, hue });
+        }
+
+        function handleMove(x, y) {
+            if (!gameRunning || !isDragging) return;
+
+            const dx = x - lastX;
+            const dy = y - lastY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist > 5) {
+                hue = (hue + 2) % 360;
+                trail.push({ x, y, hue });
+
+                // Check target collision
+                targets.forEach(target => {
+                    if (!target.collected && target.checkCollision(x, y)) {
+                        target.collected = true;
+                        createParticles(target.x, target.y, target.hue, 30);
+
+                        const now = Date.now();
+                        if (now - lastCollectTime < 2000) {
+                            combo++;
+                        } else {
+                            combo = 1;
+                        }
+                        lastCollectTime = now;
+
+                        const points = 10 * combo;
+                        score += points;
+                        updateUI();
+                    }
+                });
+
+                lastX = x;
+                lastY = y;
+            }
+        }
+
+        function handleEnd() {
+            isDragging = false;
+        }
+
+        canvas.addEventListener('mousedown', (e) => handleStart(e.clientX, e.clientY));
+        canvas.addEventListener('mousemove', (e) => handleMove(e.clientX, e.clientY));
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('mouseleave', handleEnd);
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            for (let touch of e.touches) {
+                handleStart(touch.clientX, touch.clientY);
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            for (let touch of e.touches) {
+                handleMove(touch.clientX, touch.clientY);
+            }
+        });
+
+        canvas.addEventListener('touchend', handleEnd);
+
+        // Animation loop
+        function animate() {
+            // Semi-transparent black for trail fade
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (gameRunning) {
+                // Update and draw targets
+                targets.forEach(target => {
+                    target.update();
+                    target.draw();
+                });
+
+                // Remove collected targets
+                targets = targets.filter(t => !t.collected);
+
+                // Draw trail
+                if (trail.length > 1) {
+                    for (let i = 1; i < trail.length; i++) {
+                        const prev = trail[i - 1];
+                        const curr = trail[i];
+
+                        ctx.beginPath();
+                        ctx.moveTo(prev.x, prev.y);
+                        ctx.lineTo(curr.x, curr.y);
+                        ctx.strokeStyle = `hsl(${curr.hue}, 100%, 60%)`;
+                        ctx.lineWidth = 8;
+                        ctx.lineCap = 'round';
+                        ctx.stroke();
+                    }
+                }
+
+                // Fade trail
+                trail = trail.filter(() => Math.random() > 0.02);
+            }
+
+            // Update and draw particles
+            particles = particles.filter(p => !p.isDead());
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Fullscreen
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Start/Restart buttons
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>
