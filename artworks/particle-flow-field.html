@@ -10,256 +10,340 @@
             padding: 0;
             box-sizing: border-box;
         }
-
         body {
             background: #0a0a0f;
             overflow: hidden;
             font-family: 'Courier New', monospace;
         }
-
         canvas {
             display: block;
         }
-
-        .info {
+        .controls {
             position: fixed;
             top: 20px;
             left: 20px;
+            z-index: 100;
+            background: rgba(10, 10, 15, 0.9);
+            padding: 15px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        .controls h1 {
+            color: #fff;
+            font-size: 18px;
+            margin-bottom: 15px;
+            text-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+        }
+        .control-group {
+            margin-bottom: 12px;
+        }
+        .control-group label {
             color: rgba(255, 255, 255, 0.7);
             font-size: 12px;
-            z-index: 100;
-            pointer-events: none;
+            display: block;
+            margin-bottom: 5px;
         }
-
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            outline: none;
+        }
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: linear-gradient(135deg, #64c8ff, #a855f7);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        button {
+            flex: 1;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #64c8ff, #a855f7);
+            color: #fff;
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(100, 200, 255, 0.3);
+        }
         .fullscreen-btn {
             position: fixed;
-            top: 20px;
+            bottom: 20px;
             right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
             background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            padding: 10px 20px;
-            font-size: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            font-size: 20px;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
             z-index: 100;
-            border-radius: 5px;
-            transition: all 0.3s;
         }
-
         .fullscreen-btn:hover {
             background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+        .stats {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 11px;
+            z-index: 100;
+        }
+        @media (max-width: 768px) {
+            .controls {
+                top: 10px;
+                left: 10px;
+                right: 10px;
+                padding: 12px 15px;
+            }
+            .controls h1 {
+                font-size: 16px;
+            }
+            .fullscreen-btn {
+                bottom: 15px;
+                right: 15px;
+                width: 45px;
+                height: 45px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="info">
-        <div>Move mouse to interact</div>
-        <div id="fps"></div>
-    </div>
-    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
     <canvas id="canvas"></canvas>
+    
+    <div class="controls">
+        <h1>🌊 Particle Flow Field</h1>
+        <div class="control-group">
+            <label>Particles: <span id="particleCountValue">2000</span></label>
+            <input type="range" id="particleCount" min="500" max="5000" value="2000">
+        </div>
+        <div class="control-group">
+            <label>Noise Scale: <span id="noiseScaleValue">0.003</span></label>
+            <input type="range" id="noiseScale" min="1" max="10" value="3">
+        </div>
+        <div class="control-group">
+            <label>Speed: <span id="speedValue">2</span></label>
+            <input type="range" id="speed" min="5" max="50" value="20">
+        </div>
+        <div class="control-group">
+            <label>Trail: <span id="trailValue">0.05</span></label>
+            <input type="range" id="trail" min="1" max="20" value="5">
+        </div>
+        <div class="buttons">
+            <button class="btn-primary" onclick="resetParticles()">Reset</button>
+            <button class="btn-secondary" onclick="togglePause()">Pause</button>
+        </div>
+    </div>
+    
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+    <div class="stats" id="stats"></div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-
+        
         let width, height;
         let particles = [];
         let flowField = [];
-        let resolution = 20;
-        let rows, cols;
-        let mouseX = 0, mouseY = 0;
-        let mouseInfluence = 0;
-
-        // Simplex-like noise
-        function noise(x, y, z) {
-            const p = [
-                [151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142],
-                [143,123,75,189,74,193,252,49,137,227,76,73,119,192,155,142,113,31,87,97]
-            ];
-
-            const xi = Math.floor(x) & 255;
-            const yi = Math.floor(y) & 255;
-            const xf = x - Math.floor(x);
-            const yf = y - Math.floor(y);
-
-            const u = fade(xf);
-            const v = fade(yf);
-
-            const aaa = p[p[p[xi]+yi]+z || 0];
-            const aba = p[p[p[xi]+yi+1]+z || 0];
-            const aab = p[p[p[xi+1]+yi]+z || 0];
-            const abb = p[p[p[xi+1]+yi+1]+z || 0];
-
-            const x1 = lerp(u, aaa, aab);
-            const x2 = lerp(u, aba, abb);
-
-            return (lerp(v, x1, x2) / 255) * 2 - 1;
-        }
-
-        function fade(t) {
-            return t * t * t * (t * (t * 6 - 15) + 10);
-        }
-
-        function lerp(t, a, b) {
-            return a + t * (b - a);
-        }
-
-        function resize() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-
-            cols = Math.ceil(width / resolution);
-            rows = Math.ceil(height / resolution);
-
-            flowField = new Array(cols * rows);
-
-            for (let y = 0; y < rows; y++) {
-                for (let x = 0; x < cols; x++) {
-                    const index = x + y * cols;
-                    const angle = noise(x * 0.1, y * 0.1, 0) * Math.PI * 4;
-                    flowField[index] = angle;
+        let paused = false;
+        
+        // Settings
+        let settings = {
+            particleCount: 2000,
+            noiseScale: 0.003,
+            speed: 2,
+            trail: 0.05,
+            colorMode: 'rainbow'
+        };
+        
+        // Simplex Noise (simplified)
+        class SimplexNoise {
+            constructor() {
+                this.p = new Uint8Array(256);
+                for (let i = 0; i < 256; i++) this.p[i] = i;
+                for (let i = 255; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [this.p[i], this.p[j]] = [this.p[j], this.p[i]];
                 }
+                this.perm = new Uint8Array(512);
+                for (let i = 0; i < 512; i++) this.perm[i] = this.p[i & 255];
+            }
+            
+            noise2D(x, y) {
+                const F2 = 0.5 * (Math.sqrt(3) - 1);
+                const G2 = (3 - Math.sqrt(3)) / 6;
+                
+                const s = (x + y) * F2;
+                const i = Math.floor(x + s);
+                const j = Math.floor(y + s);
+                const t = (i + j) * G2;
+                const X0 = i - t;
+                const Y0 = j - t;
+                const x0 = x - X0;
+                const y0 = y - Y0;
+                
+                let i1, j1;
+                if (x0 > y0) { i1 = 1; j1 = 0; }
+                else { i1 = 0; j1 = 1; }
+                
+                const x1 = x0 - i1 + G2;
+                const y1 = y0 - j1 + G2;
+                const x2 = x0 - 1 + 2 * G2;
+                const y2 = y0 - 1 + 2 * G2;
+                
+                const ii = i & 255;
+                const jj = j & 255;
+                
+                let n0 = 0, n1 = 0, n2 = 0;
+                
+                let t0 = 0.5 - x0*x0 - y0*y0;
+                if (t0 >= 0) {
+                    t0 *= t0;
+                    n0 = t0 * t0 * this.grad(this.perm[ii + this.perm[jj]], x0, y0);
+                }
+                
+                let t1 = 0.5 - x1*x1 - y1*y1;
+                if (t1 >= 0) {
+                    t1 *= t1;
+                    n1 = t1 * t1 * this.grad(this.perm[ii + i1 + this.perm[jj + j1]], x1, y1);
+                }
+                
+                let t2 = 0.5 - x2*x2 - y2*y2;
+                if (t2 >= 0) {
+                    t2 *= t2;
+                    n2 = t2 * t2 * this.grad(this.perm[ii + 1 + this.perm[jj + 1]], x2, y2);
+                }
+                
+                return 70 * (n0 + n1 + n2);
+            }
+            
+            grad(hash, x, y) {
+                const h = hash & 7;
+                const u = h < 4 ? x : y;
+                const v = h < 4 ? y : x;
+                return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
             }
         }
-
+        
+        const noise = new SimplexNoise();
+        
         class Particle {
             constructor() {
                 this.reset();
             }
-
+            
             reset() {
                 this.x = Math.random() * width;
                 this.y = Math.random() * height;
                 this.vx = 0;
                 this.vy = 0;
-                this.speed = Math.random() * 2 + 1;
-                this.size = Math.random() * 2 + 1;
-                this.life = Math.random() * 200 + 100;
-                this.maxLife = this.life;
-                this.hue = Math.random() * 60 + 180; // Blue-cyan range
+                this.life = 1;
+                this.maxLife = 100 + Math.random() * 200;
+                this.age = 0;
+                this.hue = Math.random() * 360;
             }
-
+            
             update() {
-                const x = Math.floor(this.x / resolution);
-                const y = Math.floor(this.y / resolution);
-                const index = x + y * cols;
-
-                if (flowField[index] !== undefined) {
-                    const angle = flowField[index];
-                    this.vx += Math.cos(angle) * 0.5;
-                    this.vy += Math.sin(angle) * 0.5;
-                }
-
-                // Mouse influence
-                const dx = mouseX - this.x;
-                const dy = mouseY - this.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-
-                if (dist < 200 && mouseInfluence > 0) {
-                    const force = (1 - dist / 200) * mouseInfluence * 0.5;
-                    this.vx -= (dx / dist) * force;
-                    this.vy -= (dy / dist) * force;
-                    this.hue = 320; // Pink when influenced
-                }
-
+                // Get angle from flow field
+                const angle = noise.noise2D(this.x * settings.noiseScale, this.y * settings.noiseScale) * Math.PI * 4;
+                
+                // Update velocity
+                this.vx += Math.cos(angle) * 0.1;
+                this.vy += Math.sin(angle) * 0.1;
+                
                 // Limit speed
                 const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                if (speed > this.speed * 3) {
-                    this.vx = (this.vx / speed) * this.speed * 3;
-                    this.vy = (this.vy / speed) * this.speed * 3;
+                if (speed > settings.speed) {
+                    this.vx = (this.vx / speed) * settings.speed;
+                    this.vy = (this.vy / speed) * settings.speed;
                 }
-
+                
+                // Update position
                 this.x += this.vx;
                 this.y += this.vy;
-
-                this.vx *= 0.95;
-                this.vy *= 0.95;
-
-                this.life--;
-
+                
+                // Update age
+                this.age++;
+                this.life = 1 - (this.age / this.maxLife);
+                
                 // Reset if dead or out of bounds
-                if (this.life <= 0 || this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                if (this.age > this.maxLife || this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
                     this.reset();
                 }
             }
-
+            
             draw() {
-                const alpha = this.life / this.maxLife;
-                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-
+                const alpha = this.life * 0.8;
+                const size = this.life * 2;
+                
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                ctx.fillStyle = `hsla(${this.hue}, 80%, ${50 + speed * 10}%, ${alpha})`;
+                ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha})`;
                 ctx.fill();
+                
+                // Update hue for color variation
+                this.hue += 0.5;
             }
         }
-
+        
         function init() {
             resize();
-
-            for (let i = 0; i < 3000; i++) {
+            createParticles();
+            animate();
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        function createParticles() {
+            particles = [];
+            for (let i = 0; i < settings.particleCount; i++) {
                 particles.push(new Particle());
             }
         }
-
-        let time = 0;
-        let lastTime = performance.now();
-        let frameCount = 0;
-        let fps = 0;
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            const now = performance.now();
-            frameCount++;
-
-            if (now - lastTime >= 1000) {
-                fps = frameCount;
-                frameCount = 0;
-                lastTime = now;
-                document.getElementById('fps').textContent = `FPS: ${fps} | Particles: ${particles.length}`;
-            }
-
-            time += 0.002;
-
-            // Fade effect
-            ctx.fillStyle = 'rgba(10, 10, 15, 0.05)';
-            ctx.fillRect(0, 0, width, height);
-
-            // Update flow field slowly
-            for (let y = 0; y < rows; y++) {
-                for (let x = 0; x < cols; x++) {
-                    const index = x + y * cols;
-                    const angle = noise(x * 0.1, y * 0.1, time * 10) * Math.PI * 4;
-                    flowField[index] = angle;
-                }
-            }
-
-            particles.forEach(p => {
-                p.update();
-                p.draw();
-            });
-
-            mouseInfluence *= 0.98;
+        
+        function resetParticles() {
+            particles.forEach(p => p.reset());
         }
-
-        // Mouse events
-        canvas.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-            mouseInfluence = Math.min(mouseInfluence + 0.1, 1);
-        });
-
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            mouseX = e.touches[0].clientX;
-            mouseY = e.touches[0].clientY;
-            mouseInfluence = Math.min(mouseInfluence + 0.1, 1);
-        });
-
-        window.addEventListener('resize', resize);
-
+        
+        function togglePause() {
+            paused = !paused;
+            document.querySelector('.btn-secondary').textContent = paused ? 'Play' : 'Pause';
+            if (!paused) animate();
+        }
+        
         function toggleFullscreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
@@ -267,9 +351,52 @@
                 document.exitFullscreen();
             }
         }
-
+        
+        function animate() {
+            if (paused) return;
+            
+            // Fade effect for trails
+            ctx.fillStyle = `rgba(10, 10, 15, ${settings.trail})`;
+            ctx.fillRect(0, 0, width, height);
+            
+            // Update and draw particles
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            
+            // Update stats
+            document.getElementById('stats').textContent = 
+                `${particles.length} particles | FPS: ${Math.round(1000 / 16)}`;
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // Controls
+        document.getElementById('particleCount').addEventListener('input', (e) => {
+            settings.particleCount = parseInt(e.target.value);
+            document.getElementById('particleCountValue').textContent = settings.particleCount;
+            createParticles();
+        });
+        
+        document.getElementById('noiseScale').addEventListener('input', (e) => {
+            settings.noiseScale = parseInt(e.target.value) / 1000;
+            document.getElementById('noiseScaleValue').textContent = settings.noiseScale.toFixed(3);
+        });
+        
+        document.getElementById('speed').addEventListener('input', (e) => {
+            settings.speed = parseInt(e.target.value) / 10;
+            document.getElementById('speedValue').textContent = settings.speed.toFixed(1);
+        });
+        
+        document.getElementById('trail').addEventListener('input', (e) => {
+            settings.trail = parseInt(e.target.value) / 100;
+            document.getElementById('trailValue').textContent = settings.trail.toFixed(2);
+        });
+        
+        window.addEventListener('resize', resize);
+        
         init();
-        animate();
     </script>
 </body>
 </html>
