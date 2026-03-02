@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Physics Playground</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0e27;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 20px;
+            border-radius: 15px;
+            color: white;
+            font-size: 14px;
+            z-index: 100;
+            max-width: 280px;
+        }
+
+        .controls h3 {
+            margin-bottom: 12px;
+            font-size: 16px;
+            color: #7dd3fc;
+        }
+
+        .controls p {
+            margin: 8px 0;
+            opacity: 0.9;
+            line-height: 1.5;
+        }
+
+        .controls .key {
+            display: inline-block;
+            background: rgba(125, 211, 252, 0.2);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 0 3px;
+        }
+
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 20px;
+            border-radius: 15px;
+            color: white;
+            font-size: 14px;
+            text-align: right;
+        }
+
+        .stats div {
+            margin: 5px 0;
+        }
+
+        .stats span {
+            color: #7dd3fc;
+            font-weight: bold;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(125, 211, 252, 0.3);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(125, 211, 252, 0.5);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <h3>🎮 操作方法</h3>
+        <p><span class="key">クリック</span> / <span class="key">タップ</span> - パーティクル生成</p>
+        <p><span class="key">ドラッグ</span> - 軌跡を描く</p>
+        <p><span class="key">G</span> - 重力オン/オフ</p>
+        <p><span class="key">R</span> - リセット</p>
+        <p><span class="key">C</span> - 色モード切替</p>
+    </div>
+
+    <div class="stats">
+        <div>パーティクル: <span id="count">0</span></div>
+        <div>FPS: <span id="fps">60</span></div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">📺 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let particles = [];
+        let gravityEnabled = true;
+        let colorMode = 0;
+        let mouse = { x: null, y: null, down: false };
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 60;
+
+        const colorPalettes = [
+            // Rainbow
+            () => `hsl(${Math.random() * 360}, 80%, 60%)`,
+            // Ocean
+            () => `hsl(${180 + Math.random() * 60}, 80%, ${50 + Math.random() * 30}%)`,
+            // Fire
+            () => `hsl(${Math.random() * 60}, 100%, ${50 + Math.random() * 30}%)`,
+            // Neon
+            () => `hsl(${Math.random() * 360}, 100%, 60%)`
+        ];
+
+        class Particle {
+            constructor(x, y, vx, vy) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx || (Math.random() - 0.5) * 8;
+                this.vy = vy || (Math.random() - 0.5) * 8;
+                this.radius = Math.random() * 3 + 1;
+                this.life = 1;
+                this.decay = Math.random() * 0.002 + 0.001;
+                this.color = colorPalettes[colorMode]();
+                this.trail = [];
+                this.maxTrail = Math.floor(Math.random() * 5) + 3;
+            }
+
+            update() {
+                // Trail
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > this.maxTrail) {
+                    this.trail.shift();
+                }
+
+                // Physics
+                if (gravityEnabled) {
+                    this.vy += 0.2;
+                }
+
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Bounce off walls
+                if (this.x < 0 || this.x > width) {
+                    this.vx *= -0.8;
+                    this.x = Math.max(0, Math.min(width, this.x));
+                }
+                if (this.y < 0 || this.y > height) {
+                    this.vy *= -0.6;
+                    this.y = Math.max(0, Math.min(height, this.y));
+                }
+
+                // Life decay
+                this.life -= this.decay;
+
+                return this.life > 0;
+            }
+
+            draw() {
+                // Draw trail
+                ctx.beginPath();
+                ctx.moveTo(this.trail[0]?.x || this.x, this.trail[0]?.y || this.y);
+                for (let i = 1; i < this.trail.length; i++) {
+                    ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                }
+                ctx.strokeStyle = this.color.replace(')', `, ${this.life * 0.3})`).replace('hsl', 'hsla');
+                ctx.lineWidth = this.radius * 0.5;
+                ctx.stroke();
+
+                // Draw particle
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color.replace(')', `, ${this.life})`).replace('hsl', 'hsla');
+                ctx.fill();
+
+                // Glow effect
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = this.color.replace(')', `, ${this.life * 0.2})`).replace('hsl', 'hsla');
+                ctx.fill();
+            }
+        }
+
+        function createParticles(x, y, count = 5) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y));
+            }
+        }
+
+        function animate() {
+            // Fade effect
+            ctx.fillStyle = 'rgba(10, 14, 39, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Update and draw particles
+            particles = particles.filter(p => {
+                const alive = p.update();
+                if (alive) p.draw();
+                return alive;
+            });
+
+            // Mouse trail
+            if (mouse.down) {
+                createParticles(mouse.x, mouse.y, 3);
+            }
+
+            // Update stats
+            frameCount++;
+            const now = performance.now();
+            if (now - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = now;
+            }
+
+            document.getElementById('count').textContent = particles.length;
+            document.getElementById('fps').textContent = fps;
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        canvas.addEventListener('mousedown', (e) => {
+            mouse.down = true;
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            createParticles(e.clientX, e.clientY, 10);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('mouseup', () => mouse.down = false);
+        canvas.addEventListener('mouseleave', () => mouse.down = false);
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mouse.down = true;
+            const touch = e.touches[0];
+            mouse.x = touch.clientX;
+            mouse.y = touch.clientY;
+            createParticles(touch.clientX, touch.clientY, 10);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouse.x = touch.clientX;
+            mouse.y = touch.clientY;
+        });
+
+        canvas.addEventListener('touchend', () => mouse.down = false);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'g' || e.key === 'G') {
+                gravityEnabled = !gravityEnabled;
+            }
+            if (e.key === 'r' || e.key === 'R') {
+                particles = [];
+            }
+            if (e.key === 'c' || e.key === 'C') {
+                colorMode = (colorMode + 1) % colorPalettes.length;
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Start
+        animate();
+    </script>
+</body>
+</html>
