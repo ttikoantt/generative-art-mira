@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>重力と色の相互作用 - Gravity Colors</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: rgba(255, 255, 255, 0.8);
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                padding: 0 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <button class="fullscreen-btn" id="fullscreenBtn">全画面</button>
+    <div class="info">クリックまたはタップで重力源を追加</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 設定
+        const PARTICLE_COUNT = 300;
+        const GRAVITY_STRENGTH = 0.5;
+        const MAX_GRAVITY_DIST = 300;
+        const COLOR_BLEND_SPEED = 0.02;
+
+        let particles = [];
+        let gravityPoints = [];
+        let width, height;
+
+        // 色相の循環値
+        let hueOffset = 0;
+
+        // パーティクルクラス
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.hue = Math.random() * 360;
+                this.size = Math.random() * 3 + 1;
+                this.life = 1;
+                this.decay = Math.random() * 0.001 + 0.0005;
+            }
+
+            update() {
+                // 重力源に向かって加速
+                gravityPoints.forEach(gp => {
+                    const dx = gp.x - this.x;
+                    const dy = gp.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < MAX_GRAVITY_DIST && dist > 10) {
+                        const force = (1 - dist / MAX_GRAVITY_DIST) * GRAVITY_STRENGTH;
+                        this.vx += (dx / dist) * force;
+                        this.vy += (dy / dist) * force;
+
+                        // 重力源の色を少し取り込む
+                        this.hue = this.hue * (1 - COLOR_BLEND_SPEED) + gp.hue * COLOR_BLEND_SPEED;
+                    }
+                });
+
+                // 速度の制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 8) {
+                    this.vx = (this.vx / speed) * 8;
+                    this.vy = (this.vy / speed) * 8;
+                }
+
+                // 移動
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 画面端で反転
+                if (this.x < 0) { this.x = 0; this.vx *= -0.8; }
+                if (this.x > width) { this.x = width; this.vx *= -0.8; }
+                if (this.y < 0) { this.y = 0; this.vy *= -0.8; }
+                if (this.y > height) { this.y = height; this.vy *= -0.8; }
+
+                // 徐々に色相を変化
+                this.hue += 0.1;
+
+                // 減衰
+                this.life -= this.decay;
+                if (this.life <= 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = this.life * 0.8;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        // 初期化
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        // アニメーション
+        function animate() {
+            // 半透明の背景でトレイル効果
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // パーティクルの更新と描画
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // 重力源の描画
+            gravityPoints.forEach(gp => {
+                const gradient = ctx.createRadialGradient(gp.x, gp.y, 0, gp.x, gp.y, 50);
+                gradient.addColorStop(0, `hsla(${gp.hue}, 80%, 60%, 0.3)`);
+                gradient.addColorStop(1, 'transparent');
+                ctx.beginPath();
+                ctx.arc(gp.x, gp.y, 50, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // 重力源の色相を変化
+                gp.hue += 0.5;
+            });
+
+            hueOffset += 0.2;
+
+            requestAnimationFrame(animate);
+        }
+
+        // クリックで重力源を追加
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            gravityPoints.push({
+                x: x,
+                y: y,
+                hue: hueOffset % 360
+            });
+
+            // 重力源が多すぎたら古いものを削除
+            if (gravityPoints.length > 5) {
+                gravityPoints.shift();
+            }
+        });
+
+        // タッチ対応
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            gravityPoints.push({
+                x: x,
+                y: y,
+                hue: hueOffset % 360
+            });
+
+            if (gravityPoints.length > 5) {
+                gravityPoints.shift();
+            }
+        });
+
+        // 全画面ボタン
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // ウィンドウリサイズ
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // 開始
+        init();
+        animate();
+    </script>
+</body>
+</html>
