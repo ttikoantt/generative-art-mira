@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Sky Hopper | 空の冒険</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        #gameCanvas {
+            display: block;
+            background: linear-gradient(180deg, #87CEEB 0%, #E0F6FF 100%);
+        }
+
+        .ui {
+            position: absolute;
+            pointer-events: none;
+        }
+
+        .score {
+            top: 20px;
+            left: 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2c3e50;
+            text-shadow: 2px 2px 4px rgba(255,255,255,0.8);
+        }
+
+        .high-score {
+            top: 55px;
+            left: 20px;
+            font-size: 1rem;
+            color: #34495e;
+            text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
+        }
+
+        .start-screen, .game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(135, 206, 235, 0.95);
+            pointer-events: auto;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(255,255,255,0.5);
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: #34495e;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #fff;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            pointer-events: auto;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .final-score {
+            font-size: 2rem;
+            color: #2c3e50;
+            margin: 20px 0;
+        }
+
+        .instructions {
+            font-size: 0.9rem;
+            color: #34495e;
+            margin-top: 20px;
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            color: #2c3e50;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui score">⭐ <span id="score">0</span></div>
+    <div class="ui high-score">🏆 <span id="highScore">0</span></div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
+
+    <div class="start-screen" id="startScreen">
+        <h1>🌤️ Sky Hopper</h1>
+        <p class="subtitle">空を跳んで星を集めよう！</p>
+        <button class="btn" id="startBtn">スタート</button>
+        <p class="instructions">
+            タップ/クリックでジャンプ<br>
+            雲を避けて⭐を集めよう
+        </p>
+    </div>
+
+    <div class="game-over-screen hidden" id="gameOverScreen">
+        <h1>💫 ゲームオーバー</h1>
+        <p class="final-score">スコア: <span id="finalScore">0</span></p>
+        <button class="btn" id="restartBtn">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI要素
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('highScore');
+        const finalScoreEl = document.getElementById('finalScore');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        // ゲーム状態
+        let gameState = 'start'; // start, playing, gameover
+        let score = 0;
+        let highScore = localStorage.getItem('skyHopperHighScore') || 0;
+        highScoreEl.textContent = highScore;
+
+        // キャンバスサイズ
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // プレイヤー
+        const player = {
+            x: 100,
+            y: 0,
+            width: 50,
+            height: 40,
+            velocity: 0,
+            gravity: 0.6,
+            jumpForce: -12,
+            grounded: false,
+        };
+
+        // ゲームオブジェクト
+        let clouds = [];
+        let stars = [];
+        let particles = [];
+
+        // 雲の生成
+        function spawnCloud() {
+            const size = Math.random() * 60 + 40;
+            clouds.push({
+                x: canvas.width + size,
+                y: Math.random() * (canvas.height - size),
+                width: size * 2,
+                height: size * 0.8,
+                speed: Math.random() * 2 + 2,
+            });
+        }
+
+        // 星の生成
+        function spawnStar() {
+            stars.push({
+                x: canvas.width + 20,
+                y: Math.random() * (canvas.height - 100) + 50,
+                size: 25,
+                speed: 3,
+                rotation: 0,
+            });
+        }
+
+        // パーティクル生成
+        function spawnParticles(x, y, color, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    size: Math.random() * 6 + 2,
+                    color: color,
+                    life: 1,
+                });
+            }
+        }
+
+        // ジャンプ
+        function jump() {
+            if (gameState !== 'playing') return;
+            if (player.grounded) {
+                player.velocity = player.jumpForce;
+                player.grounded = false;
+                spawnParticles(player.x + player.width / 2, player.y + player.height, '#FFD700', 5);
+            }
+        }
+
+        // ゲーム開始
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            scoreEl.textContent = score;
+
+            player.y = canvas.height / 2;
+            player.velocity = 0;
+            player.grounded = false;
+
+            clouds = [];
+            stars = [];
+            particles = [];
+
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+
+            // 初期オブジェクト生成
+            for (let i = 0; i < 3; i++) {
+                spawnCloud();
+            }
+        }
+
+        // ゲームオーバー
+        function gameOver() {
+            gameState = 'gameover';
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('skyHopperHighScore', highScore);
+                highScoreEl.textContent = highScore;
+            }
+
+            finalScoreEl.textContent = score;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        // 衝突判定
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        // 更新
+        function update() {
+            if (gameState !== 'playing') return;
+
+            // プレイヤー更新
+            player.velocity += player.gravity;
+            player.y += player.velocity;
+
+            // 地面判定
+            if (player.y + player.height > canvas.height - 50) {
+                player.y = canvas.height - 50 - player.height;
+                player.velocity = 0;
+                player.grounded = true;
+            }
+
+            // 天井
+            if (player.y < 0) {
+                player.y = 0;
+                player.velocity = 0;
+            }
+
+            // 雲の更新
+            clouds.forEach((cloud, index) => {
+                cloud.x -= cloud.speed;
+
+                if (cloud.x + cloud.width < 0) {
+                    clouds.splice(index, 1);
+                    spawnCloud();
+                }
+
+                // 衝突判定
+                if (checkCollision(player, cloud)) {
+                    gameOver();
+                }
+            });
+
+            // 星の更新
+            stars.forEach((star, index) => {
+                star.x -= star.speed;
+                star.rotation += 0.05;
+
+                if (star.x + star.size < 0) {
+                    stars.splice(index, 1);
+                    return;
+                }
+
+                // 衝突判定（円）
+                const dx = (player.x + player.width / 2) - star.x;
+                const dy = (player.y + player.height / 2) - star.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < player.width / 2 + star.size) {
+                    stars.splice(index, 1);
+                    score += 10;
+                    scoreEl.textContent = score;
+                    spawnParticles(star.x, star.y, '#FFD700', 10);
+                }
+            });
+
+            // 新しい星の生成
+            if (Math.random() < 0.02) {
+                spawnStar();
+            }
+
+            // パーティクル更新
+            particles.forEach((p, index) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                p.vy += 0.2;
+
+                if (p.life <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+        }
+
+        // 描画
+        function draw() {
+            // 背景（グラデーション）
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#87CEEB');
+            gradient.addColorStop(1, '#E0F6FF');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 地面
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+
+            // 草
+            ctx.fillStyle = '#228B22';
+            ctx.fillRect(0, canvas.height - 55, canvas.width, 10);
+
+            // 雲
+            clouds.forEach(cloud => {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+
+                // 雲の形（複数の円）
+                const circles = [
+                    { x: cloud.x + cloud.width * 0.3, y: cloud.y + cloud.height * 0.5, r: cloud.height * 0.5 },
+                    { x: cloud.x + cloud.width * 0.5, y: cloud.y + cloud.height * 0.4, r: cloud.height * 0.6 },
+                    { x: cloud.x + cloud.width * 0.7, y: cloud.y + cloud.height * 0.5, r: cloud.height * 0.5 },
+                ];
+
+                circles.forEach(c => {
+                    ctx.beginPath();
+                    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            });
+
+            // 星
+            stars.forEach(star => {
+                ctx.save();
+                ctx.translate(star.x, star.y);
+                ctx.rotate(star.rotation);
+
+                // 星の形
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath();
+                for (let i = 0; i < 5; i++) {
+                    const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+                    const x = Math.cos(angle) * star.size;
+                    const y = Math.sin(angle) * star.size;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.fill();
+
+                // 光り
+                ctx.shadowColor = '#FFD700';
+                ctx.shadowBlur = 15;
+                ctx.fill();
+
+                ctx.restore();
+            });
+
+            // パーティクル
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+
+            // プレイヤー（鳥）
+            if (gameState === 'playing' || gameState === 'start') {
+                ctx.save();
+                ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+
+                // 回転（速度に応じて）
+                const rotation = Math.min(Math.max(player.velocity * 0.05, -0.5), 0.5);
+                ctx.rotate(rotation);
+
+                // 体
+                ctx.fillStyle = '#FF6B6B';
+                ctx.beginPath();
+                ctx.ellipse(0, 0, player.width / 2, player.height / 2.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 翼
+                ctx.fillStyle = '#FF8E8E';
+                ctx.beginPath();
+                const wingOffset = Math.sin(Date.now() * 0.02) * 5;
+                ctx.ellipse(-5, wingOffset, 15, 8, -0.3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 目
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(10, -5, 8, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(12, -5, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // くちばし
+                ctx.fillStyle = '#FFA500';
+                ctx.beginPath();
+                ctx.moveTo(20, 0);
+                ctx.lineTo(30, 3);
+                ctx.lineTo(20, 6);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // ゲームループ
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', jump);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                jump();
+            }
+        });
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // ゲーム開始
+        gameLoop();
+    </script>
+</body>
+</html>
