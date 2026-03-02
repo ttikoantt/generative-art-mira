@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スター・コレクター | Star Collector</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #0a0a0a 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .ui {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .score {
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+        }
+
+        .label {
+            font-size: 14px;
+            opacity: 0.7;
+            margin-bottom: 5px;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        #startScreen, #gameOverScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 10, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 1000;
+        }
+
+        #startScreen h1, #gameOverScreen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+        }
+
+        #startScreen p, #gameOverScreen p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            opacity: 0.8;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 20px;
+            background: linear-gradient(135deg, #ffd700, #ffaa00);
+            border: none;
+            border-radius: 50px;
+            color: #1a1a2e;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(255, 215, 0, 0.4);
+        }
+
+        .btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 30px rgba(255, 215, 0, 0.6);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .final-score {
+            font-size: 64px;
+            font-weight: bold;
+            color: #ffd700;
+            margin: 20px 0;
+        }
+
+        @media (max-width: 768px) {
+            .score {
+                font-size: 36px;
+            }
+
+            #startScreen h1, #gameOverScreen h1 {
+                font-size: 36px;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="label">SCORE</div>
+        <div class="score" id="scoreDisplay">0</div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div id="startScreen">
+        <h1>⭐ スター・コレクター</h1>
+        <p>画面をタップして星を集めよう！<br>赤い星を避けて、金色の星をゲット！</p>
+        <button class="btn" onclick="startGame()">スタート</button>
+    </div>
+
+    <div id="gameOverScreen" class="hidden">
+        <h1>ゲームオーバー</h1>
+        <div class="final-score" id="finalScore">0</div>
+        <p>ポイント獲得！</p>
+        <button class="btn" onclick="startGame()">もう一度</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreDisplay = document.getElementById('finalScore');
+
+        let width, height;
+        let score = 0;
+        let gameRunning = false;
+        let gameSpeed = 3;
+        let spawnRate = 60;
+        let frameCount = 0;
+
+        const stars = [];
+        const particles = [];
+
+        const colors = {
+            gold: '#ffd700',
+            red: '#ff4757',
+            blue: '#3742fa',
+            purple: '#a55eea'
+        };
+
+        class Star {
+            constructor() {
+                this.radius = 20 + Math.random() * 15;
+                this.x = Math.random() * (width - this.radius * 2) + this.radius;
+                this.y = -this.radius;
+                this.speed = gameSpeed + Math.random() * 2;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+
+                // 10%の確率で赤い星（敵）
+                this.isEnemy = Math.random() < 0.1;
+                this.color = this.isEnemy ? colors.red : colors.gold;
+
+                // ポイント
+                this.points = this.isEnemy ? -50 : 10 + Math.floor(Math.random() * 20);
+            }
+
+            update() {
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // グロー効果
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * 2);
+                gradient.addColorStop(0, this.color + '80');
+                gradient.addColorStop(1, 'transparent');
+
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // 星の形
+                ctx.beginPath();
+                for (let i = 0; i < 5; i++) {
+                    const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+                    const x = Math.cos(angle) * this.radius;
+                    const y = Math.sin(angle) * this.radius;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+
+                const starGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+                starGradient.addColorStop(0, '#ffffff');
+                starGradient.addColorStop(0.3, this.color);
+                starGradient.addColorStop(1, this.color + '40');
+
+                ctx.fillStyle = starGradient;
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            isOffScreen() {
+                return this.y > height + this.radius;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.radius = Math.random() * 5 + 2;
+                this.color = color;
+                this.alpha = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= this.decay;
+                this.vy += 0.2;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.alpha <= 0;
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function spawnStar() {
+            stars.push(new Star());
+        }
+
+        function handleInput(x, y) {
+            if (!gameRunning) return;
+
+            for (let i = stars.length - 1; i >= 0; i--) {
+                const star = stars[i];
+                const dist = Math.hypot(star.x - x, star.y - y);
+
+                if (dist < star.radius + 30) {
+                    score += star.points;
+
+                    if (score < 0) {
+                        score = 0;
+                    }
+
+                    scoreDisplay.textContent = score;
+
+                    createExplosion(star.x, star.y, star.color);
+                    stars.splice(i, 1);
+
+                    // ゲームオーバー判定
+                    if (score < 0) {
+                        gameOver();
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        function startGame() {
+            score = 0;
+            scoreDisplay.textContent = '0';
+            gameSpeed = 3;
+            spawnRate = 60;
+            stars.length = 0;
+            particles.length = 0;
+            frameCount = 0;
+            gameRunning = true;
+
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            finalScoreDisplay.textContent = score;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            frameCount++;
+
+            // 徐々に難易度アップ
+            if (frameCount % 300 === 0) {
+                gameSpeed += 0.5;
+                spawnRate = Math.max(30, spawnRate - 5);
+            }
+
+            // 星を生成
+            if (frameCount % spawnRate === 0) {
+                spawnStar();
+            }
+
+            // 星を更新
+            for (let i = stars.length - 1; i >= 0; i--) {
+                stars[i].update();
+                if (stars[i].isOffScreen()) {
+                    stars.splice(i, 1);
+                }
+            }
+
+            // パーティクルを更新
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                if (particles[i].isDead()) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function draw() {
+            // 背景をクリア（トレイル効果）
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 星を描画
+            stars.forEach(star => star.draw());
+
+            // パーティクルを描画
+            particles.forEach(particle => particle.draw());
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', (e) => {
+            handleInput(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleInput(touch.clientX, touch.clientY);
+        });
+
+        window.addEventListener('resize', resize);
+
+        // 初期化
+        resize();
+        gameLoop();
+    </script>
+</body>
+</html>
