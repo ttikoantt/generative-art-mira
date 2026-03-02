@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音波幾何学 - Sonic Geometry</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: #0a0a0f;
+            color: #fff;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        .container {
+            position: relative;
+            z-index: 10;
+            text-align: center;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #00f5ff, #ff00ff, #00ff00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #00f5ff, #0099ff);
+            border: none;
+            color: #000;
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(0, 245, 255, 0.3);
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 30px rgba(0, 245, 255, 0.5);
+        }
+
+        button:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            font-size: 0.85rem;
+            color: #aaa;
+            max-width: 400px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .status {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: rgba(0, 255, 100, 0.1);
+            border: 1px solid rgba(0, 255, 100, 0.3);
+            border-radius: 20px;
+            font-size: 0.9rem;
+            color: #00ff64;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全画面">⛶</button>
+
+    <div class="container">
+        <h1>🎵 音波幾何学</h1>
+        <p class="subtitle">Sonic Geometry</p>
+
+        <div class="controls">
+            <button id="startBtn">🎤 マイクを開始</button>
+            <div class="info">
+                音声に反応して幾何学パターンが変化します。<br>
+                大きい音 = 大きなパターン、静か = 小さな動き
+            </div>
+            <div id="status" class="status" style="display: none;">🎤 リスニング中...</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const statusDiv = document.getElementById('status');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let isListening = false;
+        let particles = [];
+        let time = 0;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 3 + 1;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.speedY = (Math.random() - 0.5) * 2;
+                this.life = 1;
+                this.decay = Math.random() * 0.02 + 0.005;
+                this.hue = Math.random() * 60 + 180; // Cyan to purple
+            }
+
+            update(volume) {
+                this.x += this.speedX * (1 + volume * 3);
+                this.y += this.speedY * (1 + volume * 3);
+                this.life -= this.decay;
+                this.size *= 0.98;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function createGeometry(centerX, centerY, volume, frequency) {
+            const shapes = 6 + Math.floor(volume * 10);
+            
+            for (let i = 0; i < shapes; i++) {
+                const angle = (time + i) * 0.5;
+                const radius = 100 + volume * 300 + frequency * 50;
+                
+                // 多角形を描画
+                const sides = 3 + i % 5;
+                const rotation = time * (0.2 + i * 0.05);
+                
+                ctx.save();
+                ctx.translate(
+                    centerX + Math.cos(angle + i) * 100,
+                    centerY + Math.sin(angle + i) * 100
+                );
+                ctx.rotate(rotation);
+                
+                // パスを描画
+                ctx.beginPath();
+                for (let j = 0; j <= sides; j++) {
+                    const a = (j / sides) * Math.PI * 2;
+                    const r = radius * (0.2 + i * 0.1);
+                    const x = Math.cos(a) * r;
+                    const y = Math.sin(a) * r;
+                    
+                    if (j === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.closePath();
+                
+                // スタイル
+                const hue = (time * 20 + i * 40) % 360;
+                ctx.strokeStyle = `hsla(${hue}, 100%, 60%, ${0.8 - i * 0.05})`;
+                ctx.lineWidth = 2;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+                ctx.stroke();
+                
+                ctx.restore();
+            }
+
+            // パーティクル追加
+            if (volume > 0.3) {
+                for (let i = 0; i < Math.floor(volume * 10); i++) {
+                    particles.push(new Particle(centerX, centerY));
+                }
+            }
+        }
+
+        function drawWaveform(centerX, centerY, dataArray) {
+            ctx.save();
+            ctx.beginPath();
+            
+            const sliceWidth = canvas.width / dataArray.length;
+            let x = 0;
+            
+            for (let i = 0; i < dataArray.length; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = centerY + (v - 1) * 200;
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                x += sliceWidth;
+            }
+            
+            ctx.strokeStyle = 'rgba(0, 245, 255, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00f5ff';
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function animate() {
+            // 半透明でクリア（トレイル効果）
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            if (isListening && analyser) {
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+
+                // 平均音量を計算
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) {
+                    sum += dataArray[i];
+                }
+                const average = sum / dataArray.length;
+                const volume = average / 255;
+                const frequency = dataArray[10] / 255; // 低周波数帯域
+
+                // 幾何学パターン描画
+                createGeometry(centerX, centerY, volume, frequency);
+
+                // 波形描画
+                const timeDataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteTimeDomainData(timeDataArray);
+                drawWaveform(centerX, centerY, timeDataArray);
+            } else {
+                // アイドル状態
+                const idleVolume = 0.1 + Math.sin(time * 0.5) * 0.05;
+                createGeometry(centerX, centerY, idleVolume, 0.2);
+            }
+
+            // パーティクル更新・描画
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => {
+                p.update(isListening ? 0.1 : 0);
+                p.draw();
+            });
+
+            time += 0.016;
+            requestAnimationFrame(animate);
+        }
+
+        async function startMicrophone() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+                
+                isListening = true;
+                startBtn.textContent = '✅ リスニング中';
+                startBtn.disabled = true;
+                statusDiv.style.display = 'block';
+                
+            } catch (error) {
+                alert('マイクへのアクセスができませんでした: ' + error.message);
+            }
+        }
+
+        startBtn.addEventListener('click', startMicrophone);
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // アニメーション開始
+        animate();
+    </script>
+</body>
+</html>
