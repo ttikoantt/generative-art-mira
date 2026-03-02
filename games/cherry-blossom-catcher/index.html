@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Cherry Blossom Catcher - 桜キャッチャー</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .score-display {
+            color: white;
+            font-size: 28px;
+            font-weight: 300;
+            text-shadow: 0 0 10px rgba(255, 182, 193, 0.5);
+        }
+
+        .time-display {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 24px;
+            font-weight: 300;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            backdrop-filter: blur(10px);
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .title {
+            color: #ffb6c1;
+            font-size: 42px;
+            font-weight: 300;
+            letter-spacing: 4px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px rgba(255, 182, 193, 0.5);
+        }
+
+        .subtitle {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 18px;
+            margin-bottom: 40px;
+        }
+
+        .final-score {
+            color: white;
+            font-size: 60px;
+            font-weight: 300;
+            margin: 20px 0;
+        }
+
+        .stats {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 16px;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #ffb6c1 0%, #ff69b4 100%);
+            border: none;
+            color: white;
+            padding: 15px 50px;
+            font-size: 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 5px 20px rgba(255, 182, 193, 0.4);
+            transition: all 0.3s;
+            pointer-events: auto;
+        }
+
+        .btn:hover, .btn:active {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(255, 182, 193, 0.6);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .combo-display {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #ffb6c1;
+            text-shadow: 0 0 20px rgba(255, 182, 193, 0.8);
+            pointer-events: none;
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 150;
+        }
+
+        .combo-display.show {
+            opacity: 1;
+            animation: comboAnim 0.5s ease-out;
+        }
+
+        @keyframes comboAnim {
+            0% {
+                transform: translate(-50%, -50%) scale(0.5);
+                opacity: 0;
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.2);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="ui">
+        <div class="score-display">🌸 <span id="score">0</span></div>
+        <div class="time-display">⏱ <span id="time">30</span>s</div>
+    </div>
+
+    <div id="startOverlay" class="overlay">
+        <div class="title">桜キャッチャー</div>
+        <div class="subtitle">舞い散る桜の花びらをタップしてキャッチ！</div>
+        <button class="btn" onclick="startGame()">スタート</button>
+    </div>
+
+    <div id="gameOverOverlay" class="overlay hidden">
+        <div class="title">終了！</div>
+        <div class="final-score" id="finalScore">0</div>
+        <div class="stats" id="stats"></div>
+        <button class="btn" onclick="startGame()">もう一度</button>
+    </div>
+
+    <div class="combo-display" id="comboDisplay"></div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let score = 0;
+        let timeLeft = 30;
+        let gameActive = false;
+        let gameLoop;
+        let timerLoop;
+
+        const petals = [];
+        const particles = [];
+        let combo = 0;
+        let lastCatchTime = 0;
+        const COMBO_TIMEOUT = 1000;
+
+        const colors = [
+            'rgba(255, 182, 193, 0.9)',
+            'rgba(255, 192, 203, 0.9)',
+            'rgba(255, 105, 180, 0.8)',
+            'rgba(255, 228, 225, 0.9)',
+            'rgba(255, 240, 245, 0.8)',
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Petal {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = -30;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = Math.random() * 2 + 1;
+                this.size = Math.random() * 20 + 15;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.05;
+                this.wobble = Math.random() * Math.PI * 2;
+                this.wobbleSpeed = Math.random() * 0.03 + 0.01;
+                this.wobbleAmount = Math.random() * 2 + 1;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.alpha = 0;
+                this.fadeIn = true;
+                this.points = Math.floor(this.size);
+            }
+
+            update() {
+                this.wobble += this.wobbleSpeed;
+                this.x += this.vx + Math.sin(this.wobble) * this.wobbleAmount;
+                this.y += this.vy;
+                this.rotation += this.rotationSpeed;
+
+                if (this.fadeIn) {
+                    this.alpha = Math.min(1, this.alpha + 0.05);
+                }
+
+                if (this.y > height + 30) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.globalAlpha = this.alpha;
+
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+
+                const s = this.size;
+                ctx.moveTo(0, -s);
+                ctx.bezierCurveTo(s * 0.6, -s * 0.5, s * 0.8, s * 0.3, 0, s);
+                ctx.bezierCurveTo(-s * 0.8, s * 0.3, -s * 0.6, -s * 0.5, 0, -s);
+
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            isClicked(x, y) {
+                const dx = this.x - x;
+                const dy = this.y - y;
+                return Math.sqrt(dx * dx + dy * dy) < this.size + 10;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() - 0.5) * 8 - 2;
+                this.size = Math.random() * 5 + 3;
+                this.alpha = 1;
+                this.color = color;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.2;
+                this.alpha -= 0.02;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function spawnPetal() {
+            if (gameActive && petals.length < 15) {
+                petals.push(new Petal());
+            }
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 8; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function showCombo() {
+            if (combo >= 2) {
+                const comboDisplay = document.getElementById('comboDisplay');
+                comboDisplay.textContent = `${combo} Combo!`;
+                comboDisplay.classList.remove('show');
+                void comboDisplay.offsetWidth;
+                comboDisplay.classList.add('show');
+            }
+        }
+
+        function handleClick(x, y) {
+            if (!gameActive) return;
+
+            for (let i = petals.length - 1; i >= 0; i--) {
+                if (petals[i].isClicked(x, y)) {
+                    const now = Date.now();
+                    if (now - lastCatchTime < COMBO_TIMEOUT) {
+                        combo++;
+                    } else {
+                        combo = 1;
+                    }
+                    lastCatchTime = now;
+
+                    const points = petals[i].points * (1 + combo * 0.1);
+                    score += Math.floor(points);
+
+                    createParticles(petals[i].x, petals[i].y, petals[i].color);
+                    showCombo();
+
+                    petals.splice(i, 1);
+                    document.getElementById('score').textContent = score;
+                    return;
+                }
+            }
+
+            // Miss - reset combo
+            combo = 0;
+        }
+
+        function startGame() {
+            score = 0;
+            timeLeft = 30;
+            combo = 0;
+            petals.length = 0;
+            particles.length = 0;
+
+            document.getElementById('score').textContent = '0';
+            document.getElementById('time').textContent = '30';
+            document.getElementById('startOverlay').classList.add('hidden');
+            document.getElementById('gameOverOverlay').classList.add('hidden');
+
+            gameActive = true;
+
+            // Spawn initial petals
+            for (let i = 0; i < 8; i++) {
+                setTimeout(() => spawnPetal(), i * 200);
+            }
+
+            timerLoop = setInterval(() => {
+                timeLeft--;
+                document.getElementById('time').textContent = timeLeft;
+
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+
+            animate();
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(timerLoop);
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('stats').textContent = `最高コンボ: ${combo}x`;
+            document.getElementById('gameOverOverlay').classList.remove('hidden');
+        }
+
+        function animate() {
+            if (!gameActive) return;
+
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            petals.forEach(petal => {
+                petal.update();
+                petal.draw();
+            });
+
+            particles.forEach((particle, index) => {
+                particle.update();
+                particle.draw();
+                if (particle.alpha <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        window.addEventListener('resize', resize);
+        canvas.addEventListener('click', (e) => {
+            handleClick(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleClick(touch.clientX, touch.clientY);
+        });
+
+        resize();
+    </script>
+</body>
+</html>
