@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wave Fractal Art | 音波フラクタル</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        canvas {
+            border: 2px solid #0ff;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+        }
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #0ff;
+            max-width: 90%;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        label {
+            color: #0ff;
+            font-size: 12px;
+        }
+        input[type="range"] {
+            width: 120px;
+            accent-color: #0ff;
+        }
+        button {
+            background: transparent;
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #0ff;
+            color: #000;
+        }
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            font-size: 14px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <div>🎵 Wave Fractal Art</div>
+        <div id="stats"></div>
+    </div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+    <canvas id="canvas"></canvas>
+    <div class="controls">
+        <div class="control-group">
+            <label>Wave Frequency: <span id="freqVal">0.02</span></label>
+            <input type="range" id="frequency" min="0.005" max="0.05" step="0.001" value="0.02">
+        </div>
+        <div class="control-group">
+            <label>Fractal Depth: <span id="depthVal">6</span></label>
+            <input type="range" id="depth" min="3" max="10" step="1" value="6">
+        </div>
+        <div class="control-group">
+            <label>Color Speed: <span id="colorVal">1</span></label>
+            <input type="range" id="colorSpeed" min="0.1" max="3" step="0.1" value="1">
+        </div>
+        <div class="control-group">
+            <label>Rotation: <span id="rotVal">0.5</span></label>
+            <input type="range" id="rotation" min="0" max="2" step="0.1" value="0.5">
+        </div>
+        <button onclick="randomize()">🎲 Randomize</button>
+        <button onclick="togglePause()">⏸️ Pause</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height, centerX, centerY;
+        let time = 0;
+        let paused = false;
+        
+        // Parameters
+        let frequency = 0.02;
+        let fractalDepth = 6;
+        let colorSpeed = 1;
+        let rotationSpeed = 0.5;
+        
+        function resize() {
+            width = Math.min(window.innerWidth * 0.9, 800);
+            height = Math.min(window.innerHeight * 0.7, 600);
+            canvas.width = width;
+            canvas.height = height;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+        
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+        }
+        
+        function drawWaveFractal(x, y, size, angle, depth) {
+            if (depth <= 0 || size < 2) return;
+            
+            // Calculate wave offset based on time and depth
+            const waveOffset = Math.sin(time * colorSpeed + depth * 0.5) * size * 0.3;
+            
+            // Calculate color based on depth and time
+            const hue = (time * colorSpeed * 0.02 + depth * 0.15) % 1;
+            const saturation = 0.8;
+            const lightness = 0.5 + depth * 0.05;
+            const [r, g, b] = hslToRgb(hue, saturation, lightness);
+            
+            // Draw current level
+            ctx.beginPath();
+            
+            // Create wave pattern
+            const segments = Math.max(6, depth * 2);
+            for (let i = 0; i <= segments; i++) {
+                const theta = (i / segments) * Math.PI * 2 + angle + time * rotationSpeed * 0.01 * depth;
+                const wave = Math.sin(theta * frequency * 10 + time * colorSpeed) * waveOffset;
+                const radius = size + wave;
+                const px = x + Math.cos(theta) * radius;
+                const py = y + Math.sin(theta) * radius;
+                
+                if (i === 0) {
+                    ctx.moveTo(px, py);
+                } else {
+                    ctx.lineTo(px, py);
+                }
+            }
+            
+            ctx.closePath();
+            ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
+            ctx.lineWidth = Math.max(0.5, depth * 0.5);
+            ctx.stroke();
+            
+            // Recursive calls for smaller fractals
+            const newSize = size * 0.5;
+            const newDepth = depth - 1;
+            
+            for (let i = 0; i < 3; i++) {
+                const branchAngle = angle + (i - 1) * Math.PI / 3 + time * rotationSpeed * 0.005;
+                const dist = size * 0.7;
+                const nx = x + Math.cos(branchAngle) * dist;
+                const ny = y + Math.sin(branchAngle) * dist;
+                drawWaveFractal(nx, ny, newSize, branchAngle + time * rotationSpeed * 0.02, newDepth);
+            }
+        }
+        
+        function draw() {
+            // Clear with fade effect for trails
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Draw main fractal
+            drawWaveFractal(centerX, centerY, Math.min(width, height) * 0.2, 0, fractalDepth);
+            
+            // Update stats
+            document.getElementById('stats').textContent = 
+                `Depth: ${fractalDepth} | Time: ${time.toFixed(1)}`;
+        }
+        
+        function animate() {
+            if (!paused) {
+                draw();
+                time += 1;
+            }
+            requestAnimationFrame(animate);
+        }
+        
+        // Event listeners
+        document.getElementById('frequency').addEventListener('input', (e) => {
+            frequency = parseFloat(e.target.value);
+            document.getElementById('freqVal').textContent = frequency.toFixed(3);
+        });
+        
+        document.getElementById('depth').addEventListener('input', (e) => {
+            fractalDepth = parseInt(e.target.value);
+            document.getElementById('depthVal').textContent = fractalDepth;
+        });
+        
+        document.getElementById('colorSpeed').addEventListener('input', (e) => {
+            colorSpeed = parseFloat(e.target.value);
+            document.getElementById('colorVal').textContent = colorSpeed.toFixed(1);
+        });
+        
+        document.getElementById('rotation').addEventListener('input', (e) => {
+            rotationSpeed = parseFloat(e.target.value);
+            document.getElementById('rotVal').textContent = rotationSpeed.toFixed(1);
+        });
+        
+        function randomize() {
+            frequency = 0.005 + Math.random() * 0.045;
+            fractalDepth = Math.floor(3 + Math.random() * 7);
+            colorSpeed = 0.1 + Math.random() * 2.9;
+            rotationSpeed = Math.random() * 2;
+            
+            document.getElementById('frequency').value = frequency;
+            document.getElementById('depth').value = fractalDepth;
+            document.getElementById('colorSpeed').value = colorSpeed;
+            document.getElementById('rotation').value = rotationSpeed;
+            
+            document.getElementById('freqVal').textContent = frequency.toFixed(3);
+            document.getElementById('depthVal').textContent = fractalDepth;
+            document.getElementById('colorVal').textContent = colorSpeed.toFixed(1);
+            document.getElementById('rotVal').textContent = rotationSpeed.toFixed(1);
+        }
+        
+        function togglePause() {
+            paused = !paused;
+            document.querySelector('button[onclick="togglePause()"]').textContent = 
+                paused ? '▶️ Play' : '⏸️ Pause';
+        }
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // Initialize
+        window.addEventListener('resize', resize);
+        resize();
+        animate();
+    </script>
+</body>
+</html>
