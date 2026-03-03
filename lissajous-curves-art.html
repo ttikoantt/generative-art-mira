@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Lissajous Curves Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 95vw;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            max-width: 300px;
+        }
+
+        .info h1 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .info p {
+            margin: 5px 0;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            transition: all 0.3s ease;
+            z-index: 100;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .fullscreen-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+        }
+
+        @media (max-width: 600px) {
+            .info {
+                top: 70px;
+                left: 10px;
+                right: 10px;
+                max-width: none;
+                font-size: 12px;
+                padding: 10px 15px;
+            }
+
+            .info h1 {
+                font-size: 16px;
+            }
+
+            .controls {
+                bottom: 10px;
+                padding: 10px 15px;
+            }
+
+            .btn {
+                padding: 8px 15px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <h1>🌀 Lissajous Curves</h1>
+        <p>x = A·sin(a·t + δ)</p>
+        <p>y = B·sin(b·t)</p>
+        <p id="params">a=3, b=4, δ=π/2</p>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <div class="controls">
+        <button class="btn" onclick="randomize()">🎲 Random</button>
+        <button class="btn" onclick="changeSpeed()">⚡ Speed</button>
+        <button class="btn" onclick="toggleTrails()">✨ Trails</button>
+        <button class="btn" onclick="changeColors()">🎨 Colors</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let time = 0;
+
+        // Lissajous parameters
+        let a = 3, b = 4, delta = Math.PI / 2;
+        let speed = 0.02;
+
+        // Visual settings
+        let showTrails = true;
+        let colorScheme = 0;
+        const colorSchemes = [
+            { name: 'Rainbow', get: (t) => `hsl(${(t * 50) % 360}, 80%, 60%)` },
+            { name: 'Neon', get: (t) => `hsl(${280 + Math.sin(t * 0.5) * 60}, 100%, 60%)` },
+            { name: 'Fire', get: (t) => `hsl(${20 + Math.sin(t * 0.3) * 30}, 100%, 55%)` },
+            { name: 'Ocean', get: (t) => `hsl(${180 + Math.sin(t * 0.4) * 40}, 80%, 55%)` }
+        ];
+
+        // Current curve points
+        let curvePoints = [];
+        const maxPoints = 2000;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function randomize() {
+            a = Math.floor(Math.random() * 8) + 2;
+            b = Math.floor(Math.random() * 8) + 2;
+            delta = Math.random() * Math.PI;
+
+            curvePoints = [];
+
+            document.getElementById('params').textContent =
+                `a=${a}, b=${b}, δ=${(delta / Math.PI).toFixed(2)}π`;
+        }
+
+        function changeSpeed() {
+            speed = speed === 0.02 ? 0.05 : speed === 0.05 ? 0.01 : 0.02;
+        }
+
+        function toggleTrails() {
+            showTrails = !showTrails;
+        }
+
+        function changeColors() {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+        }
+
+        function lissajous(t) {
+            const scale = Math.min(width, height) * 0.4;
+            const x = width / 2 + scale * Math.sin(a * t + delta);
+            const y = height / 2 + scale * Math.sin(b * t);
+            return { x, y };
+        }
+
+        function draw() {
+            // Clear or fade
+            if (showTrails) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.02)';
+                ctx.fillRect(0, 0, width, height);
+            } else {
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, width, height);
+            }
+
+            // Generate new point
+            const point = lissajous(time);
+            curvePoints.push(point);
+
+            if (curvePoints.length > maxPoints) {
+                curvePoints.shift();
+            }
+
+            // Draw curve
+            if (curvePoints.length > 1) {
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+
+                for (let i = 1; i < curvePoints.length; i++) {
+                    const prev = curvePoints[i - 1];
+                    const curr = curvePoints[i];
+
+                    const progress = i / curvePoints.length;
+                    const alpha = progress;
+                    const color = colorSchemes[colorScheme].get(time + i * 0.01);
+
+                    ctx.strokeStyle = color;
+                    ctx.globalAlpha = alpha;
+                    ctx.beginPath();
+                    ctx.moveTo(prev.x, prev.y);
+                    ctx.lineTo(curr.x, curr.y);
+                    ctx.stroke();
+                }
+
+                ctx.globalAlpha = 1;
+            }
+
+            // Draw current point glow
+            const gradient = ctx.createRadialGradient(
+                point.x, point.y, 0,
+                point.x, point.y, 20
+            );
+            gradient.addColorStop(0, colorSchemes[colorScheme].get(time));
+            gradient.addColorStop(1, 'transparent');
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 20, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw secondary curves (harmonics)
+            const harmonics = 3;
+            for (let h = 1; h <= harmonics; h++) {
+                const harmonicPoint = lissajous(time + h * 0.5);
+
+                ctx.strokeStyle = colorSchemes[colorScheme].get(time + h);
+                ctx.globalAlpha = 0.3 / h;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(harmonicPoint.x, harmonicPoint.y, 5 - h, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            ctx.globalAlpha = 1;
+
+            time += speed;
+            requestAnimationFrame(draw);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Touch/mouse interaction
+        let touchStartX = 0;
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            const touchEndX = e.changedTouches[0].clientX;
+            const diff = touchEndX - touchStartX;
+
+            if (Math.abs(diff) > 50) {
+                if (diff > 0) {
+                    a++;
+                } else {
+                    a = Math.max(2, a - 1);
+                }
+                curvePoints = [];
+                document.getElementById('params').textContent =
+                    `a=${a}, b=${b}, δ=${(delta / Math.PI).toFixed(2)}π`;
+            }
+        });
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left - width / 2;
+            const y = e.clientY - rect.top - height / 2;
+
+            delta = Math.atan2(y, x);
+            curvePoints = [];
+            document.getElementById('params').textContent =
+                `a=${a}, b=${b}, δ=${(delta / Math.PI).toFixed(2)}π`;
+        });
+
+        // Initialize
+        resize();
+        window.addEventListener('resize', resize);
+        draw();
+    </script>
+</body>
+</html>

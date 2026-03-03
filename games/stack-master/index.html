@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Stack Master - 積み上げゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            color: white;
+            z-index: 10;
+        }
+
+        .score {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .best {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 20;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .overlay h2 {
+            font-size: 32px;
+            margin-bottom: 10px;
+            color: #4ecdc4;
+        }
+
+        .overlay p {
+            font-size: 16px;
+            margin-bottom: 20px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(78, 205, 196, 0.4);
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 30;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .perfect {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+            z-index: 15;
+            pointer-events: none;
+            animation: popIn 0.3s ease-out;
+        }
+
+        @keyframes popIn {
+            0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+            50% { transform: translate(-50%, -50%) scale(1.2); }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+
+        .combo {
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #ff6b6b;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(255, 107, 107, 0.8);
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" id="fullscreenBtn">全画面</button>
+
+    <div class="game-container">
+        <div class="header">
+            <div class="score" id="score">0</div>
+            <div class="best" id="best">Best: 0</div>
+        </div>
+
+        <canvas id="gameCanvas" width="350" height="550"></canvas>
+        <div class="combo" id="combo"></div>
+
+        <div class="overlay" id="startScreen">
+            <h2>Stack Master</h2>
+            <p>タップしてブロックを積み上げよう！<br>タイミングを合わせて高得点を目指せ</p>
+            <button class="btn" id="startBtn">スタート</button>
+        </div>
+
+        <div class="overlay hidden" id="gameOverScreen">
+            <h2>Game Over</h2>
+            <p>スコア: <span id="finalScore">0</span></p>
+            <button class="btn" id="restartBtn">もう一度</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const bestEl = document.getElementById('best');
+        const comboEl = document.getElementById('combo');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreEl = document.getElementById('finalScore');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let blocks = [];
+        let currentBlock = null;
+        let score = 0;
+        let bestScore = parseInt(localStorage.getItem('stackBest')) || 0;
+        let gameOver = false;
+        let gameStarted = false;
+        let direction = 1;
+        let speed = 3;
+        let combo = 0;
+        let perfectCombo = 0;
+
+        const colors = [
+            '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7',
+            '#dfe6e9', '#fd79a8', '#a29bfe', '#fdcb6e', '#6c5ce7'
+        ];
+
+        const BLOCK_WIDTH = 200;
+        const BLOCK_HEIGHT = 30;
+        const CANVAS_WIDTH = 350;
+        const CANVAS_HEIGHT = 550;
+        const START_Y = 450;
+
+        bestEl.textContent = `Best: ${bestScore}`;
+
+        class Block {
+            constructor(x, y, width, color) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = BLOCK_HEIGHT;
+                this.color = color;
+                this.velocity = direction * speed;
+                this.settled = false;
+            }
+
+            update() {
+                if (!this.settled) {
+                    this.x += this.velocity;
+
+                    if (this.x + this.width > CANVAS_WIDTH || this.x < 0) {
+                        this.velocity *= -1;
+                    }
+                }
+            }
+
+            draw() {
+                // Main block
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+
+                // Highlight
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.fillRect(this.x, this.y, this.width, 5);
+
+                // Shadow
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.fillRect(this.x, this.y + this.height - 5, this.width, 5);
+
+                // Glow effect
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 10;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function createNewBlock() {
+            const prevBlock = blocks[blocks.length - 1];
+            const y = prevBlock.y - BLOCK_HEIGHT;
+            const color = colors[blocks.length % colors.length];
+
+            if (direction === 1) {
+                currentBlock = new Block(-BLOCK_WIDTH, y, prevBlock.width, color);
+            } else {
+                currentBlock = new Block(CANVAS_WIDTH, y, prevBlock.width, color);
+            }
+
+            currentBlock.velocity = direction * speed;
+        }
+
+        function placeBlock() {
+            if (!currentBlock || gameOver) return;
+
+            const prevBlock = blocks[blocks.length - 1];
+            const overlap = calculateOverlap(currentBlock, prevBlock);
+
+            if (overlap <= 0) {
+                endGame();
+                return;
+            }
+
+            // Perfect placement check
+            const diff = Math.abs(currentBlock.x - prevBlock.x);
+            const isPerfect = diff < 5;
+
+            if (isPerfect) {
+                // Perfect placement - keep full width
+                currentBlock.x = prevBlock.x;
+                currentBlock.width = prevBlock.width;
+                perfectCombo++;
+                combo = perfectCombo;
+                showPerfect();
+                score += 10 + perfectCombo * 5;
+            } else {
+                // Cut off the excess
+                if (currentBlock.x < prevBlock.x) {
+                    currentBlock.width = overlap;
+                    currentBlock.x = prevBlock.x;
+                } else {
+                    currentBlock.width = overlap;
+                }
+                perfectCombo = 0;
+                combo = 0;
+                score++;
+            }
+
+            currentBlock.settled = true;
+            blocks.push(currentBlock);
+
+            // Increase speed slightly
+            speed = Math.min(speed + 0.1, 8);
+
+            // Check if tower is too high
+            if (blocks.length > 15) {
+                // Shift everything down
+                blocks.forEach(block => {
+                    block.y += BLOCK_HEIGHT;
+                });
+            }
+
+            updateScore();
+            createNewBlock();
+        }
+
+        function calculateOverlap(block1, block2) {
+            const left1 = block1.x;
+            const right1 = block1.x + block1.width;
+            const left2 = block2.x;
+            const right2 = block2.x + block2.width;
+
+            const overlapLeft = Math.max(left1, left2);
+            const overlapRight = Math.min(right1, right2);
+
+            return overlapRight - overlapLeft;
+        }
+
+        function showPerfect() {
+            const perfect = document.createElement('div');
+            perfect.className = 'perfect';
+            perfect.textContent = perfectCombo > 1 ? `PERFECT x${perfectCombo}!` : 'PERFECT!';
+            document.querySelector('.game-container').appendChild(perfect);
+
+            setTimeout(() => perfect.remove(), 800);
+        }
+
+        function updateScore() {
+            scoreEl.textContent = score;
+            comboEl.textContent = combo > 1 ? `Combo x${combo}` : '';
+        }
+
+        function endGame() {
+            gameOver = true;
+            finalScoreEl.textContent = score;
+
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('stackBest', bestScore);
+                bestEl.textContent = `Best: ${bestScore}`;
+            }
+
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function startGame() {
+            blocks = [];
+            score = 0;
+            gameOver = false;
+            gameStarted = true;
+            speed = 3;
+            direction = 1;
+            combo = 0;
+            perfectCombo = 0;
+
+            // Create base block
+            const baseBlock = new Block(
+                (CANVAS_WIDTH - BLOCK_WIDTH) / 2,
+                START_Y,
+                BLOCK_WIDTH,
+                colors[0]
+            );
+            baseBlock.settled = true;
+            blocks.push(baseBlock);
+
+            updateScore();
+            createNewBlock();
+
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // Draw background gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+            gradient.addColorStop(0, '#1a1a2e');
+            gradient.addColorStop(1, '#16213e');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // Draw all settled blocks
+            blocks.forEach(block => block.draw());
+
+            // Draw current moving block
+            if (currentBlock && !gameOver) {
+                currentBlock.update();
+                currentBlock.draw();
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        // Event listeners
+        function handleInput(e) {
+            if (e.type === 'touchstart') {
+                e.preventDefault();
+            }
+
+            if (!gameStarted) return;
+
+            if (gameOver) {
+                startGame();
+                return;
+            }
+
+            placeBlock();
+        }
+
+        canvas.addEventListener('click', handleInput);
+        canvas.addEventListener('touchstart', handleInput, { passive: false });
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Keyboard support
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                handleInput(e);
+            }
+        });
+
+        // Start animation loop
+        draw();
+    </script>
+</body>
+</html>
