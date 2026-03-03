@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ripple Canvas - インタラクティブ波紋アート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            z-index: 10;
+        }
+
+        h1 {
+            color: white;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            color: rgba(255,255,255,0.9);
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+        }
+
+        #canvas {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        .info {
+            color: white;
+            margin-top: 20px;
+            font-size: 0.95rem;
+            opacity: 0.9;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 1rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.05);
+        }
+
+        .stats {
+            color: white;
+            margin-top: 15px;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+            .subtitle {
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">🖥️ 全画面</button>
+
+    <div class="container">
+        <h1>🌊 Ripple Canvas</h1>
+        <p class="subtitle">クリックで波紋を広げよう</p>
+        <canvas id="canvas"></canvas>
+        <p class="info">クリックまたはタップして波紋を作成</p>
+        <p class="stats" id="stats">波紋数: 0</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const stats = document.getElementById('stats');
+
+        // キャンバスサイズ設定
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 800);
+            const maxHeight = Math.min(window.innerHeight - 250, 600);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 波紋クラス
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = Math.max(canvas.width, canvas.height) * 0.6;
+                this.speed = 3;
+                this.opacity = 1;
+                this.hue = Math.random() * 360;
+                this.lineWidth = 3;
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.opacity = 1 - (this.radius / this.maxRadius);
+                this.lineWidth = 3 * this.opacity;
+                return this.opacity > 0;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue}, 70%, 60%, ${this.opacity})`;
+                ctx.lineWidth = this.lineWidth;
+                ctx.stroke();
+
+                // 2番目の波
+                if (this.radius > 20) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius - 20, 0, Math.PI * 2);
+                    ctx.strokeStyle = `hsla(${this.hue + 30}, 70%, 60%, ${this.opacity * 0.6})`;
+                    ctx.lineWidth = this.lineWidth * 0.6;
+                    ctx.stroke();
+                }
+
+                // 3番目の波
+                if (this.radius > 40) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius - 40, 0, Math.PI * 2);
+                    ctx.strokeStyle = `hsla(${this.hue + 60}, 70%, 60%, ${this.opacity * 0.3})`;
+                    ctx.lineWidth = this.lineWidth * 0.3;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        let ripples = [];
+
+        // アニメーションループ
+        function animate() {
+            // 背景をクリア（半透明で残像効果）
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 波紋を更新と描画
+            ripples = ripples.filter(ripple => {
+                ripple.draw();
+                return ripple.update();
+            });
+
+            stats.textContent = `波紋数: ${ripples.length}`;
+
+            requestAnimationFrame(animate);
+        }
+
+        // クリックで波紋を追加
+        function addRipple(x, y) {
+            const rect = canvas.getBoundingClientRect();
+            const canvasX = x - rect.left;
+            const canvasY = y - rect.top;
+            ripples.push(new Ripple(canvasX, canvasY));
+
+            // 複数の小さな波紋も追加
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => {
+                    const offsetX = (Math.random() - 0.5) * 50;
+                    const offsetY = (Math.random() - 0.5) * 50;
+                    ripples.push(new Ripple(
+                        canvasX + offsetX,
+                        canvasY + offsetY
+                    ));
+                }, i * 100);
+            }
+        }
+
+        // マウス/タッチイベント
+        canvas.addEventListener('click', (e) => {
+            addRipple(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            addRipple(touch.clientX, touch.clientY);
+        });
+
+        // 自動で波紋を生成（デモ用）
+        function autoRipple() {
+            if (ripples.length < 3) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                ripples.push(new Ripple(x, y));
+            }
+        }
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // アニメーション開始
+        animate();
+
+        // 最初のデモ
+        setTimeout(() => {
+            autoRipple();
+        }, 500);
+    </script>
+</body>
+</html>
