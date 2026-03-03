@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Magnetic Field Art - 磁場アート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a1a;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+        
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(10, 10, 26, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 12px;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .controls h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #7df9ff;
+        }
+        
+        .controls button {
+            background: rgba(125, 249, 255, 0.2);
+            border: 1px solid rgba(125, 249, 255, 0.5);
+            color: #7df9ff;
+            padding: 5px 10px;
+            margin: 3px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.3s;
+        }
+        
+        .controls button:hover {
+            background: rgba(125, 249, 255, 0.4);
+        }
+        
+        .controls p {
+            margin: 5px 0;
+            color: #aaa;
+        }
+        
+        .fullscreen {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(125, 249, 255, 0.2);
+            border: 1px solid rgba(125, 249, 255, 0.5);
+            color: #7df9ff;
+            padding: 10px 15px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 100;
+            transition: all 0.3s;
+        }
+        
+        .fullscreen:hover {
+            background: rgba(125, 249, 255, 0.4);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="controls">
+        <h3>⚡ Magnetic Field Art</h3>
+        <p>クリック/タップで磁石を追加</p>
+        <button onclick="changeMode('attract')">吸引モード</button>
+        <button onclick="changeMode('repel')">反発モード</button>
+        <button onclick="clearMagnets()">クリア</button>
+        <button onclick="resetParticles()">リセット</button>
+    </div>
+    
+    <button class="fullscreen" onclick="toggleFullscreen()">全画面</button>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let particles = [];
+        let magnets = [];
+        let currentMode = 'attract';
+        let hue = 0;
+        
+        // リサイズ
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.life = 1;
+                this.decay = 0.002 + Math.random() * 0.003;
+                this.size = 1 + Math.random() * 2;
+                this.hue = hue + Math.random() * 60;
+            }
+            
+            update() {
+                // 磁石の影響を計算
+                magnets.forEach(magnet => {
+                    const dx = magnet.x - this.x;
+                    const dy = magnet.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist > 0) {
+                        const force = magnet.strength / (dist * dist + 100);
+                        const angle = Math.atan2(dy, dx);
+                        
+                        if (magnet.mode === 'attract') {
+                            this.vx += Math.cos(angle) * force;
+                            this.vy += Math.sin(angle) * force;
+                        } else {
+                            this.vx -= Math.cos(angle) * force;
+                            this.vy -= Math.sin(angle) * force;
+                        }
+                    }
+                });
+                
+                // 速度を適用
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 減衰
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+                
+                // ライフ減少
+                this.life -= this.decay;
+                
+                // 色変化
+                this.hue += 0.5;
+            }
+            
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${this.life})`;
+                ctx.fill();
+                
+                // グロー効果
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${this.life * 0.1})`;
+                ctx.fill();
+            }
+        }
+        
+        // 磁石クラス
+        class Magnet {
+            constructor(x, y, mode) {
+                this.x = x;
+                this.y = y;
+                this.mode = mode;
+                this.strength = 500;
+                this.life = 1;
+            }
+            
+            draw() {
+                // 磁場の可視化
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 30, 0, Math.PI * 2);
+                
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, 30
+                );
+                
+                if (this.mode === 'attract') {
+                    gradient.addColorStop(0, `rgba(125, 249, 255, ${this.life * 0.5})`);
+                    gradient.addColorStop(1, 'rgba(125, 249, 255, 0)');
+                } else {
+                    gradient.addColorStop(0, `rgba(255, 100, 100, ${this.life * 0.5})`);
+                    gradient.addColorStop(1, 'rgba(255, 100, 100, 0)');
+                }
+                
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                // 中心点
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 5, 0, Math.PI * 2);
+                ctx.fillStyle = this.mode === 'attract' ? '#7df9ff' : '#ff6464';
+                ctx.fill();
+            }
+        }
+        
+        // パーティクルを生成
+        function spawnParticles(x, y, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y));
+            }
+        }
+        
+        // 定期的にパーティクルを生成
+        function autoSpawn() {
+            const x = Math.random() * width;
+            const y = Math.random() * height;
+            spawnParticles(x, y, 10);
+        }
+        
+        setInterval(autoSpawn, 100);
+        
+        // クリック/タップで磁石を追加
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            magnets.push(new Magnet(x, y, currentMode));
+            spawnParticles(x, y, 50);
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            
+            magnets.push(new Magnet(x, y, currentMode));
+            spawnParticles(x, y, 50);
+        });
+        
+        // マウス移動でパーティクルを生成
+        let lastMouseX, lastMouseY;
+        canvas.addEventListener('mousemove', (e) => {
+            if (Math.random() > 0.7) {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                if (lastMouseX !== undefined && lastMouseY !== undefined) {
+                    const dist = Math.sqrt(
+                        Math.pow(x - lastMouseX, 2) + 
+                        Math.pow(y - lastMouseY, 2)
+                    );
+                    
+                    if (dist > 5) {
+                        spawnParticles(x, y, 3);
+                    }
+                }
+                
+                lastMouseX = x;
+                lastMouseY = y;
+            }
+        });
+        
+        // モード変更
+        function changeMode(mode) {
+            currentMode = mode;
+        }
+        
+        // 磁石をクリア
+        function clearMagnets() {
+            magnets = [];
+        }
+        
+        // パーティクルリセット
+        function resetParticles() {
+            particles = [];
+            hue = 0;
+        }
+        
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // アニメーションループ
+        function animate() {
+            // 背景を少し残す
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 色相を更新
+            hue += 0.5;
+            
+            // 磁石を描画
+            magnets.forEach(magnet => {
+                magnet.draw();
+            });
+            
+            // パーティクルを更新・描画
+            particles = particles.filter(p => p.life > 0);
+            
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+            
+            // パーティクル数を制限
+            if (particles.length > 2000) {
+                particles = particles.slice(-2000);
+            }
+            
+            // 磁石数を制限
+            if (magnets.length > 10) {
+                magnets = magnets.slice(-10);
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        animate();
+        
+        // 初期パーティクル
+        for (let i = 0; i < 200; i++) {
+            spawnParticles(
+                Math.random() * width,
+                Math.random() * height,
+                1
+            );
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Color Dodge - 色回避ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a1a;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+        
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            z-index: 100;
+            pointer-events: none;
+        }
+        
+        .score {
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #7df9ff;
+            margin-bottom: 10px;
+        }
+        
+        .high-score {
+            font-size: 16px;
+            color: #aaa;
+        }
+        
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(10, 10, 26, 0.95);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            color: #fff;
+            z-index: 200;
+            display: none;
+            border: 2px solid #7df9ff;
+            box-shadow: 0 0 30px rgba(125, 249, 255, 0.3);
+        }
+        
+        .game-over h2 {
+            font-size: 32px;
+            margin-bottom: 20px;
+            color: #ff6464;
+        }
+        
+        .game-over p {
+            font-size: 18px;
+            margin: 10px 0;
+        }
+        
+        .game-over button {
+            background: linear-gradient(135deg, #7df9ff, #00d4ff);
+            border: none;
+            color: #0a0a1a;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 20px;
+            font-weight: bold;
+            transition: all 0.3s;
+            pointer-events: all;
+        }
+        
+        .game-over button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(125, 249, 255, 0.5);
+        }
+        
+        .start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 26, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 300;
+            color: #fff;
+        }
+        
+        .start-screen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #7df9ff, #ff6464);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .start-screen p {
+            font-size: 18px;
+            margin: 10px 0;
+            color: #aaa;
+        }
+        
+        .start-screen button {
+            background: linear-gradient(135deg, #7df9ff, #00d4ff);
+            border: none;
+            color: #0a0a1a;
+            padding: 20px 50px;
+            font-size: 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 30px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .start-screen button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(125, 249, 255, 0.5);
+        }
+        
+        .fullscreen {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(125, 249, 255, 0.2);
+            border: 1px solid rgba(125, 249, 255, 0.5);
+            color: #7df9ff;
+            padding: 10px 15px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 100;
+            transition: all 0.3s;
+        }
+        
+        .fullscreen:hover {
+            background: rgba(125, 249, 255, 0.4);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div class="ui">
+        <div class="score">Score: <span id="score">0</span></div>
+        <div class="high-score">High Score: <span id="highScore">0</span></div>
+    </div>
+    
+    <div class="game-over" id="gameOver">
+        <h2>Game Over!</h2>
+        <p>Score: <span id="finalScore">0</span></p>
+        <p>High Score: <span id="finalHighScore">0</span></p>
+        <button onclick="restartGame()">Play Again</button>
+    </div>
+    
+    <div class="start-screen" id="startScreen">
+        <h1>🎯 Color Dodge</h1>
+        <p>ドラッグ/スワイプでプレイヤーを動かす</p>
+        <p>落下するブロックを避けよう！</p>
+        <button onclick="startGame()">Start Game</button>
+    </div>
+    
+    <button class="fullscreen" onclick="toggleFullscreen()">全画面</button>
+    
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let player;
+        let blocks = [];
+        let score = 0;
+        let highScore = 0;
+        let gameRunning = false;
+        let gameSpeed = 3;
+        let spawnRate = 60;
+        let frameCount = 0;
+        
+        // 色の配列
+        const colors = [
+            '#ff6464', // Red
+            '#64ff64', // Green
+            '#6464ff', // Blue
+            '#ffff64', // Yellow
+            '#ff64ff', // Magenta
+            '#64ffff', // Cyan
+            '#ff9664', // Orange
+            '#9664ff'  // Purple
+        ];
+        
+        // リサイズ
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        
+        // プレイヤークラス
+        class Player {
+            constructor() {
+                this.size = 30;
+                this.x = width / 2;
+                this.y = height - 100;
+                this.targetX = this.x;
+                this.color = '#7df9ff';
+            }
+            
+            update() {
+                // スムーズに移動
+                this.x += (this.targetX - this.x) * 0.15;
+                
+                // 画面内に制限
+                if (this.x < this.size) this.x = this.size;
+                if (this.x > width - this.size) this.x = width - this.size;
+            }
+            
+            draw() {
+                // グロー効果
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 1.5, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(125, 249, 255, 0.3)';
+                ctx.fill();
+                
+                // 本体
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                
+                // 内部の輝き
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 0.6, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+            }
+            
+            setTarget(x) {
+                this.targetX = x;
+            }
+        }
+        
+        // ブロッククラス
+        class Block {
+            constructor() {
+                this.size = 20 + Math.random() * 30;
+                this.x = Math.random() * (width - this.size * 2) + this.size;
+                this.y = -this.size;
+                this.speed = gameSpeed + Math.random() * 2;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+            }
+            
+            update() {
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+            }
+            
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                
+                // グロー効果
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.color;
+                
+                // 四角形を描画
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
+                
+                // 内部の装飾
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(-this.size / 2, -this.size / 2, this.size, this.size);
+                
+                ctx.restore();
+            }
+            
+            isOffScreen() {
+                return this.y > height + this.size;
+            }
+            
+            collidesWith(player) {
+                const dx = this.x - player.x;
+                const dy = this.y - player.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                return dist < this.size / 2 + player.size;
+            }
+        }
+        
+        // ゲーム開始
+        function startGame() {
+            document.getElementById('startScreen').style.display = 'none';
+            initGame();
+        }
+        
+        // ゲーム初期化
+        function initGame() {
+            player = new Player();
+            blocks = [];
+            score = 0;
+            gameSpeed = 3;
+            spawnRate = 60;
+            frameCount = 0;
+            gameRunning = true;
+            
+            updateScore();
+            gameLoop();
+        }
+        
+        // ゲームループ
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            frameCount++;
+            
+            // 背景を描画
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // プレイヤーを更新・描画
+            player.update();
+            player.draw();
+            
+            // ブロックを生成
+            if (frameCount % spawnRate === 0) {
+                blocks.push(new Block());
+            }
+            
+            // 難易度上昇
+            if (frameCount % 600 === 0) {
+                gameSpeed += 0.5;
+                if (spawnRate > 20) spawnRate -= 5;
+            }
+            
+            // ブロックを更新・描画
+            blocks.forEach(block => {
+                block.update();
+                block.draw();
+                
+                // 衝突判定
+                if (block.collidesWith(player)) {
+                    gameOver();
+                }
+            });
+            
+            // 画面外のブロックを削除
+            blocks = blocks.filter(block => !block.isOffScreen());
+            
+            // スコア更新
+            if (frameCount % 10 === 0) {
+                score++;
+                updateScore();
+            }
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // ゲームオーバー
+        function gameOver() {
+            gameRunning = false;
+            
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('colorDodgeHighScore', highScore);
+            }
+            
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalHighScore').textContent = highScore;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+        
+        // 再スタート
+        function restartGame() {
+            document.getElementById('gameOver').style.display = 'none';
+            initGame();
+        }
+        
+        // スコア更新
+        function updateScore() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('highScore').textContent = highScore;
+        }
+        
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // 入力処理
+        canvas.addEventListener('mousemove', (e) => {
+            if (gameRunning && player) {
+                const rect = canvas.getBoundingClientRect();
+                player.setTarget(e.clientX - rect.left);
+            }
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (gameRunning && player) {
+                const rect = canvas.getBoundingClientRect();
+                const touch = e.touches[0];
+                player.setTarget(touch.clientX - rect.left);
+            }
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameRunning && player) {
+                const rect = canvas.getBoundingClientRect();
+                const touch = e.touches[0];
+                player.setTarget(touch.clientX - rect.left);
+            }
+        });
+        
+        // ハイスコアをロード
+        const savedHighScore = localStorage.getItem('colorDodgeHighScore');
+        if (savedHighScore) {
+            highScore = parseInt(savedHighScore);
+            document.getElementById('highScore').textContent = highScore;
+        }
+    </script>
+</body>
+</html>
