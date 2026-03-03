@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Wave Simulation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .controls h3 {
+            margin-bottom: 10px;
+            color: #0ff;
+        }
+
+        .controls p {
+            margin: 5px 0;
+            opacity: 0.8;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            z-index: 100;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.4);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                font-size: 12px;
+                padding: 10px;
+            }
+
+            .fullscreen-btn {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <h3>🌊 Particle Wave</h3>
+        <p>パーティクルが波を描く</p>
+        <p>マウス: 揺れを強める</p>
+        <p>タッチ: 波を発生</p>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let mouse = { x: 0, y: 0, active: false };
+        let time = 0;
+
+        // パーティクル設定
+        const PARTICLE_COUNT = 800;
+        const WAVE_AMPLITUDE = 80;
+        const WAVE_FREQUENCY = 0.02;
+
+        // キャンバスサイズ設定
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y) {
+                this.baseX = x;
+                this.baseY = y;
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 3 + 1;
+                this.speedX = Math.random() * 0.5 - 0.25;
+                this.speedY = Math.random() * 0.5 - 0.25;
+                this.hue = Math.random() * 60 + 160; // 青〜紫系
+            }
+
+            update() {
+                // 波動計算
+                const waveX = Math.sin(this.baseY * WAVE_FREQUENCY + time) * WAVE_AMPLITUDE;
+                const waveY = Math.cos(this.baseX * WAVE_FREQUENCY + time * 0.8) * WAVE_AMPLITUDE * 0.5;
+
+                // マウスの影響
+                const dx = mouse.x - this.baseX;
+                const dy = mouse.y - this.baseY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const maxDist = 200;
+
+                let mouseEffectX = 0;
+                let mouseEffectY = 0;
+
+                if (mouse.active && dist < maxDist) {
+                    const force = (maxDist - dist) / maxDist;
+                    mouseEffectX = dx * force * 0.3;
+                    mouseEffectY = dy * force * 0.3;
+                }
+
+                // 位置更新
+                this.x = this.baseX + waveX + mouseEffectX;
+                this.y = this.baseY + waveY + mouseEffectY;
+
+                // 色の変化
+                this.hue = 160 + Math.sin(time + this.baseX * 0.01) * 30;
+
+                // サイズの変化
+                this.currentSize = this.size * (0.8 + Math.sin(time * 2 + this.baseX * 0.02) * 0.4);
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.currentSize, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, 0.8)`;
+                ctx.fill();
+
+                // グロー効果
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.currentSize * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, 0.1)`;
+                ctx.fill();
+            }
+        }
+
+        // パーティクル初期化
+        function initParticles() {
+            particles = [];
+            const cols = Math.floor(Math.sqrt(PARTICLE_COUNT * width / height));
+            const rows = Math.floor(PARTICLE_COUNT / cols);
+            const spacingX = width / cols;
+            const spacingY = height / rows;
+
+            for (let i = 0; i < rows; i++) {
+                for (let j = 0; j < cols; j++) {
+                    const x = j * spacingX + spacingX / 2;
+                    const y = i * spacingY + spacingY / 2;
+                    particles.push(new Particle(x, y));
+                }
+            }
+        }
+
+        // アニメーションループ
+        function animate() {
+            // トレイル効果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // パーティクル更新・描画
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            // 接続線（近いパーティクル同士）
+            particles.forEach((p1, i) => {
+                particles.slice(i + 1).forEach(p2 => {
+                    const dx = p1.x - p2.x;
+                    const dy = p1.y - p2.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 50) {
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.strokeStyle = `hsla(${p1.hue}, 80%, 60%, ${(50 - dist) / 50 * 0.3})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                });
+            });
+
+            time += 0.03;
+            requestAnimationFrame(animate);
+        }
+
+        // マウスイベント
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.active = false;
+        });
+
+        // タッチイベント
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.active = false;
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        resize();
+        initParticles();
+        animate();
+
+        window.addEventListener('resize', () => {
+            resize();
+            initParticles();
+        });
+    </script>
+</body>
+</html>
