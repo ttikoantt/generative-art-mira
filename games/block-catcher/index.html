@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Block Catcher</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .ui {
+            position: fixed;
+            z-index: 100;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .score {
+            top: 20px;
+            left: 20px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .level {
+            top: 20px;
+            right: 20px;
+            font-size: 20px;
+        }
+
+        .lives {
+            top: 60px;
+            right: 20px;
+            font-size: 20px;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            color: white;
+            text-align: center;
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .overlay h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
+        }
+
+        .overlay p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            max-width: 80%;
+        }
+
+        .overlay button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: transform 0.2s;
+        }
+
+        .overlay button:hover {
+            transform: scale(1.1);
+        }
+
+        .overlay button:active {
+            transform: scale(0.95);
+        }
+
+        #fullscreen {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+        }
+
+        .combo {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .combo.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="ui score">スコア: <span id="score">0</span></div>
+    <div class="ui level">レベル: <span id="level">1</span></div>
+    <div class="ui lives">❤️ <span id="lives">3</span></div>
+    <button id="fullscreen">全画面</button>
+    <div class="combo" id="combo"></div>
+
+    <div class="overlay" id="startOverlay">
+        <h1>🎮 Block Catcher</h1>
+        <p>パドルを動かして落ちてくるブロックをキャッチしよう！<br>マウス/タッチで操作</p>
+        <button id="startBtn">スタート</button>
+    </div>
+
+    <div class="overlay hidden" id="gameOverlay">
+        <h1>ゲームオーバー</h1>
+        <p>最終スコア: <span id="finalScore">0</span></p>
+        <button id="restartBtn">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+
+        // ゲーム状態
+        let gameRunning = false;
+        let score = 0;
+        let level = 1;
+        let lives = 3;
+        let combo = 0;
+
+        // パドル
+        const paddle = {
+            width: 120,
+            height: 15,
+            x: 0,
+            y: 0,
+            speed: 15,
+            targetX: 0
+        };
+
+        // ブロック
+        let blocks = [];
+
+        // パーティクル
+        let particles = [];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            paddle.y = height - 50;
+            paddle.x = width / 2;
+            paddle.targetX = width / 2;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Block {
+            constructor() {
+                this.width = 40 + Math.random() * 40;
+                this.height = 20 + Math.random() * 20;
+                this.x = Math.random() * (width - this.width);
+                this.y = -50;
+                this.speed = 2 + level * 0.5 + Math.random() * 2;
+                this.color = this.getRandomColor();
+                this.points = Math.floor(this.speed * 10);
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+            }
+
+            getRandomColor() {
+                const colors = [
+                    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A',
+                    '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2'
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update() {
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+                ctx.rotate(this.rotation);
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+                ctx.restore();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.size = 3 + Math.random() * 5;
+                this.velocity = {
+                    x: (Math.random() - 0.5) * 8,
+                    y: (Math.random() - 0.5) * 8
+                };
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+            }
+
+            update() {
+                this.x += this.velocity.x;
+                this.y += this.velocity.y;
+                this.velocity.y += 0.2;
+                this.life -= this.decay;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function spawnBlock() {
+            if (Math.random() < 0.02 + level * 0.005) {
+                blocks.push(new Block());
+            }
+        }
+
+        function updatePaddle() {
+            const diff = paddle.targetX - paddle.x;
+            paddle.x += diff * 0.15;
+
+            // 境界チェック
+            if (paddle.x < paddle.width / 2) {
+                paddle.x = paddle.width / 2;
+            }
+            if (paddle.x > width - paddle.width / 2) {
+                paddle.x = width - paddle.width / 2;
+            }
+        }
+
+        function drawPaddle() {
+            const gradient = ctx.createLinearGradient(
+                paddle.x - paddle.width / 2, paddle.y,
+                paddle.x + paddle.width / 2, paddle.y
+            );
+            gradient.addColorStop(0, '#667eea');
+            gradient.addColorStop(1, '#764ba2');
+
+            ctx.fillStyle = gradient;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#667eea';
+            ctx.beginPath();
+            ctx.roundRect(
+                paddle.x - paddle.width / 2,
+                paddle.y,
+                paddle.width,
+                paddle.height,
+                8
+            );
+            ctx.fill();
+        }
+
+        function checkCollisions() {
+            for (let i = blocks.length - 1; i >= 0; i--) {
+                const block = blocks[i];
+
+                // パドルとの衝突
+                if (
+                    block.y + block.height >= paddle.y &&
+                    block.y <= paddle.y + paddle.height &&
+                    block.x + block.width >= paddle.x - paddle.width / 2 &&
+                    block.x <= paddle.x + paddle.width / 2
+                ) {
+                    // キャッチ！
+                    combo++;
+                    score += block.points * combo;
+                    createParticles(
+                        block.x + block.width / 2,
+                        block.y + block.height,
+                        block.color
+                    );
+
+                    // コンボ表示
+                    if (combo > 1) {
+                        const comboEl = document.getElementById('combo');
+                        comboEl.textContent = `${combo} COMBO!`;
+                        comboEl.classList.add('show');
+                        setTimeout(() => comboEl.classList.remove('show'), 500);
+                    }
+
+                    blocks.splice(i, 1);
+                    updateUI();
+                    continue;
+                }
+
+                // 画面外に出た
+                if (block.y > height) {
+                    combo = 0;
+                    lives--;
+                    blocks.splice(i, 1);
+                    updateUI();
+
+                    if (lives <= 0) {
+                        gameOver();
+                    }
+                }
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('level').textContent = level;
+            document.getElementById('lives').textContent = lives;
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOverlay').classList.remove('hidden');
+        }
+
+        function updateLevel() {
+            const newLevel = Math.floor(score / 500) + 1;
+            if (newLevel > level) {
+                level = newLevel;
+                updateUI();
+            }
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            updatePaddle();
+            spawnBlock();
+
+            blocks.forEach(block => block.update());
+            blocks = blocks.filter(block => block.y < height + 50);
+
+            particles.forEach(p => p.update());
+            particles = particles.filter(p => p.life > 0);
+
+            checkCollisions();
+            updateLevel();
+        }
+
+        function draw() {
+            // 背景をクリア（半透明でトレイル効果）
+            ctx.fillStyle = 'rgba(102, 126, 234, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            // グラデーション背景
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, 'rgba(102, 126, 234, 0.1)');
+            gradient.addColorStop(1, 'rgba(118, 75, 162, 0.1)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            blocks.forEach(block => block.draw());
+            particles.forEach(p => p.draw());
+            drawPaddle();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            level = 1;
+            lives = 3;
+            combo = 0;
+            blocks = [];
+            particles = [];
+            updateUI();
+            document.getElementById('startOverlay').classList.add('hidden');
+            document.getElementById('gameOverlay').classList.add('hidden');
+        }
+
+        // イベントリスナー
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+
+        canvas.addEventListener('mousemove', (e) => {
+            paddle.targetX = e.clientX;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            paddle.targetX = e.touches[0].clientX;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            paddle.targetX = e.touches[0].clientX;
+        });
+
+        document.getElementById('fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // ゲームループ開始
+        gameLoop();
+    </script>
+</body>
+</html>
