@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shadow Dodger - Mira's Games</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            max-width: 800px;
+            max-height: 800px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .score {
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .shadow-bonus {
+            color: #00ff88;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 2px 10px rgba(0, 255, 136, 0.5);
+        }
+
+        .menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #fff;
+            z-index: 200;
+        }
+
+        .menu h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .menu p {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 30px;
+            max-width: 400px;
+            line-height: 1.6;
+        }
+
+        .menu button {
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            pointer-events: auto;
+        }
+
+        .menu button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .game-over {
+            display: none;
+        }
+
+        .game-over.active {
+            display: block;
+        }
+
+        .final-score {
+            font-size: 36px;
+            color: #00ff88;
+            margin: 20px 0;
+        }
+
+        @media (max-width: 768px) {
+            .menu h1 {
+                font-size: 36px;
+            }
+
+            .menu p {
+                font-size: 14px;
+                padding: 0 20px;
+            }
+
+            .score {
+                font-size: 20px;
+            }
+
+            .shadow-bonus {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div class="ui-overlay">
+            <div class="score">Score: <span id="score">0</span></div>
+            <div class="shadow-bonus" id="shadowBonus"></div>
+        </div>
+
+        <div class="menu" id="menu">
+            <h1>Shadow Dodger</h1>
+            <p>
+                🌑 Stay in the shadows to score points<br>
+                ☀️ Avoid obstacles in the light<br>
+                👆 Tap to move your light spot
+            </p>
+            <button onclick="startGame()">Start Game</button>
+        </div>
+
+        <div class="menu game-over" id="gameOver">
+            <h1>Game Over</h1>
+            <div class="final-score">Score: <span id="finalScore">0</span></div>
+            <button onclick="startGame()">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let player;
+        let shadows = [];
+        let obstacles = [];
+        let score = 0;
+        let shadowBonus = 0;
+        let gameRunning = false;
+        let animationId;
+        let lastTime = 0;
+        let spawnTimer = 0;
+        let difficulty = 1;
+
+        function resize() {
+            const container = document.getElementById('game-container');
+            width = container.clientWidth;
+            height = container.clientHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        function initGame() {
+            player = {
+                x: width / 2,
+                y: height / 2,
+                radius: 30,
+                targetX: width / 2,
+                targetY: height / 2
+            };
+
+            shadows = [];
+            obstacles = [];
+            score = 0;
+            shadowBonus = 0;
+            spawnTimer = 0;
+            difficulty = 1;
+
+            // 初期影エリアを生成
+            for (let i = 0; i < 3; i++) {
+                shadows.push(createShadow());
+            }
+
+            updateUI();
+        }
+
+        function createShadow() {
+            return {
+                x: Math.random() * width,
+                y: Math.random() * height,
+                radius: 80 + Math.random() * 60
+            };
+        }
+
+        function createObstacle() {
+            // プレイヤーから離れた位置に生成
+            let x, y;
+            const minDist = 200;
+            do {
+                x = Math.random() * width;
+                y = Math.random() * height;
+            } while (Math.hypot(x - player.x, y - player.y) < minDist);
+
+            return {
+                x: x,
+                y: y,
+                radius: 15 + Math.random() * 15,
+                speed: (1.5 + Math.random() * 2) * difficulty
+            };
+        }
+
+        function startGame() {
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('gameOver').classList.remove('active');
+            gameRunning = true;
+            initGame();
+            lastTime = performance.now();
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').classList.add('active');
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('shadowBonus').textContent = shadowBonus > 0 ? `+${shadowBonus}` : '';
+        }
+
+        function update(deltaTime) {
+            // プレイヤーの移動（スムーズに）
+            const dx = player.targetX - player.x;
+            const dy = player.targetY - player.y;
+            player.x += dx * 8 * deltaTime;
+            player.y += dy * 8 * deltaTime;
+
+            // 画面内に制限
+            player.x = Math.max(player.radius, Math.min(width - player.radius, player.x));
+            player.y = Math.max(player.radius, Math.min(height - player.radius, player.y));
+
+            // プレイヤーが影の中にいるかチェック
+            let inShadow = false;
+            for (const shadow of shadows) {
+                const dist = Math.hypot(player.x - shadow.x, player.y - shadow.y);
+                if (dist < shadow.radius) {
+                    inShadow = true;
+                    break;
+                }
+            }
+
+            if (inShadow) {
+                shadowBonus += Math.floor(10 * deltaTime);
+                if (shadowBonus % 100 === 0) {
+                    score += 100;
+                }
+            } else {
+                shadowBonus = 0;
+            }
+
+            // 障害物を生成
+            spawnTimer += deltaTime;
+            if (spawnTimer > 2 / difficulty) {
+                obstacles.push(createObstacle());
+                spawnTimer = 0;
+            }
+
+            // 障害物を更新
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+
+                // 影に近いと消える
+                let nearShadow = false;
+                for (const shadow of shadows) {
+                    const dist = Math.hypot(obs.x - shadow.x, obs.y - shadow.y);
+                    if (dist < shadow.radius * 0.8) {
+                        nearShadow = true;
+                        break;
+                    }
+                }
+
+                if (nearShadow) {
+                    obstacles.splice(i, 1);
+                    score += 50;
+                    continue;
+                }
+
+                // 影の外ならプレイヤーに向かって移動
+                if (!inShadow) {
+                    const angle = Math.atan2(player.y - obs.y, player.x - obs.x);
+                    obs.x += Math.cos(angle) * obs.speed;
+                    obs.y += Math.sin(angle) * obs.speed;
+                }
+
+                // プレイヤーとの衝突チェック（影の外のみ）
+                if (!inShadow) {
+                    const dist = Math.hypot(player.x - obs.x, player.y - obs.y);
+                    if (dist < player.radius + obs.radius) {
+                        gameOver();
+                        return;
+                    }
+                }
+
+                // 画面外に出たら削除
+                if (obs.x < -50 || obs.x > width + 50 || obs.y < -50 || obs.y > height + 50) {
+                    obstacles.splice(i, 1);
+                    score += 10;
+                }
+            }
+
+            // 難度を徐々に上げる
+            difficulty = 1 + score / 2000;
+
+            updateUI();
+        }
+
+        function draw() {
+            // 背景
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, width, height);
+
+            // 影エリアを描画
+            for (const shadow of shadows) {
+                const gradient = ctx.createRadialGradient(
+                    shadow.x, shadow.y, 0,
+                    shadow.x, shadow.y, shadow.radius
+                );
+                gradient.addColorStop(0, 'rgba(0, 0, 0, 0.95)');
+                gradient.addColorStop(0.7, 'rgba(20, 20, 30, 0.8)');
+                gradient.addColorStop(1, 'rgba(30, 30, 40, 0.3)');
+
+                ctx.beginPath();
+                ctx.arc(shadow.x, shadow.y, shadow.radius, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+
+            // 障害物を描画
+            for (const obs of obstacles) {
+                ctx.beginPath();
+                ctx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#ff4444';
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(obs.x, obs.y, obs.radius * 1.5, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255, 68, 68, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // プレイヤーの光スポットを描画
+            const playerGradient = ctx.createRadialGradient(
+                player.x, player.y, 0,
+                player.x, player.y, player.radius
+            );
+            playerGradient.addColorStop(0, 'rgba(255, 220, 100, 0.9)');
+            playerGradient.addColorStop(0.5, 'rgba(255, 200, 80, 0.5)');
+            playerGradient.addColorStop(1, 'rgba(255, 180, 60, 0)');
+
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = playerGradient;
+            ctx.fill();
+
+            // プレイヤーの中心
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            const currentTime = performance.now();
+            const deltaTime = Math.min((currentTime - lastTime) / 1000, 0.1);
+            lastTime = currentTime;
+
+            update(deltaTime);
+            draw();
+
+            if (gameRunning) {
+                animationId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', (e) => {
+            if (!gameRunning) return;
+            const rect = canvas.getBoundingClientRect();
+            player.targetX = e.clientX - rect.left;
+            player.targetY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            player.targetX = touch.clientX - rect.left;
+            player.targetY = touch.clientY - rect.top;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            player.targetX = touch.clientX - rect.left;
+            player.targetY = touch.clientY - rect.top;
+        });
+
+        window.addEventListener('resize', () => {
+            resize();
+        });
+
+        resize();
+    </script>
+</body>
+</html>
