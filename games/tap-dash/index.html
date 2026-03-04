@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Tap Dash - タップダッシュ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            touch-action: manipulation;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            height: 100vh;
+            max-height: 800px;
+            background: #0f0f23;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .score {
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        .high-score {
+            color: #ffd700;
+            font-size: 18px;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            backdrop-filter: blur(5px);
+        }
+
+        .overlay h1 {
+            color: #fff;
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .overlay p {
+            color: #aaa;
+            font-size: 18px;
+            margin-bottom: 30px;
+            text-align: center;
+            max-width: 80%;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+            pointer-events: auto;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.6);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 768px) {
+            .overlay h1 {
+                font-size: 36px;
+            }
+            .overlay p {
+                font-size: 14px;
+            }
+            .btn {
+                padding: 12px 30px;
+                font-size: 18px;
+            }
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="game-container">
+        <canvas id="canvas"></canvas>
+
+        <div class="ui">
+            <div class="score">Score: <span id="score">0</span></div>
+            <div class="high-score">Best: <span id="highScore">0</span></div>
+        </div>
+
+        <div class="overlay" id="startOverlay">
+            <h1>Tap Dash</h1>
+            <p>タップしてダッシュ！<br>障害物を避けてできるだけ遠くへ！</p>
+            <button class="btn" onclick="startGame()">スタート</button>
+        </div>
+
+        <div class="overlay hidden" id="gameOverOverlay">
+            <h1>Game Over</h1>
+            <p>Score: <span id="finalScore">0</span><br>Best: <span id="finalHighScore">0</span></p>
+            <button class="btn" onclick="startGame()">もう一度</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+
+        function resize() {
+            const container = document.querySelector('.game-container');
+            width = canvas.width = container.clientWidth;
+            height = canvas.height = container.clientHeight;
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+
+        let gameRunning = false;
+        let score = 0;
+        let highScore = localStorage.getItem('tapDashHighScore') || 0;
+        let gameSpeed = 3;
+        let animationId;
+
+        document.getElementById('highScore').textContent = highScore;
+
+        const player = {
+            x: 100,
+            y: 0,
+            width: 40,
+            height: 40,
+            velocityY: 0,
+            gravity: 0.6,
+            jumpStrength: -12,
+            grounded: false,
+            color: '#667eea'
+        };
+
+        let obstacles = [];
+        let particles = [];
+        let groundY;
+
+        function init() {
+            groundY = height - 100;
+            player.y = groundY - player.height;
+            player.velocityY = 0;
+            obstacles = [];
+            particles = [];
+            score = 0;
+            gameSpeed = 3;
+            document.getElementById('score').textContent = score;
+        }
+
+        function startGame() {
+            init();
+            gameRunning = true;
+            document.getElementById('startOverlay').classList.add('hidden');
+            document.getElementById('gameOverOverlay').classList.add('hidden');
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('tapDashHighScore', highScore);
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalHighScore').textContent = highScore;
+            document.getElementById('highScore').textContent = highScore;
+            document.getElementById('gameOverOverlay').classList.remove('hidden');
+        }
+
+        function jump() {
+            if (player.grounded && gameRunning) {
+                player.velocityY = player.jumpStrength;
+                player.grounded = false;
+                createJumpParticles();
+            }
+        }
+
+        function createJumpParticles() {
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: player.x + player.width / 2,
+                    y: player.y + player.height,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: Math.random() * -3,
+                    size: Math.random() * 5 + 2,
+                    alpha: 1,
+                    color: player.color
+                });
+            }
+        }
+
+        function createObstacle() {
+            const type = Math.random();
+            let obstacle = {
+                x: width,
+                width: 30,
+                height: 30 + Math.random() * 40
+            };
+
+            if (type < 0.4) {
+                // Ground obstacle
+                obstacle.y = groundY - obstacle.height;
+                obstacle.type = 'ground';
+            } else if (type < 0.7) {
+                // Flying obstacle
+                obstacle.y = groundY - 120 - Math.random() * 50;
+                obstacle.type = 'flying';
+            } else {
+                // Double obstacle
+                obstacle.y = groundY - obstacle.height;
+                obstacle.type = 'double';
+            }
+
+            obstacles.push(obstacle);
+        }
+
+        let obstacleTimer = 0;
+
+        function update() {
+            // Player physics
+            player.velocityY += player.gravity;
+            player.y += player.velocityY;
+
+            if (player.y >= groundY - player.height) {
+                player.y = groundY - player.height;
+                player.velocityY = 0;
+                player.grounded = true;
+            }
+
+            // Increase game speed gradually
+            gameSpeed += 0.001;
+
+            // Spawn obstacles
+            obstacleTimer++;
+            if (obstacleTimer > 120 - Math.floor(score / 50)) {
+                createObstacle();
+                obstacleTimer = 0;
+            }
+
+            // Update obstacles
+            obstacles.forEach((obs, index) => {
+                obs.x -= gameSpeed;
+
+                // Collision detection
+                if (player.x < obs.x + obs.width &&
+                    player.x + player.width > obs.x &&
+                    player.y < obs.y + obs.height &&
+                    player.y + player.height > obs.y) {
+                    gameOver();
+                }
+
+                // Score
+                if (obs.x + obs.width < player.x && !obs.passed) {
+                    score += 10;
+                    obs.passed = true;
+                    document.getElementById('score').textContent = score;
+                }
+            });
+
+            // Remove off-screen obstacles
+            obstacles = obstacles.filter(obs => obs.x + obs.width > 0);
+
+            // Update particles
+            particles.forEach((p, index) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.2;
+                p.alpha -= 0.02;
+            });
+
+            particles = particles.filter(p => p.alpha > 0);
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#0f0f23';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw ground
+            ctx.fillStyle = '#1a1a3e';
+            ctx.fillRect(0, groundY, width, height - groundY);
+
+            ctx.strokeStyle = '#667eea';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            ctx.lineTo(width, groundY);
+            ctx.stroke();
+
+            // Draw player (neon square)
+            ctx.save();
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = player.color;
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+
+            // Inner glow
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fillRect(player.x + 5, player.y + 5, player.width - 10, player.height - 10);
+            ctx.restore();
+
+            // Draw obstacles
+            obstacles.forEach(obs => {
+                ctx.save();
+                ctx.shadowBlur = 15;
+
+                if (obs.type === 'flying') {
+                    ctx.shadowColor = '#ff4757';
+                    ctx.fillStyle = '#ff4757';
+                } else {
+                    ctx.shadowColor = '#ffa502';
+                    ctx.fillStyle = '#ffa502';
+                }
+
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                ctx.restore();
+            });
+
+            // Draw particles
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, p.size, p.size);
+                ctx.restore();
+            });
+
+            // Draw trail effect
+            ctx.save();
+            ctx.globalAlpha = 0.1;
+            ctx.fillStyle = player.color;
+            for (let i = 1; i <= 5; i++) {
+                ctx.fillRect(player.x - i * 10, player.y, player.width, player.height);
+            }
+            ctx.restore();
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            update();
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // Input handlers
+        canvas.addEventListener('click', jump);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                e.preventDefault();
+                if (!gameRunning) {
+                    startGame();
+                } else {
+                    jump();
+                }
+            }
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Initial draw
+        resize();
+        init();
+        draw();
+    </script>
+</body>
+</html>
