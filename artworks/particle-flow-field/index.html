@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Flow Field - Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #fff;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            border: 1px solid #333;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #333;
+            z-index: 100;
+        }
+
+        .controls h3 {
+            margin: 0 0 15px 0;
+            font-size: 14px;
+            color: #0ff;
+        }
+
+        .control-group {
+            margin: 10px 0;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 11px;
+            margin-bottom: 5px;
+            color: #888;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #222;
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #0ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .control-group input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: #0ff;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        .value {
+            font-size: 10px;
+            color: #0ff;
+            text-align: right;
+        }
+
+        button {
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            font-weight: bold;
+            width: 100%;
+            margin-top: 10px;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            font-size: 10px;
+            color: #666;
+            text-align: right;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 212, 255, 0.2);
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            z-index: 101;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 212, 255, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                top: auto;
+                bottom: 60px;
+                left: 10px;
+                right: 10px;
+                padding: 15px;
+            }
+
+            .controls h3 {
+                font-size: 12px;
+            }
+
+            .info {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <h3>⚙️ Flow Field Controls</h3>
+
+        <div class="control-group">
+            <label>Particle Count</label>
+            <input type="range" id="particleCount" min="500" max="5000" value="2000">
+            <div class="value" id="particleCountValue">2000</div>
+        </div>
+
+        <div class="control-group">
+            <label>Noise Scale</label>
+            <input type="range" id="noiseScale" min="1" max="100" value="30">
+            <div class="value" id="noiseScaleValue">30</div>
+        </div>
+
+        <div class="control-group">
+            <label>Flow Strength</label>
+            <input type="range" id="flowStrength" min="1" max="10" value="3">
+            <div class="value" id="flowStrengthValue">3</div>
+        </div>
+
+        <div class="control-group">
+            <label>Trail Opacity</label>
+            <input type="range" id="trailOpacity" min="1" max="50" value="5">
+            <div class="value" id="trailOpacityValue">5%</div>
+        </div>
+
+        <button id="regenerate">🔄 Regenerate</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreen">⛶ Fullscreen</button>
+
+    <div class="info">
+        Particle Flow Field<br>
+        Generative Art by Mira
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let flowField = [];
+        let rows, cols;
+        let scale = 30;
+        let particleCount = 2000;
+        let flowStrength = 3;
+        let trailOpacity = 0.05;
+        let animationId;
+
+        // Simple Perlin-like noise implementation
+        class SimpleNoise {
+            constructor() {
+                this.permutation = [];
+                for (let i = 0; i < 256; i++) {
+                    this.permutation[i] = Math.floor(Math.random() * 256);
+                }
+                this.p = new Array(512);
+                for (let i = 0; i < 512; i++) {
+                    this.p[i] = this.permutation[i % 256];
+                }
+            }
+
+            fade(t) {
+                return t * t * t * (t * (t * 6 - 15) + 10);
+            }
+
+            lerp(t, a, b) {
+                return a + t * (b - a);
+            }
+
+            grad(hash, x, y) {
+                const h = hash & 3;
+                const u = h < 2 ? x : y;
+                const v = h < 2 ? y : x;
+                return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+            }
+
+            noise(x, y) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+
+                const u = this.fade(x);
+                const v = this.fade(y);
+
+                const A = this.p[X] + Y;
+                const B = this.p[X + 1] + Y;
+
+                return this.lerp(v,
+                    this.lerp(u, this.grad(this.p[A], x, y), this.grad(this.p[B], x - 1, y)),
+                    this.lerp(u, this.grad(this.p[A + 1], x, y - 1), this.grad(this.p[B + 1], x - 1, y - 1))
+                );
+            }
+        }
+
+        const noise = new SimpleNoise();
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.life = Math.random() * 200 + 100;
+                this.maxLife = this.life;
+                this.hue = Math.random() * 60 + 180; // Cyan to blue range
+            }
+
+            update() {
+                const col = Math.floor(this.x / scale);
+                const row = Math.floor(this.y / scale);
+
+                if (col >= 0 && col < cols && row >= 0 && row < rows) {
+                    const index = row * cols + col;
+                    const angle = flowField[index];
+
+                    this.vx += Math.cos(angle) * 0.1;
+                    this.vy += Math.sin(angle) * 0.1;
+
+                    // Limit velocity
+                    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                    if (speed > flowStrength) {
+                        this.vx = (this.vx / speed) * flowStrength;
+                        this.vy = (this.vy / speed) * flowStrength;
+                    }
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life--;
+
+                if (this.life <= 0 || this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = this.life / this.maxLife;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 1, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        function initFlowField() {
+            flowField = [];
+            rows = Math.ceil(height / scale);
+            cols = Math.ceil(width / scale);
+
+            let yoff = 0;
+            for (let y = 0; y < rows; y++) {
+                let xoff = 0;
+                for (let x = 0; x < cols; x++) {
+                    const angle = noise.noise(xoff, yoff) * Math.PI * 4;
+                    flowField.push(angle);
+                    xoff += 0.1;
+                }
+                yoff += 0.1;
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            initFlowField();
+        }
+
+        function animate() {
+            // Semi-transparent background for trail effect
+            ctx.fillStyle = `rgba(10, 10, 10, ${trailOpacity})`;
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function init() {
+            resize();
+            initParticles();
+            animate();
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+
+        document.getElementById('particleCount').addEventListener('input', (e) => {
+            particleCount = parseInt(e.target.value);
+            document.getElementById('particleCountValue').textContent = particleCount;
+            initParticles();
+        });
+
+        document.getElementById('noiseScale').addEventListener('input', (e) => {
+            scale = parseInt(e.target.value);
+            document.getElementById('noiseScaleValue').textContent = scale;
+            initFlowField();
+        });
+
+        document.getElementById('flowStrength').addEventListener('input', (e) => {
+            flowStrength = parseInt(e.target.value);
+            document.getElementById('flowStrengthValue').textContent = flowStrength;
+        });
+
+        document.getElementById('trailOpacity').addEventListener('input', (e) => {
+            trailOpacity = parseInt(e.target.value) / 100;
+            document.getElementById('trailOpacityValue').textContent = e.target.value + '%';
+        });
+
+        document.getElementById('regenerate').addEventListener('click', () => {
+            cancelAnimationFrame(animationId);
+            noise.permutation = [];
+            for (let i = 0; i < 256; i++) {
+                noise.permutation[i] = Math.floor(Math.random() * 256);
+            }
+            for (let i = 0; i < 512; i++) {
+                noise.p[i] = noise.permutation[i % 256];
+            }
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, width, height);
+            initFlowField();
+            initParticles();
+            animate();
+        });
+
+        document.getElementById('fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        init();
+    </script>
+</body>
+</html>
