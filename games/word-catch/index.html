@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>文字キャッチ - Word Catch</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 10;
+        }
+
+        .score-box, .word-box {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 25px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            min-width: 120px;
+        }
+
+        .score-box h3, .word-box h3 {
+            font-size: 0.8em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .score-box .score, .word-box .word {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border: none;
+            padding: 12px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9em;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.98);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            display: none;
+            z-index: 100;
+        }
+
+        .game-over.active {
+            display: block;
+        }
+
+        .game-over h2 {
+            font-size: 2em;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .game-over p {
+            font-size: 1.2em;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .game-over button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1em;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .game-over button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .bonus {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3em;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 50;
+        }
+
+        .bonus.show {
+            opacity: 1;
+            animation: bonusPop 1s ease-out;
+        }
+
+        @keyframes bonusPop {
+            0% {
+                transform: translate(-50%, -50%) scale(0.5);
+                opacity: 1;
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.2);
+            }
+            100% {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="ui">
+        <div class="score-box">
+            <h3>SCORE</h3>
+            <div class="score" id="score">0</div>
+        </div>
+        <div class="word-box">
+            <h3>WORD</h3>
+            <div class="word" id="word">_</div>
+        </div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="game-over" id="gameOver">
+        <h2>Game Over!</h2>
+        <p>最終スコア: <span id="finalScore">0</span></p>
+        <button onclick="restartGame()">再挑戦</button>
+    </div>
+
+    <div class="bonus" id="bonus">+100</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // 単語リスト（英語の短い単語）
+        const words = [
+            'CAT', 'DOG', 'SUN', 'SKY', 'RED', 'BLUE', 'TREE',
+            'BOOK', 'FISH', 'BIRD', 'LOVE', 'STAR', 'MOON',
+            'WATER', 'FIRE', 'EARTH', 'WIND', 'LIGHT', 'DARK',
+            'HAPPY', 'SMILE', 'DREAM', 'MUSIC', 'DANCE', 'PLAY',
+            'PEACE', 'HOPE', 'FAITH', 'LIFE', 'TIME', 'WORLD'
+        ];
+
+        let currentWord = '';
+        let currentWordIndex = 0;
+        let score = 0;
+        let lives = 3;
+        let gameOver = false;
+
+        const letters = [];
+        const particles = [];
+        const LETTER_SIZE = 40;
+        const SPAWN_INTERVAL = 1500;
+        let lastSpawn = 0;
+
+        class Letter {
+            constructor(char) {
+                this.char = char;
+                this.x = Math.random() * (width - LETTER_SIZE * 2) + LETTER_SIZE;
+                this.y = -LETTER_SIZE;
+                this.speed = Math.random() * 1.5 + 1;
+                this.size = LETTER_SIZE;
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.05;
+                this.targetWord = currentWord;
+            }
+
+            update() {
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+
+                // 画面外に出たらライフ減少
+                if (this.y > height + this.size) {
+                    if (this.char === currentWord[currentWordIndex]) {
+                        lives--;
+                        if (lives <= 0) {
+                            endGame();
+                        }
+                    }
+                    return false;
+                }
+                return true;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // 背景サークル
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(102, 126, 234, 0.5)';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // 文字
+                ctx.fillStyle = '#667eea';
+                ctx.font = `bold ${this.size * 1.2}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.char, 0, 0);
+
+                ctx.restore();
+            }
+
+            checkClick(clickX, clickY) {
+                const dx = this.x - clickX;
+                const dy = this.y - clickY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                return distance < this.size;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, char) {
+                this.x = x;
+                this.y = y;
+                this.char = char;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10 - 5;
+                this.life = 1;
+                this.size = LETTER_SIZE;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.3;
+                this.life -= 0.02;
+                return this.life > 0;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.translate(this.x, this.y);
+
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.fill();
+
+                ctx.fillStyle = '#667eea';
+                ctx.font = `bold ${this.size * 1.2}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.char, 0, 0);
+
+                ctx.restore();
+            }
+        }
+
+        function spawnLetter() {
+            const targetChar = currentWord[currentWordIndex];
+            // 70%の確率で必要な文字、30%でランダム
+            const char = Math.random() < 0.7 ? targetChar : 
+                         String.fromCharCode(65 + Math.floor(Math.random() * 26));
+            letters.push(new Letter(char));
+        }
+
+        function nextWord() {
+            currentWord = words[Math.floor(Math.random() * words.length)];
+            currentWordIndex = 0;
+            updateWordDisplay();
+        }
+
+        function updateWordDisplay() {
+            const wordDisplay = document.getElementById('word');
+            if (currentWordIndex < currentWord.length) {
+                wordDisplay.textContent = currentWord.substring(0, currentWordIndex) + '_' + 
+                                         currentWord.substring(currentWordIndex + 1);
+            } else {
+                wordDisplay.textContent = currentWord;
+            }
+        }
+
+        function updateScore() {
+            document.getElementById('score').textContent = score;
+        }
+
+        function showBonus(points) {
+            const bonus = document.getElementById('bonus');
+            bonus.textContent = '+' + points;
+            bonus.classList.remove('show');
+            void bonus.offsetWidth; // Trigger reflow
+            bonus.classList.add('show');
+        }
+
+        function handleClick(x, y) {
+            if (gameOver) return;
+
+            for (let i = letters.length - 1; i >= 0; i--) {
+                const letter = letters[i];
+                if (letter.checkClick(x, y)) {
+                    const neededChar = currentWord[currentWordIndex];
+                    
+                    if (letter.char === neededChar) {
+                        // 正しい文字！
+                        score += 10;
+                        currentWordIndex++;
+
+                        // パーティクル
+                        for (let j = 0; j < 5; j++) {
+                            particles.push(new Particle(letter.x, letter.y, letter.char));
+                        }
+
+                        // 単語完成
+                        if (currentWordIndex >= currentWord.length) {
+                            score += 50;
+                            showBonus(50);
+                            setTimeout(nextWord, 500);
+                        }
+
+                        updateScore();
+                        updateWordDisplay();
+                    } else {
+                        // 間違った文字
+                        score = Math.max(0, score - 5);
+                        updateScore();
+                        
+                        // 間違った文字を赤く点滅
+                        for (let j = 0; j < 3; j++) {
+                            particles.push(new Particle(letter.x, letter.y, letter.char));
+                        }
+                    }
+
+                    // クリックした文字を削除
+                    letters.splice(i, 1);
+                    break;
+                }
+            }
+        }
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            handleClick(e.clientX - rect.left, e.clientY - rect.top);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            handleClick(touch.clientX - rect.left, touch.clientY - rect.top);
+        });
+
+        function endGame() {
+            gameOver = true;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').classList.add('active');
+        }
+
+        function restartGame() {
+            gameOver = false;
+            score = 0;
+            lives = 3;
+            letters.length = 0;
+            particles.length = 0;
+            document.getElementById('gameOver').classList.remove('active');
+            updateScore();
+            nextWord();
+        }
+
+        function animate(timestamp) {
+            if (!gameOver) {
+                // 背景クリア
+                ctx.fillStyle = 'rgba(102, 126, 234, 0.3)';
+                ctx.fillRect(0, 0, width, height);
+
+                // 文字をスポーン
+                if (timestamp - lastSpawn > SPAWN_INTERVAL) {
+                    spawnLetter();
+                    lastSpawn = timestamp;
+                }
+
+                // 文字を更新・描画
+                for (let i = letters.length - 1; i >= 0; i--) {
+                    if (!letters[i].update()) {
+                        letters.splice(i, 1);
+                    } else {
+                        letters[i].draw();
+                    }
+                }
+
+                // パーティクルを更新・描画
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    if (!particles[i].update()) {
+                        particles.splice(i, 1);
+                    } else {
+                        particles[i].draw();
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // 初期化
+        nextWord();
+        updateScore();
+        animate(0);
+    </script>
+</body>
+</html>

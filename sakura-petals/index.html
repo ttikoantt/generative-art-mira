@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>桜の花びら - Sakura Petals</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 50%, #ff9a9e 100%);
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px 25px;
+            border-radius: 50px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            z-index: 10;
+        }
+
+        .info h1 {
+            font-size: 1.2em;
+            color: #ff6b9d;
+            margin-bottom: 5px;
+        }
+
+        .info p {
+            font-size: 0.85em;
+            color: #666;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            padding: 12px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9em;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="info">
+        <h1>🌸 桜の花びら</h1>
+        <p>画面をクリックで風を起こせる</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        const petals = [];
+        const PETAL_COUNT = 150;
+
+        class Petal {
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || -20;
+                this.size = Math.random() * 8 + 5;
+                this.speedX = Math.random() * 2 - 1;
+                this.speedY = Math.random() * 1.5 + 0.5;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.05;
+                this.swayAmplitude = Math.random() * 2 + 1;
+                this.swaySpeed = Math.random() * 0.02 + 0.01;
+                this.swayOffset = Math.random() * Math.PI * 2;
+                this.opacity = Math.random() * 0.3 + 0.7;
+                
+                // 桜色のバリエーション
+                const colors = [
+                    { r: 255, g: 182, b: 193 },  // ピンク
+                    { r: 255, g: 192, b: 203 },  // やや薄いピンク
+                    { r: 255, g: 209, b: 220 },  // とても薄いピンク
+                    { r: 255, g: 240, b: 245 },  // ほぼ白
+                ];
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update(windX, windY) {
+                this.swayOffset += this.swaySpeed;
+                this.sway = Math.sin(this.swayOffset) * this.swayAmplitude;
+
+                this.x += this.speedX + this.sway + windX;
+                this.y += this.speedY + windY;
+                this.rotation += this.rotationSpeed;
+
+                // 画面外に出たらリセット
+                if (this.y > height + 20) {
+                    this.y = -20;
+                    this.x = Math.random() * width;
+                }
+                if (this.x > width + 20) {
+                    this.x = -20;
+                }
+                if (this.x < -20) {
+                    this.x = width + 20;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                ctx.globalAlpha = this.opacity;
+                ctx.fillStyle = `rgb(${this.color.r}, ${this.color.g}, ${this.color.b})`;
+
+                // 花びらの形を描画
+                ctx.beginPath();
+                ctx.moveTo(0, -this.size);
+                ctx.bezierCurveTo(
+                    this.size * 0.8, -this.size * 0.5,
+                    this.size * 0.8, this.size * 0.5,
+                    0, this.size
+                );
+                ctx.bezierCurveTo(
+                    -this.size * 0.8, this.size * 0.5,
+                    -this.size * 0.8, -this.size * 0.5,
+                    0, -this.size
+                );
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // 花びらを初期化
+        function initPetals() {
+            for (let i = 0; i < PETAL_COUNT; i++) {
+                const petal = new Petal();
+                petal.y = Math.random() * height;
+                petals.push(petal);
+            }
+        }
+
+        // 風のエフェクト
+        let windX = 0;
+        let windY = 0;
+        let windDecay = 0.95;
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            // クリック位置から風を起こす
+            petals.forEach(petal => {
+                const dx = petal.x - clickX;
+                const dy = petal.y - clickY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < 200) {
+                    const force = (200 - distance) / 200;
+                    petal.speedX += (dx / distance) * force * 5;
+                    petal.speedY += (dy / distance) * force * 3;
+                }
+            });
+
+            windX = (Math.random() - 0.5) * 2;
+            windY = -Math.random() * 2;
+        });
+
+        // アニメーション
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+
+            // 背景のグラデーション
+            const gradient = ctx.createLinearGradient(0, 0, width, height);
+            gradient.addColorStop(0, '#ffecd2');
+            gradient.addColorStop(0.5, '#fcb69f');
+            gradient.addColorStop(1, '#ff9a9e');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // 風を減衰
+            windX *= windDecay;
+            windY *= windDecay;
+
+            // 花びらを更新・描画
+            petals.forEach(petal => {
+                petal.update(windX, windY);
+                petal.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // ウィンドウサイズ変更
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // タッチ対応
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const touchX = touch.clientX - rect.left;
+            const touchY = touch.clientY - rect.top;
+
+            petals.forEach(petal => {
+                const dx = petal.x - touchX;
+                const dy = petal.y - touchY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < 200) {
+                    const force = (200 - distance) / 200;
+                    petal.speedX += (dx / distance) * force * 5;
+                    petal.speedY += (dy / distance) * force * 3;
+                }
+            });
+
+            windX = (Math.random() - 0.5) * 2;
+            windY = -Math.random() * 2;
+        });
+
+        initPetals();
+        animate();
+    </script>
+</body>
+</html>
