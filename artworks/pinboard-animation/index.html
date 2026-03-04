@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animation Pinboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a0a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            color: #ffffff;
+            overflow: hidden;
+        }
+        
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 800px;
+            padding: 20px;
+        }
+        
+        h1 {
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin-bottom: 10px;
+            color: #4ec9b0;
+            text-shadow: 0 0 10px rgba(78, 201, 176, 0.5);
+        }
+        
+        .info {
+            font-size: clamp(0.7rem, 2vw, 0.9rem);
+            color: #888;
+            margin-bottom: 20px;
+        }
+        
+        #canvas-container {
+            position: relative;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+        
+        canvas {
+            border: 2px solid #4ec9b0;
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(78, 201, 176, 0.3);
+            cursor: crosshair;
+            max-width: 100%;
+            height: auto;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+        
+        button {
+            padding: 12px 24px;
+            font-size: clamp(0.8rem, 2vw, 1rem);
+            background: linear-gradient(135deg, #4ec9b0, #2d7a6e);
+            border: none;
+            border-radius: 6px;
+            color: #ffffff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(78, 201, 176, 0.6);
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        .fullscreen-btn {
+            background: linear-gradient(135deg, #9b59b6, #6c3483);
+        }
+        
+        .fullscreen-btn:hover {
+            box-shadow: 0 0 20px rgba(155, 89, 182, 0.6);
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                padding: 10px;
+            }
+            
+            canvas {
+                max-height: 60vh;
+            }
+            
+            button {
+                padding: 10px 16px;
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Animation Pinboard</h1>
+        <p class="info">マウスを動かしてピンボードを操作 | タップで波紋</p>
+        
+        <div id="canvas-container">
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div class="controls">
+            <button onclick="changePattern('wave')">🌊 波</button>
+            <button onclick="changePattern('spiral')">🌀 螺旋</button>
+            <button onclick="changePattern('ripple')">💧 波紋</button>
+            <button onclick="changePattern('random')">🎲 ランダム</button>
+            <button onclick="toggleAnimation()">⏯️ 一時停止</button>
+            <button class="fullscreen-btn" onclick="toggleFullscreen()">📺 全画面</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let pins = [];
+        let mouseX = 0;
+        let mouseY = 0;
+        let currentPattern = 'wave';
+        let isAnimating = true;
+        let animationId;
+        let time = 0;
+        
+        const PIN_SPACING = 12;
+        const PIN_RADIUS = 3;
+        const MAX_HEIGHT = 30;
+        
+        function initCanvas() {
+            const container = document.getElementById('canvas-container');
+            const maxWidth = Math.min(window.innerWidth - 40, 700);
+            const size = Math.min(maxWidth, window.innerHeight * 0.6);
+            
+            canvas.width = size;
+            canvas.height = size;
+            
+            initPins();
+        }
+        
+        function initPins() {
+            pins = [];
+            const cols = Math.floor(canvas.width / PIN_SPACING);
+            const rows = Math.floor(canvas.height / PIN_SPACING);
+            
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    pins.push({
+                        x: i * PIN_SPACING + PIN_SPACING / 2,
+                        y: j * PIN_SPACING + PIN_SPACING / 2,
+                        baseZ: 0,
+                        targetZ: 0,
+                        currentZ: 0,
+                        col: i,
+                        row: j
+                    });
+                }
+            }
+        }
+        
+        function calculateHeight(pin) {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            switch (currentPattern) {
+                case 'wave':
+                    const dx = pin.x - mouseX;
+                    const dy = pin.y - mouseY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    return Math.sin(dist * 0.05 - time * 0.05) * MAX_HEIGHT;
+                    
+                case 'spiral':
+                    const sx = pin.x - centerX;
+                    const sy = pin.y - centerY;
+                    const sDist = Math.sqrt(sx * sx + sy * sy);
+                    const sAngle = Math.atan2(sy, sx);
+                    return Math.sin(sDist * 0.03 - sAngle * 3 + time * 0.03) * MAX_HEIGHT;
+                    
+                case 'ripple':
+                    const rx = pin.x - centerX;
+                    const ry = pin.y - centerY;
+                    const rDist = Math.sqrt(rx * rx + ry * ry);
+                    return Math.sin(rDist * 0.05 - time * 0.08) * MAX_HEIGHT * (1 - rDist / (canvas.width * 0.6));
+                    
+                case 'random':
+                    return Math.sin(pin.col * 0.3 + time * 0.02) * 
+                           Math.cos(pin.row * 0.3 + time * 0.03) * MAX_HEIGHT;
+                    
+                default:
+                    return 0;
+            }
+        }
+        
+        function updatePins() {
+            pins.forEach(pin => {
+                pin.targetZ = calculateHeight(pin);
+                pin.currentZ += (pin.targetZ - pin.currentZ) * 0.1;
+            });
+        }
+        
+        function drawPin(pin) {
+            const z = pin.currentZ;
+            const brightness = Math.max(0.2, Math.min(1, (z + MAX_HEIGHT) / (MAX_HEIGHT * 2)));
+            
+            const r = Math.floor(78 * brightness);
+            const g = Math.floor(201 * brightness);
+            const b = Math.floor(176 * brightness);
+            
+            const shadowIntensity = z > 0 ? z / MAX_HEIGHT : 0;
+            
+            // Pin shadow
+            if (z > 0) {
+                ctx.fillStyle = `rgba(0, 0, 0, ${0.3 * shadowIntensity})`;
+                ctx.beginPath();
+                ctx.ellipse(
+                    pin.x + z * 0.3,
+                    pin.y + z * 0.3 + 2,
+                    PIN_RADIUS * 0.8,
+                    PIN_RADIUS * 0.4,
+                    0, 0, Math.PI * 2
+                );
+                ctx.fill();
+            }
+            
+            // Pin head
+            const gradient = ctx.createRadialGradient(
+                pin.x - z * 0.2, pin.y - z * 0.2, 0,
+                pin.x - z * 0.2, pin.y - z * 0.2, PIN_RADIUS * 2
+            );
+            gradient.addColorStop(0, `rgb(${Math.min(255, r + 80)}, ${Math.min(255, g + 80)}, ${Math.min(255, b + 80)})`);
+            gradient.addColorStop(0.5, `rgb(${r}, ${g}, ${b})`);
+            gradient.addColorStop(1, `rgb(${Math.max(0, r - 40)}, ${Math.max(0, g - 40)}, ${Math.max(0, b - 40)})`);
+            
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(pin.x - z * 0.2, pin.y - z * 0.2, PIN_RADIUS, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Pin body (perspective line)
+            if (z > 2) {
+                ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.4)`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(pin.x, pin.y);
+                ctx.lineTo(pin.x - z * 0.2, pin.y - z * 0.2);
+                ctx.stroke();
+            }
+        }
+        
+        function draw() {
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            updatePins();
+            
+            pins.forEach(drawPin);
+            
+            time++;
+            
+            if (isAnimating) {
+                animationId = requestAnimationFrame(draw);
+            }
+        }
+        
+        function changePattern(pattern) {
+            currentPattern = pattern;
+            time = 0;
+        }
+        
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+            if (isAnimating) {
+                draw();
+            }
+        }
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                canvas.requestFullscreen().catch(err => {
+                    console.log('Fullscreen error:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // Event listeners
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            mouseX = (e.clientX - rect.left) * scaleX;
+            mouseY = (e.clientY - rect.top) * scaleY;
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const touch = e.touches[0];
+            mouseX = (touch.clientX - rect.left) * scaleX;
+            mouseY = (touch.clientY - rect.top) * scaleY;
+        }, { passive: false });
+        
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const clickX = (e.clientX - rect.left) * scaleX;
+            const clickY = (e.clientY - rect.top) * scaleY;
+            
+            pins.forEach(pin => {
+                const dx = pin.x - clickX;
+                const dy = pin.y - clickY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 100) {
+                    pin.targetZ = MAX_HEIGHT * (1 - dist / 100);
+                }
+            });
+        });
+        
+        window.addEventListener('resize', () => {
+            initCanvas();
+        });
+        
+        // Initialize
+        initCanvas();
+        mouseX = canvas.width / 2;
+        mouseY = canvas.height / 2;
+        draw();
+    </script>
+</body>
+</html>
