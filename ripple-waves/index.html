@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ripple Waves - インタラクティブな波紋</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Ripple Waves - インタラクティブ波紋アート</title>
     <style>
         * {
             margin: 0;
@@ -12,52 +12,76 @@
         }
 
         body {
-            background: #0a0a0f;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            font-family: 'Segoe UI', sans-serif;
             overflow: hidden;
+            background: #0a0e27;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
         }
 
-        #canvas {
-            border: 2px solid #1a1a2e;
-            border-radius: 8px;
+        canvas {
+            display: block;
             cursor: crosshair;
-            max-width: 95vw;
-            max-height: 70vh;
         }
 
         .info {
-            color: #888;
-            margin-top: 20px;
-            text-align: center;
-        }
-
-        .info p {
-            margin: 5px 0;
-        }
-
-        .fullscreen-btn {
-            margin-top: 15px;
-            padding: 10px 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            border-radius: 25px;
-            color: white;
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
             font-size: 14px;
-            cursor: pointer;
-            transition: transform 0.2s;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
         }
 
-        .fullscreen-btn:hover {
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .controls button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
             transform: scale(1.05);
         }
 
-        .fullscreen-btn:active {
+        .controls button:active {
             transform: scale(0.95);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
         }
     </style>
 </head>
@@ -65,145 +89,199 @@
     <canvas id="canvas"></canvas>
 
     <div class="info">
-        <p>💫 クリックまたはタップで波紋を作成</p>
-        <p>✨ 複数の波紋が美しく干渉します</p>
+        タップまたはクリックで波紋を作成
     </div>
 
-    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="controls">
+        <button onclick="clearAll()">クリア</button>
+        <button onclick="toggleAutoMode()">自動モード: <span id="autoModeStatus">OFF</span></button>
+    </div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
-        // キャンバスサイズ設定
-        function resizeCanvas() {
-            const maxWidth = Math.min(window.innerWidth * 0.95, 800);
-            const maxHeight = Math.min(window.innerHeight * 0.7, 600);
-            canvas.width = maxWidth;
-            canvas.height = maxHeight;
+        let width, height;
+        let ripples = [];
+        let autoMode = false;
+        let autoInterval;
+
+        // Resize canvas
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
         }
 
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('resize', resize);
+        resize();
 
-        // 波紋クラス
+        // Ripple class
         class Ripple {
             constructor(x, y) {
                 this.x = x;
                 this.y = y;
                 this.radius = 0;
-                this.maxRadius = Math.max(canvas.width, canvas.height) * 0.4;
-                this.alpha = 1;
-                this.hue = Math.random() * 60 + 200; // 青〜紫系
+                this.maxRadius = Math.max(width, height) * 0.4;
                 this.speed = 2 + Math.random() * 2;
-                this.lineWidth = 3 + Math.random() * 3;
+                this.hue = Math.random() * 360;
+                this.alpha = 1;
+                this.lineWidth = 3;
+                this.life = 1;
+                this.decay = 0.003 + Math.random() * 0.002;
             }
 
             update() {
                 this.radius += this.speed;
-                this.alpha = 1 - (this.radius / this.maxRadius);
-                return this.alpha > 0;
+                this.life -= this.decay;
+                this.alpha = this.life;
+                this.lineWidth = 3 * this.life;
+
+                // Slow down as it expands
+                this.speed *= 0.995;
+
+                return this.life > 0 && this.radius < this.maxRadius;
             }
 
-            draw() {
+            draw(ctx) {
+                ctx.save();
                 ctx.beginPath();
+
+                // Main ripple
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${this.alpha})`;
-                ctx.lineWidth = this.lineWidth * this.alpha;
+                ctx.lineWidth = this.lineWidth;
                 ctx.stroke();
 
-                // 2番目のリング
-                if (this.radius > 20) {
+                // Secondary ripple (echo)
+                if (this.radius > 30) {
                     ctx.beginPath();
-                    ctx.arc(this.x, this.y, this.radius - 15, 0, Math.PI * 2);
-                    ctx.strokeStyle = `hsla(${this.hue + 30}, 70%, 50%, ${this.alpha * 0.6})`;
-                    ctx.lineWidth = this.lineWidth * 0.5 * this.alpha;
+                    ctx.arc(this.x, this.y, this.radius - 20, 0, Math.PI * 2);
+                    ctx.strokeStyle = `hsla(${this.hue}, 70%, 50%, ${this.alpha * 0.5})`;
+                    ctx.lineWidth = this.lineWidth * 0.7;
                     ctx.stroke();
                 }
 
-                // 3番目のリング
-                if (this.radius > 40) {
-                    ctx.beginPath();
-                    ctx.arc(this.x, this.y, this.radius - 30, 0, Math.PI * 2);
-                    ctx.strokeStyle = `hsla(${this.hue + 60}, 60%, 40%, ${this.alpha * 0.3})`;
-                    ctx.lineWidth = this.lineWidth * 0.3 * this.alpha;
-                    ctx.stroke();
-                }
+                // Center glow
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, Math.max(this.radius - 50, 0)
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 80%, 60%, ${this.alpha * 0.3})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 80%, 60%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, Math.max(this.radius - 50, 0), 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
             }
         }
 
-        let ripples = [];
-        let autoCreate = 0;
-
-        // クリックで波紋作成
+        // Create ripple on click/tap
         function createRipple(x, y) {
             ripples.push(new Ripple(x, y));
-            // 同時に複数の波紋を作成
-            for (let i = 0; i < 2; i++) {
-                setTimeout(() => {
-                    const offsetX = (Math.random() - 0.5) * 50;
-                    const offsetY = (Math.random() - 0.5) * 50;
-                    ripples.push(new Ripple(x + offsetX, y + offsetY));
-                }, i * 100);
+
+            // Limit number of ripples
+            if (ripples.length > 50) {
+                ripples.shift();
             }
         }
 
         canvas.addEventListener('click', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            createRipple(x, y);
+            createRipple(e.clientX, e.clientY);
         });
 
-        // タッチ対応
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            const rect = canvas.getBoundingClientRect();
             const touch = e.touches[0];
-            const x = touch.clientX - rect.left;
-            const y = touch.clientY - rect.top;
-            createRipple(x, y);
-        });
+            createRipple(touch.clientX, touch.clientY);
+        }, { passive: false });
 
-        // アニメーション
+        // Animation loop
         function animate() {
-            // 半透明で塗りつぶして残像効果
-            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // Create trailing effect
+            ctx.fillStyle = 'rgba(10, 14, 39, 0.1)';
+            ctx.fillRect(0, 0, width, height);
 
-            // 波紋を更新・描画
+            // Update and draw ripples
             ripples = ripples.filter(ripple => {
                 const alive = ripple.update();
                 if (alive) {
-                    ripple.draw();
+                    ripple.draw(ctx);
                 }
                 return alive;
             });
 
-            // 自動作成（画面が静かな時）
-            autoCreate++;
-            if (autoCreate > 180 && ripples.length < 3) {
-                const x = Math.random() * canvas.width;
-                const y = Math.random() * canvas.height;
-                createRipple(x, y);
-                autoCreate = 0;
-            }
+            // Draw interference patterns
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            ripples.forEach((ripple, index) => {
+                ripples.forEach((other, otherIndex) => {
+                    if (index < otherIndex) {
+                        const dx = ripple.x - other.x;
+                        const dy = ripple.y - other.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+
+                        if (distance < ripple.radius + other.radius &&
+                            distance > Math.abs(ripple.radius - other.radius)) {
+                            const intensity = (1 - distance / (ripple.radius + other.radius)) * 0.3;
+                            const midX = (ripple.x + other.x) / 2;
+                            const midY = (ripple.y + other.y) / 2;
+
+                            ctx.beginPath();
+                            ctx.arc(midX, midY, 5, 0, Math.PI * 2);
+                            ctx.fillStyle = `rgba(255, 255, 255, ${intensity * ripple.life * other.life})`;
+                            ctx.fill();
+                        }
+                    }
+                });
+            });
+            ctx.restore();
 
             requestAnimationFrame(animate);
         }
 
         animate();
 
-        // 全画面表示
+        // Clear all ripples
+        function clearAll() {
+            ripples = [];
+        }
+
+        // Toggle auto mode
+        function toggleAutoMode() {
+            autoMode = !autoMode;
+            document.getElementById('autoModeStatus').textContent = autoMode ? 'ON' : 'OFF';
+
+            if (autoMode) {
+                autoInterval = setInterval(() => {
+                    const x = Math.random() * width;
+                    const y = Math.random() * height;
+                    createRipple(x, y);
+                }, 800);
+            } else {
+                clearInterval(autoInterval);
+            }
+        }
+
+        // Fullscreen toggle
         function toggleFullscreen() {
             if (!document.fullscreenElement) {
-                canvas.requestFullscreen().catch(err => {
-                    console.log('全画面表示エラー:', err);
-                });
+                document.documentElement.requestFullscreen();
             } else {
                 document.exitFullscreen();
             }
         }
+
+        // Create initial ripple
+        setTimeout(() => {
+            createRipple(width / 2, height / 2);
+        }, 500);
     </script>
 </body>
 </html>

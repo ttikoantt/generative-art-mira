@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Dot Eater - シンプルドットイートゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+
+        .score {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        .lives {
+            display: flex;
+            gap: 5px;
+        }
+
+        .life {
+            width: 20px;
+            height: 20px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(255, 107, 107, 0.8);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            z-index: 100;
+            display: none;
+        }
+
+        .game-over.active {
+            display: block;
+        }
+
+        .game-over h2 {
+            color: #ff6b6b;
+            font-size: 36px;
+            margin-bottom: 20px;
+        }
+
+        .game-over p {
+            color: white;
+            font-size: 24px;
+            margin-bottom: 30px;
+        }
+
+        .game-over button {
+            background: #4ecdc4;
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .game-over button:hover {
+            transform: scale(1.1);
+        }
+
+        .start-screen {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            z-index: 100;
+        }
+
+        .start-screen h1 {
+            color: #4ecdc4;
+            font-size: 42px;
+            margin-bottom: 20px;
+        }
+
+        .start-screen p {
+            color: white;
+            font-size: 16px;
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+
+        .start-screen button {
+            background: #4ecdc4;
+            border: none;
+            color: white;
+            padding: 15px 50px;
+            border-radius: 30px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.2s;
+        }
+
+        .start-screen button:hover {
+            transform: scale(1.1);
+        }
+
+        .start-screen.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="ui">
+        <div class="score">Score: <span id="score">0</span></div>
+        <div class="lives" id="lives"></div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="start-screen" id="startScreen">
+        <h1>🔵 Dot Eater</h1>
+        <p>画面をタップして移動先を指示</p>
+        <p>青いドットを集めてスコアアップ！</p>
+        <p>赤い敵を避けよう！</p>
+        <button onclick="startGame()">スタート</button>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <h2>Game Over</h2>
+        <p>Final Score: <span id="finalScore">0</span></p>
+        <button onclick="restartGame()">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let gameRunning = false;
+        let score = 0;
+        let lives = 3;
+
+        // Player
+        const player = {
+            x: 0,
+            y: 0,
+            radius: 15,
+            targetX: 0,
+            targetY: 0,
+            speed: 5,
+            color: '#4ecdc4'
+        };
+
+        // Dots and enemies
+        let dots = [];
+        let enemies = [];
+        let particles = [];
+
+        // Resize canvas
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Initialize player position
+        function initPlayer() {
+            player.x = width / 2;
+            player.y = height / 2;
+            player.targetX = player.x;
+            player.targetY = player.y;
+        }
+
+        // Create dot
+        function createDot() {
+            return {
+                x: Math.random() * (width - 60) + 30,
+                y: Math.random() * (height - 150) + 100,
+                radius: 8 + Math.random() * 5,
+                color: `hsl(${180 + Math.random() * 40}, 70%, 60%)`,
+                pulse: 0,
+                value: Math.floor(Math.random() * 3) + 1
+            };
+        }
+
+        // Create enemy
+        function createEnemy() {
+            const side = Math.floor(Math.random() * 4);
+            let x, y, vx, vy;
+
+            switch(side) {
+                case 0: // Top
+                    x = Math.random() * width;
+                    y = -20;
+                    vx = (Math.random() - 0.5) * 2;
+                    vy = 1 + Math.random();
+                    break;
+                case 1: // Right
+                    x = width + 20;
+                    y = Math.random() * height;
+                    vx = -(1 + Math.random());
+                    vy = (Math.random() - 0.5) * 2;
+                    break;
+                case 2: // Bottom
+                    x = Math.random() * width;
+                    y = height + 20;
+                    vx = (Math.random() - 0.5) * 2;
+                    vy = -(1 + Math.random());
+                    break;
+                case 3: // Left
+                    x = -20;
+                    y = Math.random() * height;
+                    vx = 1 + Math.random();
+                    vy = (Math.random() - 0.5) * 2;
+                    break;
+            }
+
+            return {
+                x, y, vx, vy,
+                radius: 12,
+                color: '#ff6b6b'
+            };
+        }
+
+        // Create particle
+        function createParticle(x, y, color) {
+            return {
+                x, y,
+                vx: (Math.random() - 0.5) * 8,
+                vy: (Math.random() - 0.5) * 8,
+                radius: 3 + Math.random() * 3,
+                color,
+                life: 1
+            };
+        }
+
+        // Initialize game
+        function initGame() {
+            dots = [];
+            enemies = [];
+            particles = [];
+            score = 0;
+            lives = 3;
+
+            // Create initial dots
+            for (let i = 0; i < 5; i++) {
+                dots.push(createDot());
+            }
+
+            updateLives();
+            updateScore();
+        }
+
+        // Update lives display
+        function updateLives() {
+            const livesDiv = document.getElementById('lives');
+            livesDiv.innerHTML = '';
+            for (let i = 0; i < lives; i++) {
+                const life = document.createElement('div');
+                life.className = 'life';
+                livesDiv.appendChild(life);
+            }
+        }
+
+        // Update score display
+        function updateScore() {
+            document.getElementById('score').textContent = score;
+        }
+
+        // Handle tap/click
+        canvas.addEventListener('click', (e) => {
+            if (!gameRunning) return;
+            player.targetX = e.clientX;
+            player.targetY = e.clientY;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            player.targetX = touch.clientX;
+            player.targetY = touch.clientY;
+        }, { passive: false });
+
+        // Update game
+        function update() {
+            if (!gameRunning) return;
+
+            // Move player
+            const dx = player.targetX - player.x;
+            const dy = player.targetY - player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > player.speed) {
+                player.x += (dx / distance) * player.speed;
+                player.y += (dy / distance) * player.speed;
+            } else {
+                player.x = player.targetX;
+                player.y = player.targetY;
+            }
+
+            // Update dots
+            dots.forEach(dot => {
+                dot.pulse += 0.1;
+            });
+
+            // Update enemies
+            enemies.forEach(enemy => {
+                enemy.x += enemy.vx;
+                enemy.y += enemy.vy;
+
+                // Bounce off walls
+                if (enemy.x < 0 || enemy.x > width) enemy.vx *= -1;
+                if (enemy.y < 80 || enemy.y > height) enemy.vy *= -1;
+            });
+
+            // Remove off-screen enemies
+            enemies = enemies.filter(e =>
+                e.x > -50 && e.x < width + 50 &&
+                e.y > -50 && e.y < height + 50
+            );
+
+            // Update particles
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                p.vx *= 0.98;
+                p.vy *= 0.98;
+                return p.life > 0;
+            });
+
+            // Check dot collisions
+            dots = dots.filter(dot => {
+                const dx = player.x - dot.x;
+                const dy = player.y - dot.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < player.radius + dot.radius) {
+                    // Collected!
+                    score += dot.value * 10;
+                    updateScore();
+
+                    // Create particles
+                    for (let i = 0; i < 8; i++) {
+                        particles.push(createParticle(dot.x, dot.y, dot.color));
+                    }
+
+                    // Spawn new dot
+                    dots.push(createDot());
+
+                    // Occasionally spawn enemy
+                    if (score % 50 === 0 && enemies.length < 5) {
+                        enemies.push(createEnemy());
+                    }
+
+                    return false;
+                }
+                return true;
+            });
+
+            // Check enemy collisions
+            enemies.forEach(enemy => {
+                const dx = player.x - enemy.x;
+                const dy = player.y - enemy.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < player.radius + enemy.radius) {
+                    // Hit!
+                    lives--;
+                    updateLives();
+
+                    // Create particles
+                    for (let i = 0; i < 12; i++) {
+                        particles.push(createParticle(player.x, player.y, '#ff6b6b'));
+                    }
+
+                    // Reset enemy position
+                    enemy.x = -100;
+                    enemy.y = -100;
+
+                    if (lives <= 0) {
+                        gameOver();
+                    }
+                }
+            });
+
+            // Ensure minimum dots
+            while (dots.length < 5) {
+                dots.push(createDot());
+            }
+
+            // Occasionally spawn enemies
+            if (Math.random() < 0.005 && enemies.length < 3 + Math.floor(score / 100)) {
+                enemies.push(createEnemy());
+            }
+        }
+
+        // Draw game
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.lineWidth = 1;
+            const gridSize = 40;
+            for (let x = 0; x < width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            // Draw dots
+            dots.forEach(dot => {
+                const pulseRadius = dot.radius + Math.sin(dot.pulse) * 2;
+
+                // Glow
+                const gradient = ctx.createRadialGradient(
+                    dot.x, dot.y, 0,
+                    dot.x, dot.y, pulseRadius * 2
+                );
+                gradient.addColorStop(0, dot.color);
+                gradient.addColorStop(0.5, dot.color.replace('60%', '40%'));
+                gradient.addColorStop(1, 'transparent');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(dot.x, dot.y, pulseRadius * 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Core
+                ctx.fillStyle = dot.color;
+                ctx.beginPath();
+                ctx.arc(dot.x, dot.y, pulseRadius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw enemies
+            enemies.forEach(enemy => {
+                if (enemy.x < -50 || enemy.x > width + 50) return;
+
+                // Glow
+                const gradient = ctx.createRadialGradient(
+                    enemy.x, enemy.y, 0,
+                    enemy.x, enemy.y, enemy.radius * 2
+                );
+                gradient.addColorStop(0, enemy.color);
+                gradient.addColorStop(1, 'transparent');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(enemy.x, enemy.y, enemy.radius * 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Core
+                ctx.fillStyle = enemy.color;
+                ctx.beginPath();
+                ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius * p.life, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+
+            // Draw player
+            if (gameRunning) {
+                // Glow
+                const gradient = ctx.createRadialGradient(
+                    player.x, player.y, 0,
+                    player.x, player.y, player.radius * 2
+                );
+                gradient.addColorStop(0, player.color);
+                gradient.addColorStop(1, 'transparent');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.radius * 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Core
+                ctx.fillStyle = player.color;
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Target indicator
+                ctx.strokeStyle = 'rgba(78, 205, 196, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(player.targetX, player.targetY, 10, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+
+        // Game loop
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start game
+        function startGame() {
+            document.getElementById('startScreen').classList.add('hidden');
+            initPlayer();
+            initGame();
+            gameRunning = true;
+        }
+
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').classList.add('active');
+        }
+
+        // Restart game
+        function restartGame() {
+            document.getElementById('gameOver').classList.remove('active');
+            initPlayer();
+            initGame();
+            gameRunning = true;
+        }
+
+        // Fullscreen toggle
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Start game loop
+        gameLoop();
+    </script>
+</body>
+</html>
