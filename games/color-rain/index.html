@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Color Rain - 色の雨をキャッチ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        .game-container {
+            text-align: center;
+            position: relative;
+        }
+
+        canvas {
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5),
+                        0 0 100px rgba(99, 102, 241, 0.2);
+            background: rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        .score-display {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            border-radius: 25px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            margin-top: 20px;
+            color: #a0aec0;
+            font-size: 14px;
+            max-width: 500px;
+            line-height: 1.6;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            color: white;
+            text-align: center;
+            display: none;
+            z-index: 10;
+        }
+
+        .game-over h2 {
+            font-size: 32px;
+            margin-bottom: 20px;
+        }
+
+        .game-over p {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .color-bonus {
+            position: absolute;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            pointer-events: none;
+            animation: floatUp 1s ease-out;
+        }
+
+        @keyframes floatUp {
+            0% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="canvas"></canvas>
+        <div class="score-display">
+            <span>Score: <span id="score">0</span></span>
+            <span style="margin-left: 20px;">Lives: <span id="lives">3</span></span>
+        </div>
+        <div class="game-over" id="gameOver">
+            <h2>Game Over!</h2>
+            <p>Score: <span id="finalScore">0</span></p>
+            <button onclick="restartGame()">🔄 もう一度</button>
+        </div>
+    </div>
+    <div class="controls">
+        <button onclick="togglePause()">⏸️ 一時停止</button>
+        <button onclick="restartGame()">🔄 リスタート</button>
+    </div>
+    <div class="info">
+        <p>色の雨をキャッチしよう！同じ色を連続でキャッチするとボーナス！</p>
+        <p>マウス/タッチで左右に移動</p>
+    </div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvas size
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 250, 600);
+            canvas.width = size;
+            canvas.height = size * 1.2;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Game state
+        let score = 0;
+        let lives = 3;
+        let gameRunning = true;
+        let paused = false;
+        let lastColor = null;
+        let combo = 0;
+
+        // Player
+        const player = {
+            width: 80,
+            height: 20,
+            x: canvas.width / 2 - 40,
+            y: canvas.height - 40,
+            speed: 8,
+            color: '#ffffff'
+        };
+
+        // Rain drops
+        let drops = [];
+
+        // Colors
+        const colors = [
+            { name: 'red', hex: '#ff6b6b', bonus: 1.0 },
+            { name: 'blue', hex: '#4ecdc4', bonus: 1.0 },
+            { name: 'green', hex: '#95e1d3', bonus: 1.0 },
+            { name: 'purple', hex: '#a29bfe', bonus: 1.0 },
+            { name: 'orange', hex: '#fdcb6e', bonus: 1.0 },
+            { name: 'pink', hex: '#fd79a8', bonus: 1.0 }
+        ];
+
+        // Controls
+        let mouseX = canvas.width / 2;
+        let targetX = canvas.width / 2;
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            targetX = mouseX - player.width / 2;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.touches[0].clientX - rect.left;
+            targetX = mouseX - player.width / 2;
+        }, { passive: false });
+
+        // Create drop
+        function createDrop() {
+            const colorIndex = Math.floor(Math.random() * colors.length);
+            const color = colors[colorIndex];
+
+            return {
+                x: Math.random() * (canvas.width - 30) + 15,
+                y: -20,
+                radius: 12,
+                speed: Math.random() * 2 + 2,
+                color: color
+            };
+        }
+
+        // Initialize drops
+        function initDrops() {
+            drops = [];
+            for (let i = 0; i < 5; i++) {
+                drops.push(createDrop());
+            }
+        }
+        initDrops();
+
+        // Update display
+        function updateDisplay() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('lives').textContent = lives;
+        }
+
+        // Show color bonus
+        function showColorBonus(x, y, text) {
+            const bonus = document.createElement('div');
+            bonus.className = 'color-bonus';
+            bonus.textContent = text;
+            bonus.style.left = x + 'px';
+            bonus.style.top = y + 'px';
+            document.querySelector('.game-container').appendChild(bonus);
+
+            setTimeout(() => {
+                bonus.remove();
+            }, 1000);
+        }
+
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        // Restart game
+        function restartGame() {
+            score = 0;
+            lives = 3;
+            gameRunning = true;
+            paused = false;
+            combo = 0;
+            lastColor = null;
+            player.x = canvas.width / 2 - 40;
+            targetX = canvas.width / 2 - 40;
+            initDrops();
+            updateDisplay();
+            document.getElementById('gameOver').style.display = 'none';
+        }
+
+        // Toggle pause
+        function togglePause() {
+            paused = !paused;
+        }
+
+        // Collision detection
+        function checkCollision(drop) {
+            const playerTop = player.y;
+            const playerBottom = player.y + player.height;
+            const playerLeft = player.x;
+            const playerRight = player.x + player.width;
+
+            return (
+                drop.y + drop.radius >= playerTop &&
+                drop.y - drop.radius <= playerBottom &&
+                drop.x >= playerLeft &&
+                drop.x <= playerRight
+            );
+        }
+
+        // Animation loop
+        function animate() {
+            if (!paused && gameRunning) {
+                // Clear canvas
+                ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Update player position (smooth movement)
+                player.x += (targetX - player.x) * 0.15;
+
+                // Keep player in bounds
+                if (player.x < 0) player.x = 0;
+                if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+
+                // Draw player
+                const playerGradient = ctx.createLinearGradient(player.x, player.y, player.x, player.y + player.height);
+                playerGradient.addColorStop(0, '#667eea');
+                playerGradient.addColorStop(1, '#764ba2');
+                ctx.fillStyle = playerGradient;
+                ctx.beginPath();
+                ctx.roundRect(player.x, player.y, player.width, player.height, 10);
+                ctx.fill();
+
+                // Add glow effect
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#667eea';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // Update and draw drops
+                drops.forEach((drop, index) => {
+                    drop.y += drop.speed;
+
+                    // Draw drop
+                    const gradient = ctx.createRadialGradient(
+                        drop.x, drop.y, 0,
+                        drop.x, drop.y, drop.radius * 2
+                    );
+                    gradient.addColorStop(0, drop.color.hex);
+                    gradient.addColorStop(0.5, drop.color.hex + 'cc');
+                    gradient.addColorStop(1, 'transparent');
+
+                    ctx.beginPath();
+                    ctx.arc(drop.x, drop.y, drop.radius * 2, 0, Math.PI * 2);
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+
+                    // Check collision
+                    if (checkCollision(drop)) {
+                        // Catch!
+                        let points = 10;
+
+                        // Combo bonus
+                        if (lastColor === drop.color.name) {
+                            combo++;
+                            points *= (1 + combo * 0.2);
+                            showColorBonus(drop.x, drop.y, `Combo x${combo}! +${Math.round(points)}`);
+                        } else {
+                            combo = 0;
+                            showColorBonus(drop.x, drop.y, `+${points}`);
+                        }
+
+                        score += Math.round(points);
+                        lastColor = drop.color.name;
+                        updateDisplay();
+
+                        // Remove drop and create new one
+                        drops[index] = createDrop();
+                    }
+
+                    // Drop fell off screen
+                    if (drop.y > canvas.height + 20) {
+                        lives--;
+                        updateDisplay();
+
+                        if (lives <= 0) {
+                            gameOver();
+                        }
+
+                        drops[index] = createDrop();
+                        lastColor = null;
+                        combo = 0;
+                    }
+                });
+
+                // Spawn new drops occasionally
+                if (Math.random() < 0.02) {
+                    drops.push(createDrop());
+                }
+
+                // Limit drops
+                if (drops.length > 15) {
+                    drops = drops.slice(-15);
+                }
+            }
+
+            if (gameRunning) {
+                requestAnimationFrame(animate);
+            }
+        }
+
+        animate();
+
+        // Fullscreen
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
