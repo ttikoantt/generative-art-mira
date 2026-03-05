@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Vortex - Mira's Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            z-index: 100;
+            transition: all 0.3s ease;
+            pointer-events: all;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.2);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                font-size: 10px;
+                top: 10px;
+                left: 10px;
+            }
+
+            .fullscreen-btn {
+                bottom: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 11px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <div>PARTICLE VORTEX</div>
+        <div>Move mouse to interact</div>
+        <div id="stats"></div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const statsDiv = document.getElementById('stats');
+
+        let width, height;
+        let particles = [];
+        let mouseX = 0, mouseY = 0;
+        let time = 0;
+
+        // パーティクルクラス
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.baseAngle = Math.random() * Math.PI * 2;
+                this.radius = Math.random() * 200 + 50;
+                this.speed = Math.random() * 0.02 + 0.01;
+                this.size = Math.random() * 3 + 1;
+                this.hue = Math.random() * 60 + 160; // Cyan to Blue
+                this.brightness = Math.random() * 30 + 50;
+                this.alpha = Math.random() * 0.5 + 0.5;
+                this.orbitSpeed = Math.random() * 0.02 + 0.01;
+                this.orbitRadius = Math.random() * 100 + 50;
+            }
+
+            update() {
+                // 渦の中心からの距離に応じて加速
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const dx = this.x - centerX;
+                const dy = this.y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                // 渦巻き運動
+                const angle = Math.atan2(dy, dx);
+                const vortexStrength = Math.max(0, 1 - dist / (Math.min(width, height) * 0.6));
+
+                // 回転運動
+                this.baseAngle += this.speed + vortexStrength * 0.05;
+
+                // マウスへの反応
+                const mouseDx = mouseX - this.x;
+                const mouseDy = mouseY - this.y;
+                const mouseDist = Math.sqrt(mouseDx * mouseDx + mouseDy * mouseDy);
+
+                if (mouseDist < 150) {
+                    const mouseForce = (150 - mouseDist) / 150;
+                    this.x -= mouseDx * mouseForce * 0.03;
+                    this.y -= mouseDy * mouseForce * 0.03;
+                    this.hue = 320; // マウス近くでマゼンタに
+                    this.brightness = 80;
+                } else {
+                    this.hue = 180 + Math.sin(time * 0.001 + this.baseAngle) * 40;
+                    this.brightness = 50 + Math.sin(time * 0.002 + this.baseAngle) * 20;
+                }
+
+                // 渦に沿って移動
+                const targetX = centerX + Math.cos(this.baseAngle) * this.radius;
+                const targetY = centerY + Math.sin(this.baseAngle) * this.radius;
+
+                this.x += (targetX - this.x) * 0.02;
+                this.y += (targetY - this.y) * 0.02;
+
+                // 軌道運動
+                const orbitAngle = time * this.orbitSpeed;
+                this.x += Math.cos(orbitAngle) * 2;
+                this.y += Math.sin(orbitAngle) * 2;
+
+                // 輝きの変化
+                this.alpha = 0.3 + Math.sin(time * 0.003 + this.baseAngle) * 0.3;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+
+                // グロー効果
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size * 3
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, ${this.brightness}%, ${this.alpha})`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 100%, ${this.brightness * 0.5}%, ${this.alpha * 0.5})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, ${this.brightness * 0.2}%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+
+        // 初期化
+        function init() {
+            resize();
+            createParticles();
+        }
+
+        function createParticles() {
+            particles = [];
+            const numParticles = Math.min(300, (width * height) / 5000);
+            for (let i = 0; i < numParticles; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        // アニメーション
+        function animate() {
+            // トレイル効果
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            time++;
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // 中心のグロー
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const centerGradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, 150
+            );
+            centerGradient.addColorStop(0, 'rgba(0, 255, 255, 0.05)');
+            centerGradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+
+            ctx.fillStyle = centerGradient;
+            ctx.fillRect(0, 0, width, height);
+
+            statsDiv.textContent = `${particles.length} particles`;
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', () => {
+            resize();
+            createParticles();
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 開始
+        init();
+        animate();
+    </script>
+</body>
+</html>
