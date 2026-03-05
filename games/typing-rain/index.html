@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Typing Rain - タイピングゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        #gameCanvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .score-panel, .level-panel, .lives-panel {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 12px;
+            color: #00ff88;
+            font-size: 18px;
+            font-weight: bold;
+            border: 2px solid rgba(0, 255, 136, 0.3);
+        }
+
+        .score-panel span, .level-panel span, .lives-panel span {
+            color: #fff;
+        }
+
+        .start-screen, .game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+        }
+
+        .start-screen h1, .game-over-screen h1 {
+            color: #00ff88;
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+
+        .start-screen p, .game-over-screen p {
+            color: #fff;
+            font-size: 16px;
+            margin-bottom: 30px;
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        .start-btn, .restart-btn {
+            background: #00ff88;
+            color: #1a1a2e;
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            pointer-events: auto;
+        }
+
+        .start-btn:hover, .restart-btn:hover {
+            background: #00cc6a;
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.5);
+        }
+
+        .game-over-screen .final-score {
+            color: #ff6b6b;
+            font-size: 36px;
+            margin-bottom: 20px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 255, 136, 0.8);
+            color: #1a1a2e;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            z-index: 100;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: #00ff88;
+            transform: scale(1.05);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 600px) {
+            .score-panel, .level-panel, .lives-panel {
+                padding: 10px 15px;
+                font-size: 14px;
+            }
+
+            .start-screen h1, .game-over-screen h1 {
+                font-size: 32px;
+            }
+
+            .start-screen p, .game-over-screen p {
+                font-size: 14px;
+                padding: 0 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui">
+        <div class="score-panel">SCORE: <span id="score">0</span></div>
+        <div class="level-panel">LEVEL: <span id="level">1</span></div>
+        <div class="lives-panel">LIVES: <span id="lives">❤️❤️❤️</span></div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="start-screen" id="startScreen">
+        <h1>🌧️ Typing Rain</h1>
+        <p>
+            空から降ってくる単語をタイピングして消そう！<br>
+            間違えるとライフが減るよ。<br>
+            レベルが上がると難しくなるぞ！
+        </p>
+        <button class="start-btn" onclick="startGame()">スタート</button>
+    </div>
+
+    <div class="game-over-screen hidden" id="gameOverScreen">
+        <h1>GAME OVER</h1>
+        <div class="final-score">Final Score: <span id="finalScore">0</span></div>
+        <p>Level: <span id="finalLevel">1</span> まで到達！</p>
+        <button class="restart-btn" onclick="restartGame()">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let gameRunning = false;
+        let score = 0;
+        let level = 1;
+        let lives = 3;
+
+        // Word list
+        const words = [
+            'rain', 'fall', 'sky', 'cloud', 'storm', 'drop', 'water',
+            'thunder', 'lightning', 'shower', 'drizzle', 'puddle',
+            'umbrella', 'splash', 'wet', 'damp', 'moist', 'mist',
+            'fog', 'dew', 'hail', 'sleet', 'precipitation', 'humidity',
+            'monsoon', 'typhoon', 'hurricane', 'cyclone', 'torrential',
+            'downpour', 'deluge', 'flood', 'inundation', 'overflow',
+            'cascade', 'waterfall', 'stream', 'river', 'flow', 'current',
+            'wave', 'ripple', 'surf', 'spray', 'mist', 'vapor', 'steam',
+            'evaporation', 'condensation', 'precipitation', 'collection',
+            'hydrology', 'meteorology', 'atmosphere', 'climate', 'weather',
+            'forecast', 'prediction', 'observation', 'measurement', 'data'
+        ];
+
+        let fallingWords = [];
+        let currentWord = null;
+        let inputBuffer = '';
+        let spawnTimer = 0;
+        let spawnInterval = 120; // frames between spawns
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Keyboard input
+        document.addEventListener('keydown', (e) => {
+            if (!gameRunning) return;
+
+            const key = e.key.toLowerCase();
+
+            if (key === 'backspace') {
+                inputBuffer = inputBuffer.slice(0, -1);
+            } else if (key.length === 1 && /[a-z]/.test(key)) {
+                inputBuffer += key;
+            }
+
+            checkInput();
+        });
+
+        function checkInput() {
+            if (!currentWord) return;
+
+            const target = currentWord.text.toLowerCase();
+
+            if (inputBuffer === target) {
+                // Word completed
+                score += target.length * 10 * level;
+                currentWord.matched = true;
+                inputBuffer = '';
+                currentWord = null;
+
+                // Check level up
+                if (score >= level * 500) {
+                    level++;
+                    spawnInterval = Math.max(30, 120 - level * 10);
+                }
+
+                updateUI();
+            } else if (!target.startsWith(inputBuffer)) {
+                // Wrong input
+                inputBuffer = '';
+                currentWord = null;
+                lives--;
+                updateUI();
+
+                if (lives <= 0) {
+                    gameOver();
+                }
+            }
+        }
+
+        function spawnWord() {
+            const text = words[Math.floor(Math.random() * words.length)];
+            const x = Math.random() * (width - 200) + 100;
+            const speed = 1 + level * 0.2 + Math.random() * 0.5;
+
+            fallingWords.push({
+                text,
+                x,
+                y: -30,
+                speed,
+                matched: false
+            });
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            // Spawn new words
+            spawnTimer++;
+            if (spawnTimer >= spawnInterval && !currentWord) {
+                spawnWord();
+                spawnTimer = 0;
+            }
+
+            // Update falling words
+            for (let i = fallingWords.length - 1; i >= 0; i--) {
+                const word = fallingWords[i];
+                word.y += word.speed;
+
+                // Check if word reached bottom
+                if (word.y > height + 30) {
+                    if (!word.matched) {
+                        lives--;
+                        updateUI();
+
+                        if (lives <= 0) {
+                            gameOver();
+                            return;
+                        }
+                    }
+                    fallingWords.splice(i, 1);
+                }
+            }
+
+            // Set current word (oldest unmatched word)
+            if (!currentWord) {
+                for (const word of fallingWords) {
+                    if (!word.matched) {
+                        currentWord = word;
+                        break;
+                    }
+                }
+            }
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw rain effect
+            ctx.strokeStyle = 'rgba(0, 255, 136, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 50; i++) {
+                const x = (Date.now() / 10 + i * 50) % width;
+                const y = (Date.now() / 5 + i * 30) % height;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x - 10, y + 20);
+                ctx.stroke();
+            }
+
+            // Draw falling words
+            for (const word of fallingWords) {
+                const isCurrent = word === currentWord;
+                const isMatched = word.matched;
+
+                // Word glow for current word
+                if (isCurrent && !isMatched) {
+                    ctx.shadowColor = '#00ff88';
+                    ctx.shadowBlur = 20;
+                } else {
+                    ctx.shadowBlur = 0;
+                }
+
+                // Word background
+                if (isCurrent) {
+                    ctx.fillStyle = 'rgba(0, 255, 136, 0.1)';
+                    ctx.fillRect(word.x - 60, word.y - 20, 120, 30);
+                }
+
+                // Word text
+                ctx.font = 'bold 18px Courier New';
+                ctx.textAlign = 'center';
+
+                if (isMatched) {
+                    ctx.fillStyle = '#00ff88';
+                } else if (isCurrent) {
+                    const target = word.text.toLowerCase();
+                    const matched = inputBuffer;
+                    const remaining = target.slice(matched.length);
+
+                    // Draw matched part
+                    ctx.fillStyle = '#00ff88';
+                    ctx.fillText(matched, word.x - ctx.measureText(remaining).width / 2, word.y);
+
+                    // Draw remaining part
+                    ctx.fillStyle = '#ff6b6b';
+                    ctx.fillText(remaining, word.x + ctx.measureText(matched).width / 2, word.y);
+                } else {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(word.text, word.x, word.y);
+                }
+            }
+
+            // Draw input buffer
+            if (inputBuffer && currentWord) {
+                ctx.font = 'bold 24px Courier New';
+                ctx.fillStyle = '#00ff88';
+                ctx.textAlign = 'center';
+                ctx.shadowColor = '#00ff88';
+                ctx.shadowBlur = 15;
+                ctx.fillText(inputBuffer, width / 2, height - 50);
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('level').textContent = level;
+
+            let livesHTML = '';
+            for (let i = 0; i < 3; i++) {
+                livesHTML += i < lives ? '❤️' : '🖤';
+            }
+            document.getElementById('lives').innerHTML = livesHTML;
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+
+            if (gameRunning) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function startGame() {
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+
+            // Reset game state
+            score = 0;
+            level = 1;
+            lives = 3;
+            fallingWords = [];
+            currentWord = null;
+            inputBuffer = '';
+            spawnTimer = 0;
+            spawnInterval = 120;
+
+            updateUI();
+
+            gameRunning = true;
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalLevel').textContent = level;
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Initial draw
+        draw();
+    </script>
+</body>
+</html>
