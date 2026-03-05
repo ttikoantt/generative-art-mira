@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Kaleidoscope - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+        }
+
+        .controls button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            font-size: 12px;
+            opacity: 0.6;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button id="changeBtn">🎨 色変更</button>
+        <button id="segmentsBtn">🔄 分割数</button>
+        <button id="speedBtn">⚡ 速度</button>
+    </div>
+    <button class="controls fullscreen-btn" id="fullscreenBtn">🖥️ 全画面</button>
+    <div class="info">マウス/タッチで操作</div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height, centerX, centerY;
+        let mouseX = 0, mouseY = 0;
+        let segments = 12;
+        let rotation = 0;
+        let speed = 0.005;
+        let hueBase = 0;
+        let particles = [];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+            mouseX = centerX;
+            mouseY = centerY;
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.angle = Math.random() * Math.PI * 2;
+                this.radius = Math.random() * 100 + 50;
+                this.size = Math.random() * 5 + 2;
+                this.speed = Math.random() * 0.02 + 0.01;
+                this.hueOffset = Math.random() * 60 - 30;
+                this.life = 1;
+                this.decay = Math.random() * 0.005 + 0.002;
+            }
+
+            update() {
+                this.angle += this.speed;
+                this.radius += Math.sin(this.angle * 3) * 0.5;
+                this.life -= this.decay;
+
+                if (this.life <= 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const x = centerX + Math.cos(this.angle + rotation) * this.radius;
+                const y = centerY + Math.sin(this.angle + rotation) * this.radius;
+
+                const hue = (hueBase + this.hueOffset) % 360;
+                const alpha = this.life * 0.8;
+
+                ctx.beginPath();
+                ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        function init() {
+            particles = [];
+            for (let i = 0; i < 50; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function drawKaleidoscope() {
+            const segmentAngle = (Math.PI * 2) / segments;
+
+            for (let i = 0; i < segments; i++) {
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(segmentAngle * i);
+
+                // 各セグメント内のパーティクルを描画
+                particles.forEach(p => {
+                    const x = Math.cos(p.angle + rotation) * p.radius;
+                    const y = Math.sin(p.angle + rotation) * p.radius;
+
+                    // パーティクルがセグメント内にある場合のみ描画
+                    if (y >= 0 || Math.abs(x) < y * Math.tan(segmentAngle)) {
+                        const hue = (hueBase + p.hueOffset) % 360;
+                        const alpha = p.life * 0.8;
+
+                        ctx.beginPath();
+                        ctx.arc(x, y, p.size, 0, Math.PI * 2);
+                        ctx.fillStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
+                        ctx.fill();
+
+                        // 鏡像を描画
+                        ctx.save();
+                        ctx.scale(1, -1);
+                        ctx.beginPath();
+                        ctx.arc(x, y, p.size, 0, Math.PI * 2);
+                        ctx.fillStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                });
+
+                ctx.restore();
+            }
+        }
+
+        function drawCenter() {
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, 150
+            );
+
+            const hue = hueBase % 360;
+            gradient.addColorStop(0, `hsla(${hue}, 80%, 70%, 0.3)`);
+            gradient.addColorStop(0.5, `hsla(${hue + 30}, 70%, 50%, 0.1)`);
+            gradient.addColorStop(1, 'transparent');
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 150, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            rotation += speed;
+            hueBase += 0.2;
+
+            particles.forEach(p => p.update());
+
+            drawCenter();
+            drawKaleidoscope();
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event Listeners
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+
+            // マウス位置に基づいて回転速度を調整
+            const dx = (mouseX - centerX) / width;
+            const dy = (mouseY - centerY) / height;
+            speed = 0.005 + dx * 0.01;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+
+            const dx = (mouseX - centerX) / width;
+            speed = 0.005 + dx * 0.01;
+        }, { passive: false });
+
+        document.getElementById('changeBtn').addEventListener('click', () => {
+            hueBase += 60;
+        });
+
+        document.getElementById('segmentsBtn').addEventListener('click', () => {
+            segments = segments === 12 ? 8 : segments === 8 ? 6 : segments === 6 ? 16 : 12;
+        });
+
+        document.getElementById('speedBtn').addEventListener('click', () => {
+            if (speed < 0.01) speed = 0.02;
+            else if (speed < 0.02) speed = 0.005;
+            else speed = 0.01;
+        });
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Initialize
+        resize();
+        init();
+        animate();
+    </script>
+</body>
+</html>
