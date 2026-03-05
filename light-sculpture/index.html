@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>光の彫刻 - Particle Light Sculpture</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            text-align: center;
+            pointer-events: none;
+        }
+        
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+        
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        @media (max-width: 768px) {
+            .info {
+                font-size: 10px;
+                bottom: 10px;
+            }
+            
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 12px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    <p class="info">タップ or クリックで光を放つ</p>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+        
+        const particles = [];
+        const maxParticles = 500;
+        let hue = 0;
+        
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.angle = Math.random() * Math.PI * 2;
+                this.speed = Math.random() * 3 + 1;
+                this.vx = Math.cos(this.angle) * this.speed;
+                this.vy = Math.sin(this.angle) * this.speed;
+                this.life = 1;
+                this.decay = Math.random() * 0.015 + 0.005;
+                this.size = Math.random() * 3 + 1;
+                this.hue = hue;
+                this.hueOffset = Math.random() * 60 - 30;
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.02; // 軽い重力
+                
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+                
+                this.life -= this.decay;
+                this.size *= 0.99;
+            }
+            
+            draw() {
+                const alpha = this.life;
+                const h = (this.hue + this.hueOffset + (1 - this.life) * 120) % 360;
+                
+                // グロー効果
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size * 3
+                );
+                gradient.addColorStop(0, `hsla(${h}, 100%, 70%, ${alpha})`);
+                gradient.addColorStop(0.3, `hsla(${h}, 100%, 60%, ${alpha * 0.6})`);
+                gradient.addColorStop(1, `hsla(${h}, 100%, 50%, 0)`);
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+        
+        function createParticles(x, y, count) {
+            for (let i = 0; i < count; i++) {
+                if (particles.length < maxParticles) {
+                    particles.push(new Particle(x, y));
+                }
+            }
+        }
+        
+        function animate() {
+            // 軽いトレイル効果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 色相を徐々に変化
+            hue = (hue + 0.5) % 360;
+            
+            // パーティクルを更新・描画
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                
+                if (p.life <= 0 || p.size < 0.1) {
+                    particles.splice(i, 1);
+                } else {
+                    p.draw();
+                }
+            }
+            
+            // パーティクル同士の距離に基づく線を描画
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.lineWidth = 0.5;
+            
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < 80) {
+                        const alpha = (1 - dist / 80) * 0.1 * particles[i].life * particles[j].life;
+                        ctx.strokeStyle = `hsla(${particles[i].hue}, 100%, 70%, ${alpha})`;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // イベントリスナー
+        canvas.addEventListener('click', (e) => {
+            createParticles(e.clientX, e.clientY, 30);
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            for (let touch of e.touches) {
+                createParticles(touch.clientX, touch.clientY, 20);
+            }
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            for (let touch of e.touches) {
+                createParticles(touch.clientX, touch.clientY, 5);
+            }
+        });
+        
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log('Fullscreen error:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // 自動的にパーティクルを生成（デモ用）
+        setInterval(() => {
+            const x = Math.random() * width;
+            const y = Math.random() * height;
+            createParticles(x, y, 3);
+        }, 500);
+        
+        // 開始
+        animate();
+    </script>
+</body>
+</html>
