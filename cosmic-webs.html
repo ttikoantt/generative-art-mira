@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Webs - 宇宙の大規模構造</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000008;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #ffffff;
+            font-size: 14px;
+            text-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            background: linear-gradient(90deg, #00ffff, #ff00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .btn {
+            background: rgba(0, 100, 200, 0.3);
+            border: 1px solid rgba(0, 200, 255, 0.5);
+            color: #00ffff;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            pointer-events: auto;
+        }
+
+        .btn:hover {
+            background: rgba(0, 150, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 100, 200, 0.3);
+            border: 1px solid rgba(0, 200, 255, 0.5);
+            color: #00ffff;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 10;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 150, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <div class="title">Cosmic Webs</div>
+        <div class="subtitle">宇宙の大規模構造 - クリック/タップで重力源を追加</div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="controls">
+        <button class="btn" onclick="resetSimulation()">リセット</button>
+        <button class="btn" onclick="togglePause()">一時停止</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let gravityWells = [];
+        let paused = false;
+
+        const CONFIG = {
+            particleCount: 150,
+            connectionDistance: 120,
+            gravityStrength: 0.5,
+            maxSpeed: 2,
+            particleSize: 2,
+            colors: ['#00ffff', '#ff00ff', '#ffff00', '#00ff88', '#ff6b6b']
+        };
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.vx = (Math.random() - 0.5) * CONFIG.maxSpeed;
+                this.vy = (Math.random() - 0.5) * CONFIG.maxSpeed;
+                this.radius = CONFIG.particleSize + Math.random() * 2;
+                this.color = CONFIG.colors[Math.floor(Math.random() * CONFIG.colors.length)];
+                this.glow = 0.5 + Math.random() * 0.5;
+            }
+
+            update() {
+                // 重力源からの引力
+                gravityWells.forEach(well => {
+                    const dx = well.x - this.x;
+                    const dy = well.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist > 10) {
+                        const force = CONFIG.gravityStrength * well.strength / (dist * dist);
+                        this.vx += (dx / dist) * force;
+                        this.vy += (dy / dist) * force;
+                    }
+                });
+
+                // 速度制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > CONFIG.maxSpeed) {
+                    this.vx = (this.vx / speed) * CONFIG.maxSpeed;
+                    this.vy = (this.vy / speed) * CONFIG.maxSpeed;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 境界処理
+                if (this.x < 0) { this.x = 0; this.vx *= -1; }
+                if (this.x > width) { this.x = width; this.vx *= -1; }
+                if (this.y < 0) { this.y = 0; this.vy *= -1; }
+                if (this.y > height) { this.y = height; this.vy *= -1; }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function init() {
+            particles = [];
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                particles.push(new Particle());
+            }
+            gravityWells = [];
+        }
+
+        function drawConnections() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < CONFIG.connectionDistance) {
+                        const opacity = (1 - dist / CONFIG.connectionDistance) * 0.5;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `rgba(100, 200, 255, ${opacity})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function drawGravityWells() {
+            gravityWells.forEach(well => {
+                const gradient = ctx.createRadialGradient(
+                    well.x, well.y, 0,
+                    well.x, well.y, 50
+                );
+                gradient.addColorStop(0, 'rgba(255, 200, 100, 0.3)');
+                gradient.addColorStop(0.5, 'rgba(255, 150, 50, 0.1)');
+                gradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
+
+                ctx.beginPath();
+                ctx.arc(well.x, well.y, 50, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            });
+        }
+
+        function animate() {
+            if (!paused) {
+                ctx.fillStyle = 'rgba(0, 0, 8, 0.1)';
+                ctx.fillRect(0, 0, width, height);
+
+                drawGravityWells();
+
+                particles.forEach(p => {
+                    p.update();
+                    p.draw();
+                });
+
+                drawConnections();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function resetSimulation() {
+            init();
+        }
+
+        function togglePause() {
+            paused = !paused;
+            document.querySelector('.controls .btn:nth-child(2)').textContent = paused ? '再開' : '一時停止';
+        }
+
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        canvas.addEventListener('click', (e) => {
+            gravityWells.push({
+                x: e.clientX,
+                y: e.clientY,
+                strength: 100
+            });
+
+            if (gravityWells.length > 5) {
+                gravityWells.shift();
+            }
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            gravityWells.push({
+                x: touch.clientX,
+                y: touch.clientY,
+                strength: 100
+            });
+
+            if (gravityWells.length > 5) {
+                gravityWells.shift();
+            }
+        });
+
+        window.addEventListener('resize', resize);
+
+        resize();
+        init();
+        animate();
+    </script>
+</body>
+</html>
