@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timing Jump</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 600px;
+            padding: 20px;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border: 3px solid #4a9eff;
+            border-radius: 12px;
+            box-shadow: 0 0 30px rgba(74, 158, 255, 0.3);
+            background: #0f0f23;
+            max-width: 100%;
+        }
+
+        .score-display {
+            color: #4a9eff;
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-shadow: 0 0 10px rgba(74, 158, 255, 0.5);
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 14px;
+            background: linear-gradient(135deg, #4a9eff 0%, #36d1dc 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(74, 158, 255, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            color: #666;
+            font-size: 12px;
+            margin-top: 15px;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            border: 3px solid #ff4a4a;
+            display: none;
+            z-index: 10;
+        }
+
+        .game-over h2 {
+            color: #ff4a4a;
+            font-size: 36px;
+            margin-bottom: 20px;
+        }
+
+        .game-over p {
+            color: #fff;
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+
+        .fullscreen-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        @media (max-width: 600px) {
+            .controls {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+                max-width: 200px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="score-display">
+            スコア: <span id="score">0</span> | 最高: <span id="highScore">0</span>
+        </div>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="controls">
+            <button onclick="startGame()">🎮 Start</button>
+            <button class="fullscreen-btn" onclick="toggleFullscreen()">📺 Fullscreen</button>
+        </div>
+
+        <div class="info">
+            <p>⏱️ タップ/スペースでジャンプ | 障害物をタイミングよく回避</p>
+        </div>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <h2>💥 Game Over!</h2>
+        <p>スコア: <span id="finalScore">0</span></p>
+        <button onclick="startGame()">🔄 Retry</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const gameOverDiv = document.getElementById('gameOver');
+
+        // Set canvas size
+        function resize() {
+            const width = Math.min(window.innerWidth - 40, 600);
+            const height = Math.min(window.innerHeight - 200, 400);
+            canvas.width = width;
+            canvas.height = height;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Game state
+        let gameRunning = false;
+        let score = 0;
+        let highScore = localStorage.getItem('timingJumpHighScore') || 0;
+        document.getElementById('highScore').textContent = highScore;
+
+        // Player
+        const player = {
+            x: 80,
+            y: 0,
+            width: 40,
+            height: 40,
+            velocityY: 0,
+            gravity: 0.6,
+            jumpForce: -12,
+            grounded: false,
+            color: '#4a9eff'
+        };
+
+        // Obstacles
+        let obstacles = [];
+        const obstacleSpeed = 5;
+        let obstacleTimer = 0;
+        let obstacleInterval = 100;
+
+        // Ground
+        const groundY = () => canvas.height - 60;
+
+        function resetGame() {
+            player.y = groundY() - player.height;
+            player.velocityY = 0;
+            obstacles = [];
+            score = 0;
+            obstacleTimer = 0;
+            document.getElementById('score').textContent = score;
+            gameOverDiv.style.display = 'none';
+        }
+
+        function jump() {
+            if (player.grounded && gameRunning) {
+                player.velocityY = player.jumpForce;
+                player.grounded = false;
+            }
+        }
+
+        function spawnObstacle() {
+            const type = Math.floor(Math.random() * 3);
+            let obstacle = {
+                x: canvas.width + 50,
+                y: groundY() - 30,
+                width: 30,
+                height: 30,
+                color: '#ff4a4a',
+                type: type
+            };
+
+            switch(type) {
+                case 0: // 通常の障害物
+                    obstacle.width = 30;
+                    obstacle.height = 30;
+                    obstacle.y = groundY() - 30;
+                    break;
+                case 1: // 高い障害物
+                    obstacle.width = 25;
+                    obstacle.height = 45;
+                    obstacle.y = groundY() - 45;
+                    break;
+                case 2: // 幅広障害物
+                    obstacle.width = 50;
+                    obstacle.height = 25;
+                    obstacle.y = groundY() - 25;
+                    break;
+            }
+
+            obstacles.push(obstacle);
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            // Update player
+            player.velocityY += player.gravity;
+            player.y += player.velocityY;
+
+            // Ground collision
+            if (player.y >= groundY() - player.height) {
+                player.y = groundY() - player.height;
+                player.velocityY = 0;
+                player.grounded = true;
+            }
+
+            // Spawn obstacles
+            obstacleTimer++;
+            if (obstacleTimer >= obstacleInterval) {
+                spawnObstacle();
+                obstacleTimer = 0;
+                obstacleInterval = 80 + Math.random() * 40;
+            }
+
+            // Update obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                obstacles[i].x -= obstacleSpeed;
+
+                // Remove off-screen obstacles
+                if (obstacles[i].x + obstacles[i].width < 0) {
+                    obstacles.splice(i, 1);
+                    score++;
+                    document.getElementById('score').textContent = score;
+                }
+
+                // Collision detection
+                if (checkCollision(player, obstacles[i])) {
+                    gameOver();
+                    return;
+                }
+            }
+        }
+
+        function checkCollision(a, b) {
+            return a.x < b.x + b.width &&
+                   a.x + a.width > b.x &&
+                   a.y < b.y + b.height &&
+                   a.y + a.height > b.y;
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#0f0f23';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw stars (background)
+            ctx.fillStyle = '#ffffff';
+            for (let i = 0; i < 50; i++) {
+                const x = (i * 13) % canvas.width;
+                const y = (i * 7) % (canvas.height - 100);
+                const size = (i % 3) + 1;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw ground
+            ctx.fillStyle = '#2a2a4a';
+            ctx.fillRect(0, groundY(), canvas.width, canvas.height - groundY());
+
+            // Draw player
+            ctx.fillStyle = player.color;
+            ctx.shadowColor = player.color;
+            ctx.shadowBlur = 15;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.shadowBlur = 0;
+
+            // Draw player eyes
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(player.x + 25, player.y + 10, 8, 8);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(player.x + 28, player.y + 12, 3, 3);
+
+            // Draw obstacles
+            for (const obstacle of obstacles) {
+                ctx.fillStyle = obstacle.color;
+                ctx.shadowColor = obstacle.color;
+                ctx.shadowBlur = 10;
+                ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                ctx.shadowBlur = 0;
+
+                // Draw obstacle pattern
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(obstacle.x + 3, obstacle.y + 3, obstacle.width - 6, obstacle.height - 6);
+            }
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            if (gameRunning) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function startGame() {
+            resetGame();
+            gameRunning = true;
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('timingJumpHighScore', highScore);
+                document.getElementById('highScore').textContent = highScore;
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            gameOverDiv.style.display = 'block';
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Controls
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                jump();
+            }
+        });
+
+        canvas.addEventListener('click', () => {
+            jump();
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        });
+
+        // Initial draw
+        draw();
+    </script>
+</body>
+</html>
