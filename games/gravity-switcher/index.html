@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gravity Switcher</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .game-info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            z-index: 10;
+        }
+
+        .game-info span {
+            color: #0ff;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid #0ff;
+            color: #0ff;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 10;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.4);
+        }
+
+        .start-screen, .game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .start-screen h1, .game-over-screen h1 {
+            color: #0ff;
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .start-screen p, .game-over-screen p {
+            color: #fff;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .start-screen .score-display {
+            color: #0ff;
+            font-size: 36px;
+            margin: 20px 0;
+        }
+
+        .start-btn {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: 24px;
+            background: linear-gradient(135deg, #0ff 0%, #00f 100%);
+            border: none;
+            border-radius: 50px;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .start-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-info">
+        スコア: <span id="score">0</span>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="controls">タップ/クリックで重力を切り替え</div>
+
+    <div class="start-screen" id="startScreen">
+        <h1>Gravity Switcher</h1>
+        <p>タップで重力を切り替えて障害物を回避！</p>
+        <button class="start-btn" onclick="startGame()">スタート</button>
+    </div>
+
+    <div class="game-over-screen hidden" id="gameOverScreen">
+        <h1>ゲームオーバー</h1>
+        <p>スコア</p>
+        <div class="score-display" id="finalScore">0</div>
+        <button class="start-btn" onclick="restartGame()">再挑戦</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+
+        function resize() {
+            width = canvas.width = Math.min(800, window.innerWidth);
+            height = canvas.height = Math.min(600, window.innerHeight);
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+
+        // ゲーム状態
+        let gameState = 'start'; // start, playing, gameover
+        let score = 0;
+        let gravity = 1; // 1: 下, -1: 上
+
+        // プレイヤー
+        const player = {
+            x: 100,
+            y: 300,
+            width: 40,
+            height: 40,
+            velocityY: 0,
+            color: '#0ff'
+        };
+
+        // 障害物
+        let obstacles = [];
+
+        function createObstacle() {
+            const gapHeight = 150;
+            const gapY = Math.random() * (height - gapHeight - 100) + 50;
+
+            obstacles.push({
+                x: width,
+                gapY: gapY,
+                gapHeight: gapHeight,
+                width: 60,
+                passed: false
+            });
+        }
+
+        function resetGame() {
+            player.y = height / 2;
+            player.velocityY = 0;
+            gravity = 1;
+            obstacles = [];
+            score = 0;
+            document.getElementById('score').textContent = score;
+        }
+
+        function startGame() {
+            resetGame();
+            gameState = 'playing';
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        function gameOver() {
+            gameState = 'gameover';
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        function switchGravity() {
+            if (gameState !== 'playing') return;
+            gravity *= -1;
+        }
+
+        // 入力
+        canvas.addEventListener('click', switchGravity);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            switchGravity();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (gameState === 'start') {
+                    startGame();
+                } else if (gameState === 'playing') {
+                    switchGravity();
+                } else if (gameState === 'gameover') {
+                    restartGame();
+                }
+            }
+        });
+
+        // 更新
+        function update() {
+            if (gameState !== 'playing') return;
+
+            // プレイヤー
+            player.velocityY += gravity * 0.5;
+            player.y += player.velocityY;
+
+            // 天井・床の衝突
+            if (player.y < 0 || player.y + player.height > height) {
+                gameOver();
+                return;
+            }
+
+            // 障害物
+            if (Math.random() < 0.02) {
+                createObstacle();
+            }
+
+            obstacles.forEach((obs, index) => {
+                obs.x -= 3;
+
+                // スコア
+                if (!obs.passed && obs.x + obs.width < player.x) {
+                    obs.passed = true;
+                    score++;
+                    document.getElementById('score').textContent = score;
+                }
+
+                // 衝突判定
+                if (
+                    player.x < obs.x + obs.width &&
+                    player.x + player.width > obs.x &&
+                    (player.y < obs.gapY || player.y + player.height > obs.gapY + obs.gapHeight)
+                ) {
+                    gameOver();
+                }
+            });
+
+            // 画面外の障害物を削除
+            obstacles = obstacles.filter(obs => obs.x + obs.width > 0);
+        }
+
+        // 描画
+        function draw() {
+            // 背景
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, width, height);
+
+            // 障害物
+            obstacles.forEach(obs => {
+                // 上の障害物
+                ctx.fillStyle = '#e94560';
+                ctx.fillRect(obs.x, 0, obs.width, obs.gapY);
+
+                // 下の障害物
+                ctx.fillRect(obs.x, obs.gapY + obs.gapHeight, obs.width, height - obs.gapY - obs.gapHeight);
+
+                // 光沢
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.fillRect(obs.x, 0, 10, obs.gapY);
+                ctx.fillRect(obs.x, obs.gapY + obs.gapHeight, 10, height - obs.gapY - obs.gapHeight);
+            });
+
+            // プレイヤー
+            ctx.fillStyle = player.color;
+            ctx.shadowColor = '#0ff';
+            ctx.shadowBlur = 20;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.shadowBlur = 0;
+
+            // 重力方向インジケーター
+            ctx.fillStyle = gravity > 0 ? '#0f0' : '#f00';
+            ctx.font = '30px Arial';
+            ctx.fillText(gravity > 0 ? '↓' : '↑', player.x + 10, player.y + 30);
+        }
+
+        function animate() {
+            update();
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
