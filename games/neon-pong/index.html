@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Pong - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+        }
+
+        .game-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .scoreboard {
+            display: flex;
+            gap: 50px;
+            font-size: 3rem;
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 0 20px currentColor;
+            margin-bottom: 10px;
+        }
+
+        .player-score {
+            color: #00f5ff;
+            text-shadow: 0 0 20px #00f5ff, 0 0 40px #00f5ff;
+        }
+
+        .ai-score {
+            color: #ff006e;
+            text-shadow: 0 0 20px #ff006e, 0 0 40px #ff006e;
+        }
+
+        #gameCanvas {
+            border: 3px solid #00f5ff;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0, 245, 255, 0.5),
+                        inset 0 0 30px rgba(0, 245, 255, 0.1);
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #00f5ff 0%, #0099ff 100%);
+            border: none;
+            border-radius: 25px;
+            color: #0a0a0a;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 245, 255, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 245, 255, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .instructions {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            padding: 0;
+        }
+
+        @media (max-width: 768px) {
+            .scoreboard {
+                font-size: 2rem;
+                gap: 30px;
+            }
+
+            #gameCanvas {
+                max-width: 100%;
+            }
+
+            .instructions {
+                font-size: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="scoreboard">
+            <div class="player-score" id="playerScore">0</div>
+            <div class="ai-score" id="aiScore">0</div>
+        </div>
+
+        <canvas id="gameCanvas" width="600" height="400"></canvas>
+
+        <div class="controls">
+            <button onclick="startGame()">▶ スタート</button>
+            <button onclick="resetGame()">🔄 リセット</button>
+        </div>
+
+        <div class="instructions">
+            マウス/タッチでパドルを操作 • 先に5点取った方が勝ち
+        </div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // ゲーム状態
+        let gameRunning = false;
+        let playerScore = 0;
+        let aiScore = 0;
+        let ballColor = '#00f5ff';
+
+        // パドル設定
+        const paddleWidth = 10;
+        const paddleHeight = 80;
+        const paddleSpeed = 8;
+
+        // プレイヤーパドル
+        const player = {
+            x: 20,
+            y: canvas.height / 2 - paddleHeight / 2,
+            width: paddleWidth,
+            height: paddleHeight,
+            dy: 0
+        };
+
+        // AIパドル
+        const ai = {
+            x: canvas.width - 20 - paddleWidth,
+            y: canvas.height / 2 - paddleHeight / 2,
+            width: paddleWidth,
+            height: paddleHeight,
+            dy: 0,
+            speed: 4
+        };
+
+        // ボール
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 8,
+            dx: 5,
+            dy: 3,
+            speed: 5
+        };
+
+        // カラーパレット
+        const colors = ['#00f5ff', '#ff006e', '#ffbe0b', '#8338ec', '#3a86ff', '#06ffa5'];
+
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 600);
+            const scale = maxWidth / 600;
+
+            canvas.style.width = maxWidth + 'px';
+            canvas.style.height = (400 * scale) + 'px';
+        }
+
+        function drawRect(x, y, w, h, color, glow = true) {
+            if (glow) {
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 20;
+            }
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, w, h);
+            ctx.shadowBlur = 0;
+        }
+
+        function drawCircle(x, y, r, color) {
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 25;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function drawNet() {
+            ctx.setLineDash([10, 10]);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function movePaddles() {
+            // プレイヤーパドル（マウス/タッチ追従）
+            player.y += player.dy;
+
+            // 境界チェック
+            if (player.y < 0) player.y = 0;
+            if (player.y + player.height > canvas.height) {
+                player.y = canvas.height - player.height;
+            }
+
+            // AIパドル（ボール追従）
+            const aiCenter = ai.y + ai.height / 2;
+            if (aiCenter < ball.y - 20) {
+                ai.y += ai.speed;
+            } else if (aiCenter > ball.y + 20) {
+                ai.y -= ai.speed;
+            }
+
+            // AI境界チェック
+            if (ai.y < 0) ai.y = 0;
+            if (ai.y + ai.height > canvas.height) {
+                ai.y = canvas.height - ai.height;
+            }
+        }
+
+        function moveBall() {
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+
+            // 上下の壁に衝突
+            if (ball.y - ball.radius < 0 || ball.y + ball.radius > canvas.height) {
+                ball.dy *= -1;
+                changeBallColor();
+            }
+
+            // プレイヤーパドル衝突
+            if (ball.x - ball.radius < player.x + player.width &&
+                ball.x + ball.radius > player.x &&
+                ball.y > player.y &&
+                ball.y < player.y + player.height) {
+                ball.dx = Math.abs(ball.dx) + 0.5;
+                ball.dx = Math.min(ball.dx, 12);
+                const hitPos = (ball.y - player.y) / player.height - 0.5;
+                ball.dy = hitPos * 10;
+                changeBallColor();
+            }
+
+            // AIパドル衝突
+            if (ball.x + ball.radius > ai.x &&
+                ball.x - ball.radius < ai.x + ai.width &&
+                ball.y > ai.y &&
+                ball.y < ai.y + ai.height) {
+                ball.dx = -Math.abs(ball.dx) - 0.5;
+                ball.dx = Math.max(ball.dx, -12);
+                const hitPos = (ball.y - ai.y) / ai.height - 0.5;
+                ball.dy = hitPos * 10;
+                changeBallColor();
+            }
+
+            // 得点
+            if (ball.x < 0) {
+                aiScore++;
+                document.getElementById('aiScore').textContent = aiScore;
+                resetBall();
+                checkWin();
+            }
+
+            if (ball.x > canvas.width) {
+                playerScore++;
+                document.getElementById('playerScore').textContent = playerScore;
+                resetBall();
+                checkWin();
+            }
+        }
+
+        function changeBallColor() {
+            const currentIndex = colors.indexOf(ballColor);
+            ballColor = colors[(currentIndex + 1) % colors.length];
+        }
+
+        function resetBall() {
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height / 2;
+            ball.dx = (Math.random() > 0.5 ? 5 : -5);
+            ball.dy = (Math.random() - 0.5) * 6;
+            ballColor = '#00f5ff';
+        }
+
+        function checkWin() {
+            if (playerScore >= 5 || aiScore >= 5) {
+                gameRunning = false;
+                const winner = playerScore >= 5 ? '🎉 あなたの勝ち！' : '🤖 AIの勝ち！';
+                setTimeout(() => alert(winner), 100);
+            }
+        }
+
+        function draw() {
+            // クリア
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // ネット
+            drawNet();
+
+            // パドル
+            drawRect(player.x, player.y, player.width, player.height, '#00f5ff');
+            drawRect(ai.x, ai.y, ai.width, ai.height, '#ff006e');
+
+            // ボール
+            drawCircle(ball.x, ball.y, ball.radius, ballColor);
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            movePaddles();
+            moveBall();
+            draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            if (!gameRunning) {
+                gameRunning = true;
+                gameLoop();
+            }
+        }
+
+        function resetGame() {
+            gameRunning = false;
+            playerScore = 0;
+            aiScore = 0;
+            document.getElementById('playerScore').textContent = '0';
+            document.getElementById('aiScore').textContent = '0';
+            resetBall();
+            draw();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // マウス/タッチ操作
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleY = canvas.height / rect.height;
+            player.y = (e.clientY - rect.top) * scaleY - player.height / 2;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleY = canvas.height / rect.height;
+            player.y = (e.touches[0].clientY - rect.top) * scaleY - player.height / 2;
+        }, { passive: false });
+
+        // 初期化
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        draw();
+    </script>
+</body>
+</html>
