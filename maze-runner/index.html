@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maze Runner - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0e1a;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+        }
+        .ui {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            background: rgba(10, 14, 26, 0.9);
+            padding: 15px 25px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+            color: #fff;
+            align-items: center;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 0.7em;
+            color: rgba(255, 255, 255, 0.6);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .stat-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            background: linear-gradient(135deg, #64c8ff, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+        }
+        .control-btn {
+            width: 60px;
+            height: 60px;
+            background: rgba(100, 200, 255, 0.2);
+            border: 2px solid rgba(100, 200, 255, 0.4);
+            border-radius: 50%;
+            color: #64c8ff;
+            font-size: 1.5em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .control-btn:hover, .control-btn:active {
+            background: rgba(100, 200, 255, 0.4);
+            transform: scale(1.1);
+        }
+        .new-game {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #64c8ff, #a855f7);
+            color: #0a0e1a;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .new-game:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(100, 200, 255, 0.4);
+        }
+        @media (min-width: 769px) {
+            .controls {
+                display: none;
+            }
+        }
+        @media (max-width: 768px) {
+            .ui {
+                top: 10px;
+                padding: 10px 15px;
+                gap: 15px;
+            }
+            .stat-value {
+                font-size: 1.4em;
+            }
+            .new-game {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 0.9em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="stat">
+            <div class="stat-label">Level</div>
+            <div class="stat-value" id="level">1</div>
+        </div>
+        <div class="stat">
+            <div class="stat-label">Time</div>
+            <div class="stat-value" id="time">0:00</div>
+        </div>
+    </div>
+    <button class="new-game" onclick="newGame()">🔄 New Game</button>
+    <div class="controls">
+        <button class="control-btn" ontouchstart="setDirection(-1, 0)">⬅️</button>
+        <button class="control-btn" ontouchstart="setDirection(0, -1)">⬆️</button>
+        <button class="control-btn" ontouchstart="setDirection(0, 1)">⬇️</button>
+        <button class="control-btn" ontouchstart="setDirection(1, 0)">➡️</button>
+    </div>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let maze = [];
+        let mazeWidth, mazeHeight;
+        let cellSize;
+        let player = { x: 1, y: 1 };
+        let goal = { x: 0, y: 0 };
+        let level = 1;
+        let startTime;
+        let gameWon = false;
+        let trail = [];
+        let lastMove = 0;
+        let moveDelay = 100;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cellSize = Math.floor(Math.min(width, height) / 15);
+            mazeWidth = Math.floor(width / cellSize);
+            mazeHeight = Math.floor(height / cellSize);
+            if (mazeWidth % 2 === 0) mazeWidth--;
+            if (mazeHeight % 2 === 0) mazeHeight--;
+            generateMaze();
+        }
+
+        function generateMaze() {
+            // Initialize maze with walls
+            maze = [];
+            for (let y = 0; y < mazeHeight; y++) {
+                maze[y] = [];
+                for (let x = 0; x < mazeWidth; x++) {
+                    maze[y][x] = 1;
+                }
+            }
+
+            // Recursive backtracker
+            const stack = [];
+            const startX = 1;
+            const startY = 1;
+            maze[startY][startX] = 0;
+            stack.push({ x: startX, y: startY });
+
+            while (stack.length > 0) {
+                const current = stack[stack.length - 1];
+                const neighbors = [];
+
+                const directions = [
+                    { dx: 0, dy: -2 },
+                    { dx: 2, dy: 0 },
+                    { dx: 0, dy: 2 },
+                    { dx: -2, dy: 0 }
+                ];
+
+                for (const dir of directions) {
+                    const nx = current.x + dir.dx;
+                    const ny = current.y + dir.dy;
+                    if (nx > 0 && nx < mazeWidth - 1 && ny > 0 && ny < mazeHeight - 1 && maze[ny][nx] === 1) {
+                        neighbors.push({ x: nx, y: ny, wx: current.x + dir.dx / 2, wy: current.y + dir.dy / 2 });
+                    }
+                }
+
+                if (neighbors.length > 0) {
+                    const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+                    maze[next.wy][next.wx] = 0;
+                    maze[next.y][next.x] = 0;
+                    stack.push({ x: next.x, y: next.y });
+                } else {
+                    stack.pop();
+                }
+            }
+
+            // Set player and goal
+            player = { x: 1, y: 1 };
+            goal = { x: mazeWidth - 2, y: mazeHeight - 2 };
+            maze[goal.y][goal.x] = 0;
+            trail = [{ x: player.x, y: player.y }];
+            gameWon = false;
+            startTime = Date.now();
+        }
+
+        function setDirection(dx, dy) {
+            const now = Date.now();
+            if (now - lastMove < moveDelay) return;
+            lastMove = now;
+
+            const newX = player.x + dx;
+            const newY = player.y + dy;
+
+            if (newX >= 0 && newX < mazeWidth && newY >= 0 && newY < mazeHeight && maze[newY][newX] === 0) {
+                player.x = newX;
+                player.y = newY;
+                trail.push({ x: player.x, y: player.y });
+                if (trail.length > 20) trail.shift();
+
+                if (player.x === goal.x && player.y === goal.y) {
+                    gameWon = true;
+                    level++;
+                    setTimeout(() => {
+                        generateMaze();
+                    }, 1000);
+                }
+            }
+        }
+
+        function newGame() {
+            level = 1;
+            generateMaze();
+        }
+
+        function draw() {
+            // Clear
+            ctx.fillStyle = '#0a0e1a';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw maze
+            const offsetX = (width - mazeWidth * cellSize) / 2;
+            const offsetY = (height - mazeHeight * cellSize) / 2;
+
+            for (let y = 0; y < mazeHeight; y++) {
+                for (let x = 0; x < mazeWidth; x++) {
+                    const px = offsetX + x * cellSize;
+                    const py = offsetY + y * cellSize;
+
+                    if (maze[y][x] === 1) {
+                        // Wall
+                        ctx.fillStyle = '#1a1f2e';
+                        ctx.fillRect(px, py, cellSize, cellSize);
+                        ctx.strokeStyle = 'rgba(100, 200, 255, 0.1)';
+                        ctx.strokeRect(px, py, cellSize, cellSize);
+                    } else {
+                        // Path
+                        ctx.fillStyle = '#0d1220';
+                        ctx.fillRect(px, py, cellSize, cellSize);
+                    }
+                }
+            }
+
+            // Draw trail
+            trail.forEach((pos, i) => {
+                const px = offsetX + pos.x * cellSize + cellSize / 2;
+                const py = offsetY + pos.y * cellSize + cellSize / 2;
+                const alpha = (i / trail.length) * 0.3;
+                ctx.beginPath();
+                ctx.arc(px, py, cellSize / 6, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(100, 200, 255, ${alpha})`;
+                ctx.fill();
+            });
+
+            // Draw goal
+            const goalX = offsetX + goal.x * cellSize + cellSize / 2;
+            const goalY = offsetY + goal.y * cellSize + cellSize / 2;
+            const goalPulse = Math.sin(Date.now() * 0.005) * 0.2 + 0.8;
+            ctx.beginPath();
+            ctx.arc(goalX, goalY, cellSize / 3 * goalPulse, 0, Math.PI * 2);
+            ctx.fillStyle = '#a855f7';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(goalX, goalY, cellSize / 5 * goalPulse, 0, Math.PI * 2);
+            ctx.fillStyle = '#64c8ff';
+            ctx.fill();
+
+            // Draw player
+            const playerX = offsetX + player.x * cellSize + cellSize / 2;
+            const playerY = offsetY + player.y * cellSize + cellSize / 2;
+            ctx.beginPath();
+            ctx.arc(playerX, playerY, cellSize / 3, 0, Math.PI * 2);
+            ctx.fillStyle = '#64c8ff';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(playerX, playerY, cellSize / 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+
+            // Win effect
+            if (gameWon) {
+                ctx.fillStyle = 'rgba(168, 85, 247, 0.1)';
+                ctx.fillRect(0, 0, width, height);
+                ctx.font = 'bold 48px Arial';
+                ctx.fillStyle = '#a855f7';
+                ctx.textAlign = 'center';
+                ctx.fillText('🎉 Level Complete!', width / 2, height / 2);
+            }
+
+            // Update UI
+            document.getElementById('level').textContent = level;
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            document.getElementById('time').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+            requestAnimationFrame(draw);
+        }
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                case 'ArrowUp': case 'w': case 'W': setDirection(0, -1); break;
+                case 'ArrowDown': case 's': case 'S': setDirection(0, 1); break;
+                case 'ArrowLeft': case 'a': case 'A': setDirection(-1, 0); break;
+                case 'ArrowRight': case 'd': case 'D': setDirection(1, 0); break;
+            }
+        });
+
+        window.addEventListener('resize', resize);
+        resize();
+        draw();
+    </script>
+</body>
+</html>
