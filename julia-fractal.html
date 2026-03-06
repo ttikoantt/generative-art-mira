@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Julia Set Fractal - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+        }
+        h1 {
+            color: #fff;
+            margin-bottom: 10px;
+            font-size: 24px;
+            text-align: center;
+        }
+        .subtitle {
+            color: #888;
+            margin-bottom: 20px;
+            font-size: 14px;
+            text-align: center;
+        }
+        canvas {
+            border: 2px solid #333;
+            cursor: crosshair;
+            max-width: 100%;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        button {
+            background: #222;
+            color: #0ff;
+            border: 1px solid #0ff;
+            padding: 10px 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #0ff;
+            color: #000;
+        }
+        .info {
+            color: #888;
+            margin-top: 20px;
+            font-size: 12px;
+            text-align: center;
+            max-width: 600px;
+        }
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #222;
+            color: #0ff;
+            border: 1px solid #0ff;
+            width: 50px;
+            height: 50px;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .fullscreen-btn:hover {
+            background: #0ff;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <h1>Julia Set Fractal</h1>
+    <div class="subtitle">クリックで新しいパターンを探索</div>
+    <canvas id="fractal"></canvas>
+
+    <div class="controls">
+        <button onclick="randomize()">ランダム生成</button>
+        <button onclick="animate()">アニメーション</button>
+        <button onclick="reset()">リセット</button>
+    </div>
+
+    <div class="info">
+        Julia Setは複素数平面上で定義されるフラクタル図形です。<br>
+        キャンバスをクリックすると、その位置に応じた新しいパターンが生成されます。
+    </div>
+
+    <script>
+        const canvas = document.getElementById('fractal');
+        const ctx = canvas.getContext('2d');
+
+        // キャンバスサイズ設定
+        function resize() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 250, 600);
+            canvas.width = size;
+            canvas.height = size;
+        }
+        resize();
+        window.addEventListener('resize', () => {
+            resize();
+            draw();
+        });
+
+        // Julia Setパラメータ
+        let cRe = -0.7;
+        let cIm = 0.27015;
+        let animationId = null;
+        let animating = false;
+        let time = 0;
+
+        // Julia Set描画
+        function draw() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const imageData = ctx.createImageData(width, height);
+            const data = imageData.data;
+
+            const maxIter = 100;
+            const scale = 3.0;
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    // 画素を複素数平面にマッピング
+                    let zRe = (x - width / 2) * scale / width;
+                    let zIm = (y - height / 2) * scale / height;
+
+                    let iter = 0;
+
+                    // Julia Setの反復計算
+                    while (zRe * zRe + zIm * zIm <= 4 && iter < maxIter) {
+                        const tempRe = zRe * zRe - zIm * zIm + cRe;
+                        const tempIm = 2 * zRe * zIm + cIm;
+                        zRe = tempRe;
+                        zIm = tempIm;
+                        iter++;
+                    }
+
+                    // 色の計算
+                    const pixelIndex = (y * width + x) * 4;
+                    if (iter === maxIter) {
+                        // 内部: 黒
+                        data[pixelIndex] = 0;
+                        data[pixelIndex + 1] = 0;
+                        data[pixelIndex + 2] = 0;
+                    } else {
+                        // 外部: カラフルに
+                        const hue = (iter / maxIter * 360 + time) % 360;
+                        const sat = 100;
+                        const light = iter / maxIter * 50;
+
+                        const rgb = hslToRgb(hue / 360, sat / 100, light / 100);
+                        data[pixelIndex] = rgb[0];
+                        data[pixelIndex + 1] = rgb[1];
+                        data[pixelIndex + 2] = rgb[2];
+                    }
+                    data[pixelIndex + 3] = 255;
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // HSL to RGB変換
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+
+            return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+        }
+
+        // ランダム生成
+        function randomize() {
+            cRe = (Math.random() - 0.5) * 2;
+            cIm = (Math.random() - 0.5) * 2;
+            draw();
+        }
+
+        // アニメーション
+        function animate() {
+            if (animating) {
+                cancelAnimationFrame(animationId);
+                animating = false;
+                return;
+            }
+
+            animating = true;
+            const startRe = cRe;
+            const startIm = cIm;
+            const targetRe = (Math.random() - 0.5) * 2;
+            const targetIm = (Math.random() - 0.5) * 2;
+
+            let progress = 0;
+
+            function loop() {
+                if (!animating) return;
+
+                progress += 0.02;
+                if (progress >= 1) {
+                    cRe = targetRe;
+                    cIm = targetIm;
+                    animating = false;
+                    draw();
+                    return;
+                }
+
+                // イージング関数
+                const ease = 1 - Math.pow(1 - progress, 3);
+                cRe = startRe + (targetRe - startRe) * ease;
+                cIm = startIm + (targetIm - startIm) * ease;
+                time += 2;
+
+                draw();
+                animationId = requestAnimationFrame(loop);
+            }
+
+            loop();
+        }
+
+        // リセット
+        function reset() {
+            cRe = -0.7;
+            cIm = 0.27015;
+            time = 0;
+            if (animating) {
+                cancelAnimationFrame(animationId);
+                animating = false;
+            }
+            draw();
+        }
+
+        // クリックで新しいパターン
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // クリック位置を複素数に変換
+            cRe = (x - canvas.width / 2) * 2 / canvas.width;
+            cIm = (y - canvas.height / 2) * 2 / canvas.height;
+
+            draw();
+        });
+
+        // 全画面表示
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期描画
+        draw();
+    </script>
+</body>
+</html>
