@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>動的フラクタルツリー - Dynamic Fractal Tree</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+            width: 100%;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(5px);
+        }
+
+        .info h1 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .info p {
+            margin: 5px 0;
+            font-size: 12px;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .stats {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <canvas id="canvas"></canvas>
+        
+        <div class="info">
+            <h1>🌳 動的フラクタルツリー</h1>
+            <p>マウスを動かすと風を感じる</p>
+            <p>時間とともに色が変化</p>
+        </div>
+
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+        <div class="stats" id="stats"></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const stats = document.getElementById('stats');
+
+        let width, height;
+        let time = 0;
+        let mouseX = 0;
+        let mouseY = 0;
+        let targetMouseX = 0;
+        let targetMouseY = 0;
+
+        // 設定
+        const config = {
+            maxDepth: 12,
+            branchAngle: Math.PI / 6,
+            lengthDecay: 0.7,
+            windStrength: 0.02,
+            colorSpeed: 0.001,
+            initialLength: 120
+        };
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            config.initialLength = Math.min(width, height) * 0.18;
+        }
+
+        function drawBranch(x, y, length, angle, depth, time) {
+            if (depth === 0 || length < 2) return;
+
+            // 風の影響を計算
+            const windInfluence = Math.sin(time * 2 + depth * 0.5) * config.windStrength * depth;
+            const mouseInfluence = ((mouseX - width / 2) / width) * config.windStrength * 2;
+            const totalAngle = angle + windInfluence + mouseInfluence;
+
+            const endX = x + Math.cos(totalAngle) * length;
+            const endY = y + Math.sin(totalAngle) * length;
+
+            // 色を計算
+            const hue = (time * 50 + depth * 20) % 360;
+            const saturation = 70 + depth * 3;
+            const lightness = 50 + depth * 2;
+            const alpha = 0.3 + depth * 0.05;
+
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(endX, endY);
+            ctx.strokeStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
+            ctx.lineWidth = depth * 1.5;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            // 再帰的に枝を描画
+            const newLength = length * config.lengthDecay;
+            const angleVariation = config.branchAngle + Math.sin(time + depth) * 0.1;
+
+            drawBranch(endX, endY, newLength, totalAngle - angleVariation, depth - 1, time);
+            drawBranch(endX, endY, newLength, totalAngle + angleVariation, depth - 1, time);
+
+            // まれに3番目の枝を追加
+            if (depth > 6 && Math.random() < 0.1) {
+                drawBranch(endX, endY, newLength * 0.8, totalAngle, depth - 1, time);
+            }
+        }
+
+        function draw() {
+            // 背景をフェード
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // マウス位置を滑らかに移動
+            mouseX += (targetMouseX - mouseX) * 0.05;
+            mouseY += (targetMouseY - mouseY) * 0.05;
+
+            // フラクタルツリーを描画
+            drawBranch(
+                width / 2,
+                height,
+                config.initialLength,
+                -Math.PI / 2,
+                config.maxDepth,
+                time
+            );
+
+            // 統計を更新
+            stats.textContent = `Time: ${time.toFixed(2)} | Wind: ${(mouseX - width/2).toFixed(0)}`;
+
+            time += 0.016;
+            requestAnimationFrame(draw);
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            targetMouseX = e.clientX;
+            targetMouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            targetMouseX = e.touches[0].clientX;
+            targetMouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        resize();
+        draw();
+    </script>
+</body>
+</html>
