@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spiral Orbit - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .score {
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .lives {
+            color: #fff;
+            font-size: 20px;
+        }
+
+        .game-over, .start {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #fff;
+            z-index: 200;
+        }
+
+        .game-over h1, .start h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #00ffff, #ff00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .game-over p, .start p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            opacity: 0.8;
+        }
+
+        .game-over button, .start button {
+            padding: 15px 40px;
+            font-size: 18px;
+            background: linear-gradient(45deg, #00ffff, #ff00ff);
+            border: none;
+            border-radius: 25px;
+            color: #000;
+            cursor: pointer;
+            pointer-events: auto;
+            transition: transform 0.2s;
+        }
+
+        .game-over button:hover, .start button:hover {
+            transform: scale(1.1);
+        }
+
+        .start .instructions {
+            font-size: 14px;
+            margin-bottom: 20px;
+            opacity: 0.6;
+            line-height: 1.6;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        @media (max-width: 600px) {
+            .game-over h1, .start h1 {
+                font-size: 32px;
+            }
+            .score {
+                font-size: 18px;
+            }
+            .lives {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="ui">
+        <div class="score">Score: <span id="score">0</span></div>
+        <div class="lives">❤️ <span id="lives">3</span></div>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
+
+    <div class="start" id="startScreen">
+        <h1>🌀 Spiral Orbit</h1>
+        <div class="instructions">
+            タップ/クリックで螺旋状に軌道を変化<br>
+            障害物を回避し続けよう！
+        </div>
+        <button id="startBtn">スタート</button>
+    </div>
+
+    <div class="game-over hidden" id="gameOverScreen">
+        <h1>Game Over</h1>
+        <p>Score: <span id="finalScore">0</span></p>
+        <button id="restartBtn">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let gameState = 'start';
+        let score = 0;
+        let lives = 3;
+        let obstacles = [];
+        let particles = [];
+        let time = 0;
+
+        // Player orbital parameters
+        let player = {
+            angle: 0,
+            radius: 150,
+            baseRadius: 150,
+            radiusChange: 0,
+            orbitSpeed: 0.02,
+            size: 12
+        };
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            player.baseRadius = Math.min(canvas.width, canvas.height) * 0.25;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Obstacle class
+        class Obstacle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.angle = Math.random() * Math.PI * 2;
+                this.radius = player.baseRadius + (Math.random() - 0.5) * 100;
+                this.speed = 0.01 + Math.random() * 0.02;
+                this.direction = Math.random() > 0.5 ? 1 : -1;
+                this.size = 15 + Math.random() * 20;
+                this.color = `hsl(${Math.random() * 60 + 300}, 80%, 60%)`;
+            }
+
+            update() {
+                this.angle += this.speed * this.direction;
+
+                // Reset if off screen
+                if (this.angle > Math.PI * 2) this.angle -= Math.PI * 2;
+                if (this.angle < 0) this.angle += Math.PI * 2;
+            }
+
+            draw(centerX, centerY) {
+                const x = centerX + Math.cos(this.angle) * this.radius;
+                const y = centerY + Math.sin(this.angle) * this.radius;
+
+                ctx.beginPath();
+                ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(x, y, this.size + 5, 0, Math.PI * 2);
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            checkCollision(px, py, pSize) {
+                const x = canvas.width / 2 + Math.cos(this.angle) * this.radius;
+                const y = canvas.height / 2 + Math.sin(this.angle) * this.radius;
+                const dx = px - x;
+                const dy = py - y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                return distance < (this.size + pSize);
+            }
+        }
+
+        // Particle class for effects
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.size = Math.random() * 5 + 2;
+                this.speedX = (Math.random() - 0.5) * 8;
+                this.speedY = (Math.random() - 0.5) * 8;
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= this.decay;
+                this.size *= 0.95;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color.replace(')', `, ${this.life})`).replace('hsl', 'hsla');
+                ctx.fill();
+            }
+        }
+
+        function spawnObstacle() {
+            if (obstacles.length < 5 + Math.floor(score / 100)) {
+                obstacles.push(new Obstacle());
+            }
+        }
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 20; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            obstacles = [];
+            particles = [];
+            player.angle = 0;
+            player.radius = player.baseRadius;
+            player.radiusChange = 0;
+            time = 0;
+            document.getElementById('score').textContent = score;
+            document.getElementById('lives').textContent = lives;
+        }
+
+        function drawOrbitPath(centerX, centerY) {
+            // Draw orbital paths
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+
+            for (let r = player.baseRadius - 50; r <= player.baseRadius + 50; r += 25) {
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Draw current orbit
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, player.radius, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        function update() {
+            if (gameState !== 'playing') return;
+
+            time++;
+            score++;
+            document.getElementById('score').textContent = score;
+
+            // Update player
+            player.angle += player.orbitSpeed;
+            player.radiusChange *= 0.98;
+            player.radius = player.baseRadius + player.radiusChange;
+
+            // Clamp radius
+            const minRadius = player.baseRadius - 60;
+            const maxRadius = player.baseRadius + 60;
+            if (player.radius < minRadius) player.radius = minRadius;
+            if (player.radius > maxRadius) player.radius = maxRadius;
+
+            // Spawn obstacles
+            if (time % 60 === 0) {
+                spawnObstacle();
+            }
+
+            // Update obstacles
+            obstacles.forEach(ob => ob.update());
+
+            // Update particles
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => p.update());
+
+            // Check collisions
+            const px = canvas.width / 2 + Math.cos(player.angle) * player.radius;
+            const py = canvas.height / 2 + Math.sin(player.angle) * player.radius;
+
+            obstacles.forEach((ob, index) => {
+                if (ob.checkCollision(px, py, player.size)) {
+                    createExplosion(px, py, 'hsl(0, 80%, 60%)');
+                    obstacles.splice(index, 1);
+                    lives--;
+                    document.getElementById('lives').textContent = lives;
+
+                    if (lives <= 0) {
+                        gameState = 'gameover';
+                        document.getElementById('finalScore').textContent = score;
+                        document.getElementById('gameOverScreen').classList.remove('hidden');
+                    }
+                }
+            });
+        }
+
+        function draw() {
+            // Clear
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Draw orbit paths
+            drawOrbitPath(centerX, centerY);
+
+            // Draw particles
+            particles.forEach(p => p.draw());
+
+            // Draw obstacles
+            obstacles.forEach(ob => ob.draw(centerX, centerY));
+
+            // Draw player
+            const px = centerX + Math.cos(player.angle) * player.radius;
+            const py = centerY + Math.sin(player.angle) * player.radius;
+
+            // Player glow
+            const gradient = ctx.createRadialGradient(px, py, 0, px, py, player.size * 3);
+            gradient.addColorStop(0, 'rgba(0, 255, 255, 0.8)');
+            gradient.addColorStop(1, 'transparent');
+            ctx.beginPath();
+            ctx.arc(px, py, player.size * 3, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Player core
+            ctx.beginPath();
+            ctx.arc(px, py, player.size, 0, Math.PI * 2);
+            ctx.fillStyle = '#00ffff';
+            ctx.fill();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Input handling
+        function handleInput() {
+            if (gameState === 'playing') {
+                player.radiusChange += 30 * (Math.random() > 0.5 ? 1 : -1);
+            }
+        }
+
+        canvas.addEventListener('click', handleInput);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleInput();
+        });
+
+        // Keyboard support
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (gameState === 'playing') {
+                    player.radiusChange += 30 * (Math.random() > 0.5 ? 1 : -1);
+                }
+            }
+        });
+
+        // Start button
+        document.getElementById('startBtn').addEventListener('click', () => {
+            document.getElementById('startScreen').classList.add('hidden');
+            gameState = 'playing';
+            resetGame();
+        });
+
+        // Restart button
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            gameState = 'playing';
+            resetGame();
+        });
+
+        // Fullscreen
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Start game loop
+        gameLoop();
+    </script>
+</body>
+</html>
