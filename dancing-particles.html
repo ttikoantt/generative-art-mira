@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dancing Particles - 音に反応する粒子システム</title>
+    <title>踊るパーティクル・ボール | Mira's Generative Art</title>
     <style>
         * {
             margin: 0;
@@ -12,13 +12,15 @@
         }
 
         body {
-            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
             min-height: 100vh;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
+            justify-content: center;
             overflow: hidden;
-            font-family: 'Arial', sans-serif;
+            color: white;
         }
 
         .container {
@@ -27,331 +29,216 @@
             z-index: 1;
         }
 
-        canvas {
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        p {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 2rem;
+        }
+
+        #canvas {
             border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5),
-                        0 0 100px rgba(99, 102, 241, 0.2);
-            background: rgba(0, 0, 0, 0.3);
-        }
-
-        .controls {
-            margin-top: 20px;
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        button {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 25px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            font-size: 16px;
+            box-shadow: 0 0 40px rgba(100, 200, 255, 0.3);
             cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-        }
-
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
-        }
-
-        button:active {
-            transform: translateY(0);
+            touch-action: none;
         }
 
         .info {
-            margin-top: 20px;
-            color: #a0aec0;
-            font-size: 14px;
-            max-width: 600px;
-            line-height: 1.6;
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.9);
         }
 
         .fullscreen-btn {
             position: fixed;
             top: 20px;
             right: 20px;
-            padding: 10px 20px;
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1rem;
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            p {
+                font-size: 0.9rem;
+            }
+
+            .info {
+                font-size: 0.8rem;
+                padding: 8px 15px;
+            }
         }
     </style>
 </head>
 <body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">📺 全画面</button>
+
     <div class="container">
+        <h1>🎨 踊るパーティクル・ボール</h1>
+        <p>クリックまたはタップして、色とりどりのパーティクルを飛ばそう！</p>
         <canvas id="canvas"></canvas>
-        <div class="controls">
-            <button onclick="toggleMusic()">🎵 音楽ON/OFF</button>
-            <button onclick="changeMode()">🔄 モード切替</button>
-            <button onclick="resetParticles()">🔄 リセット</button>
-        </div>
-        <div class="info">
-            <p>音に反応して踊る粒子システム</p>
-            <p>クリック/タップで新しい粒子を追加</p>
-        </div>
+        <div class="info">パーティクル数: <span id="particleCount">0</span></div>
     </div>
-    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ 全画面</button>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const particleCountEl = document.getElementById('particleCount');
 
-        // Canvas size
+        // キャンバスサイズ設定
         function resizeCanvas() {
-            const size = Math.min(window.innerWidth - 40, window.innerHeight - 200, 800);
+            const size = Math.min(window.innerWidth - 40, 600);
             canvas.width = size;
             canvas.height = size;
         }
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // Audio context
-        let audioContext = null;
-        let analyser = null;
-        let dataArray = null;
-        let isMusicPlaying = false;
-        let oscillator = null;
-        let gainNode = null;
-
-        // Particle class
+        // パーティクルクラス
         class Particle {
             constructor(x, y) {
-                this.x = x || Math.random() * canvas.width;
-                this.y = y || Math.random() * canvas.height;
-                this.baseX = this.x;
-                this.baseY = this.y;
-                this.size = Math.random() * 3 + 1;
-                this.baseSize = this.size;
-                this.hue = Math.random() * 60 + 240; // Blue to purple
-                this.life = 1;
+                this.x = x;
+                this.y = y;
+                this.radius = Math.random() * 15 + 5;
+                this.color = `hsl(${Math.random() * 360}, 80%, 60%)`;
+                this.velocityX = (Math.random() - 0.5) * 10;
+                this.velocityY = (Math.random() - 0.5) * 10 - 3;
+                this.gravity = 0.2;
+                this.friction = 0.99;
+                this.alpha = 1;
                 this.decay = Math.random() * 0.01 + 0.005;
-                this.angle = Math.random() * Math.PI * 2;
-                this.speed = Math.random() * 2 + 0.5;
-                this.amplitude = Math.random() * 30 + 10;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.2;
             }
 
-            update(audioData) {
-                // Audio reactivity
-                let audioBoost = 1;
-                if (audioData) {
-                    const avg = audioData.reduce((a, b) => a + b, 0) / audioData.length;
-                    audioBoost = 1 + (avg / 255) * 2;
-                }
+            update() {
+                this.velocityY += this.gravity;
+                this.velocityX *= this.friction;
+                this.velocityY *= this.friction;
 
-                // Dancing motion
-                this.angle += 0.05 * audioBoost;
-                this.x = this.baseX + Math.cos(this.angle) * this.amplitude * audioBoost;
-                this.y = this.baseY + Math.sin(this.angle) * this.amplitude * audioBoost;
+                this.x += this.velocityX;
+                this.y += this.velocityY;
 
-                // Size fluctuation
-                this.size = this.baseSize * audioBoost;
-
-                // Life decay
-                this.life -= this.decay;
-
-                // Color shift
-                this.hue = (this.hue + 0.5) % 360;
+                this.rotation += this.rotationSpeed;
+                this.alpha -= this.decay;
             }
 
             draw() {
-                const alpha = this.life;
-                const gradient = ctx.createRadialGradient(
-                    this.x, this.y, 0,
-                    this.x, this.y, this.size * 3
-                );
-                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${alpha})`);
-                gradient.addColorStop(0.5, `hsla(${this.hue}, 100%, 50%, ${alpha * 0.5})`);
-                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 30%, 0)`);
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.globalAlpha = this.alpha;
 
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+                // グラデーション
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(1, 'transparent');
+
                 ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
                 ctx.fill();
+
+                // 光る効果
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.color;
+                ctx.fill();
+
+                ctx.restore();
             }
         }
 
-        // Particles array
+        // パーティクル配列
         let particles = [];
-        let mode = 0; // 0: Random, 1: Circle, 2: Spiral, 3: Wave
+        let autoSpawnTimer = 0;
 
-        // Initialize particles
-        function initParticles() {
-            particles = [];
-            for (let i = 0; i < 200; i++) {
-                particles.push(new Particle());
-            }
-        }
-        initParticles();
-
-        // Mode patterns
-        function setMode(modeIndex) {
-            mode = modeIndex;
-            particles = [];
-
-            if (mode === 0) {
-                // Random
-                for (let i = 0; i < 200; i++) {
-                    particles.push(new Particle());
-                }
-            } else if (mode === 1) {
-                // Circle
-                const centerX = canvas.width / 2;
-                const centerY = canvas.height / 2;
-                const radius = Math.min(canvas.width, canvas.height) * 0.35;
-                for (let i = 0; i < 150; i++) {
-                    const angle = (i / 150) * Math.PI * 2;
-                    const x = centerX + Math.cos(angle) * radius;
-                    const y = centerY + Math.sin(angle) * radius;
-                    particles.push(new Particle(x, y));
-                }
-            } else if (mode === 2) {
-                // Spiral
-                const centerX = canvas.width / 2;
-                const centerY = canvas.height / 2;
-                for (let i = 0; i < 200; i++) {
-                    const angle = i * 0.1;
-                    const radius = i * 0.8;
-                    const x = centerX + Math.cos(angle) * radius;
-                    const y = centerY + Math.sin(angle) * radius;
-                    particles.push(new Particle(x, y));
-                }
-            } else if (mode === 3) {
-                // Wave
-                for (let i = 0; i < 200; i++) {
-                    const x = (i / 200) * canvas.width;
-                    const y = canvas.height / 2;
-                    const p = new Particle(x, y);
-                    p.amplitude = 50;
-                    particles.push(p);
-                }
+        // クリックでパーティクル生成
+        function createParticles(x, y, count = 20) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y));
             }
         }
 
-        // Audio setup
-        function setupAudio() {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
-            dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-            // Create oscillator for demo music
-            oscillator = audioContext.createOscillator();
-            gainNode = audioContext.createGain();
-
-            oscillator.connect(gainNode);
-            gainNode.connect(analyser);
-            analyser.connect(audioContext.destination);
-
-            oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-
-            oscillator.start();
-            isMusicPlaying = false;
-        }
-
-        function toggleMusic() {
-            if (!audioContext) {
-                setupAudio();
-            }
-
-            isMusicPlaying = !isMusicPlaying;
-
-            if (isMusicPlaying) {
-                // Play melody
-                playMelody();
-            } else {
-                gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-            }
-        }
-
-        function playMelody() {
-            if (!isMusicPlaying) return;
-
-            const notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25];
-            let noteIndex = 0;
-
-            function playNote() {
-                if (!isMusicPlaying) return;
-
-                const note = notes[noteIndex % notes.length];
-                oscillator.frequency.setValueAtTime(note, audioContext.currentTime);
-                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-
-                noteIndex++;
-                setTimeout(playNote, 300);
-            }
-
-            playNote();
-        }
-
-        function changeMode() {
-            mode = (mode + 1) % 4;
-            setMode(mode);
-        }
-
-        function resetParticles() {
-            setMode(mode);
-        }
-
-        // Click to add particles
         canvas.addEventListener('click', (e) => {
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
-
-            for (let i = 0; i < 20; i++) {
-                particles.push(new Particle(x, y));
-            }
+            createParticles(x, y, 30);
         });
 
-        // Animation loop
-        let time = 0;
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            createParticles(x, y, 30);
+        });
+
+        // 自動生成（中央）
+        function autoSpawn() {
+            autoSpawnTimer++;
+            if (autoSpawnTimer > 60) {
+                const x = canvas.width / 2 + (Math.random() - 0.5) * 100;
+                const y = canvas.height / 2 + (Math.random() - 0.5) * 100;
+                createParticles(x, y, 5);
+                autoSpawnTimer = 0;
+            }
+        }
+
+        // アニメーション
         function animate() {
-            ctx.fillStyle = 'rgba(10, 10, 20, 0.1)';
+            // 半透明でクリア（トレイル効果）
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.2)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Get audio data
-            let audioData = null;
-            if (analyser && isMusicPlaying) {
-                analyser.getByteFrequencyData(dataArray);
-                audioData = Array.from(dataArray);
-            }
+            // パーティクル更新・描画
+            particles = particles.filter(p => p.alpha > 0);
 
-            time += 0.02;
-
-            // Update and draw particles
-            particles.forEach((particle, index) => {
-                if (particle.mode === 3) {
-                    // Wave mode special handling
-                    particle.baseY = canvas.height / 2 + Math.sin(time + index * 0.1) * 50;
-                }
-
-                particle.update(audioData);
+            particles.forEach(particle => {
+                particle.update();
                 particle.draw();
-
-                // Respawn dead particles
-                if (particle.life <= 0) {
-                    particles[index] = new Particle();
-                }
             });
 
-            // Remove excess particles
-            if (particles.length > 300) {
-                particles = particles.slice(-300);
-            }
+            // 自動生成
+            autoSpawn();
+
+            // カウント更新
+            particleCountEl.textContent = particles.length;
 
             requestAnimationFrame(animate);
         }
 
+        // 開始
         animate();
 
-        // Fullscreen
+        // 全画面切り替え
         function toggleFullscreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
