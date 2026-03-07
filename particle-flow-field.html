@@ -12,35 +12,13 @@
         }
 
         body {
-            background: #0a0a1a;
+            background: #0a0a0f;
             overflow: hidden;
-            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Courier New', monospace;
         }
 
         canvas {
             display: block;
-            touch-action: none;
-        }
-
-        .fullscreen-btn {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            padding: 12px 24px;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 14px;
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
-            z-index: 100;
-        }
-
-        .fullscreen-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-            border-color: rgba(255, 255, 255, 0.5);
         }
 
         .info {
@@ -49,94 +27,89 @@
             left: 20px;
             color: rgba(255, 255, 255, 0.6);
             font-size: 12px;
+            z-index: 100;
             pointer-events: none;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
         }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
-    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
-    <div class="info">マウス/タッチで流れを乱せます</div>
+    <div class="info">Touch/Move to interact • Particles follow flow field</div>
+    <button class="fullscreen-btn" id="fullscreenBtn">全画面</button>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
 
         let width, height;
         let particles = [];
         let flowField = [];
         let rows, cols;
         const scale = 20;
-        let mouseX = -1000, mouseY = -1000;
-        let time = 0;
+        const numParticles = 2000;
+        let mouse = { x: null, y: null, radius: 150 };
+        let hue = 0;
 
-        // Simplex Noiseの簡易実装
-        class SimplexNoise {
-            constructor() {
-                this.perm = [];
-                for (let i = 0; i < 256; i++) this.perm[i] = Math.floor(Math.random() * 256);
-                this.perm = [...this.perm, ...this.perm];
-            }
-
-            noise2D(x, y) {
-                const F2 = 0.5 * (Math.sqrt(3) - 1);
-                const G2 = (3 - Math.sqrt(3)) / 6;
-
-                let n0, n1, n2;
-                const s = (x + y) * F2;
-                const i = Math.floor(x + s);
-                const j = Math.floor(y + s);
-                const t = (i + j) * G2;
-                const X0 = i - t;
-                const Y0 = j - t;
-                const x0 = x - X0;
-                const y0 = y - Y0;
-
-                let i1, j1;
-                if (x0 > y0) { i1 = 1; j1 = 0; }
-                else { i1 = 0; j1 = 1; }
-
-                const x1 = x0 - i1 + G2;
-                const y1 = y0 - j1 + G2;
-                const x2 = x0 - 1 + 2 * G2;
-                const y2 = y0 - 1 + 2 * G2;
-
-                const ii = i & 255;
-                const jj = j & 255;
-
-                let t0 = 0.5 - x0 * x0 - y0 * y0;
-                if (t0 < 0) n0 = 0;
-                else {
-                    t0 *= t0;
-                    n0 = t0 * t0 * this.grad(this.perm[ii + this.perm[jj]], x0, y0);
-                }
-
-                let t1 = 0.5 - x1 * x1 - y1 * y1;
-                if (t1 < 0) n1 = 0;
-                else {
-                    t1 *= t1;
-                    n1 = t1 * t1 * this.grad(this.perm[ii + i1 + this.perm[jj + j1]], x1, y1);
-                }
-
-                let t2 = 0.5 - x2 * x2 - y2 * y2;
-                if (t2 < 0) n2 = 0;
-                else {
-                    t2 *= t2;
-                    n2 = t2 * t2 * this.grad(this.perm[ii + 1 + this.perm[jj + 1]], x2, y2);
-                }
-
-                return 70 * (n0 + n1 + n2);
-            }
-
-            grad(hash, x, y) {
-                const h = hash & 7;
-                const u = h < 4 ? x : y;
-                const v = h < 4 ? y : x;
-                return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
-            }
+        // Simplex-like noise function (simplified)
+        function noise(x, y) {
+            const X = Math.floor(x) & 255;
+            const Y = Math.floor(y) & 255;
+            x -= Math.floor(x);
+            y -= Math.floor(y);
+            
+            const u = fade(x);
+            const v = fade(y);
+            
+            const a = grad(X, Y, x, y);
+            const b = grad(X + 1, Y, x - 1, y);
+            const ab = lerp(u, a, b);
+            
+            const c = grad(X, Y + 1, x, y - 1);
+            const d = grad(X + 1, Y + 1, x - 1, y - 1);
+            const cd = lerp(u, c, d);
+            
+            return lerp(v, ab, cd);
         }
 
-        const noise = new SimplexNoise();
+        function fade(t) {
+            return t * t * t * (t * (t * 6 - 15) + 10);
+        }
+
+        function lerp(t, a, b) {
+            return a + t * (b - a);
+        }
+
+        function grad(x, y, x2, y2) {
+            const hash = (x * 374761393 + y * 668265263) & 0x7fffffff;
+            const h = hash / 0x7fffffff;
+            const angle = h * Math.PI * 2;
+            return Math.cos(angle) * x2 + Math.sin(angle) * y2;
+        }
 
         class Particle {
             constructor() {
@@ -148,138 +121,187 @@
                 this.y = Math.random() * height;
                 this.vx = 0;
                 this.vy = 0;
-                this.life = Math.random() * 200 + 100;
-                this.maxLife = this.life;
-                this.hue = Math.random() * 60 + 180; // 青〜紫系
+                this.ax = 0;
+                this.ay = 0;
+                this.maxSpeed = 3;
+                this.history = [];
+                this.maxHistory = 10;
+                this.hueOffset = Math.random() * 60 - 30;
+                this.size = Math.random() * 2 + 1;
+            }
+
+            follow(flowField) {
+                const x = Math.floor(this.x / scale);
+                const y = Math.floor(this.y / scale);
+                const index = x + y * cols;
+                
+                if (flowField[index]) {
+                    this.ax = flowField[index].x * 0.5;
+                    this.ay = flowField[index].y * 0.5;
+                }
             }
 
             update() {
-                const col = Math.floor(this.x / scale);
-                const row = Math.floor(this.y / scale);
-                const index = col + row * cols;
-
-                if (index >= 0 && index < flowField.length) {
-                    let angle = flowField[index];
-
-                    // マウスの影響
-                    const dx = this.x - mouseX;
-                    const dy = this.y - mouseY;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-
-                    if (dist < 150) {
-                        const force = (150 - dist) / 150;
-                        angle += Math.atan2(dy, dx) * force * 2;
+                // Mouse interaction
+                if (mouse.x !== null && mouse.y !== null) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < mouse.radius) {
+                        const force = (mouse.radius - distance) / mouse.radius;
+                        this.ax -= (dx / distance) * force * 2;
+                        this.ay -= (dy / distance) * force * 2;
                     }
-
-                    this.vx += Math.cos(angle) * 0.5;
-                    this.vy += Math.sin(angle) * 0.5;
                 }
 
-                // 速度制限
+                this.vx += this.ax;
+                this.vy += this.ay;
+                
+                // Limit speed
                 const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                if (speed > 3) {
-                    this.vx = (this.vx / speed) * 3;
-                    this.vy = (this.vy / speed) * 3;
+                if (speed > this.maxSpeed) {
+                    this.vx = (this.vx / speed) * this.maxSpeed;
+                    this.vy = (this.vy / speed) * this.maxSpeed;
                 }
 
                 this.x += this.vx;
                 this.y += this.vy;
-                this.life--;
+                
+                this.ax = 0;
+                this.ay = 0;
 
-                if (this.life <= 0 || this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
-                    this.reset();
+                // History for trails
+                this.history.push({ x: this.x, y: this.y });
+                if (this.history.length > this.maxHistory) {
+                    this.history.shift();
+                }
+
+                // Wrap around
+                if (this.x < 0) {
+                    this.x = width;
+                    this.history = [];
+                }
+                if (this.x > width) {
+                    this.x = 0;
+                    this.history = [];
+                }
+                if (this.y < 0) {
+                    this.y = height;
+                    this.history = [];
+                }
+                if (this.y > height) {
+                    this.y = 0;
+                    this.history = [];
                 }
             }
 
             draw() {
-                const alpha = this.life / this.maxLife;
-                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha})`;
+                const h = (hue + this.hueOffset + this.x / width * 60) % 360;
+                const s = 70;
+                const l = 60;
+                
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.strokeStyle = `hsla(${h}, ${s}%, ${l}%, 0.8)`;
+                ctx.lineWidth = this.size;
+                ctx.lineCap = 'round';
+                
+                if (this.history.length > 1) {
+                    ctx.moveTo(this.history[0].x, this.history[0].y);
+                    for (let i = 1; i < this.history.length; i++) {
+                        ctx.lineTo(this.history[i].x, this.history[i].y);
+                    }
+                }
+                
+                ctx.stroke();
             }
         }
 
         function init() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-            cols = Math.ceil(width / scale);
-            rows = Math.ceil(height / scale);
+            resize();
+            
+            // Create flow field
+            flowField = [];
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const angle = noise(x * 0.1, y * 0.1) * Math.PI * 4;
+                    flowField.push({
+                        x: Math.cos(angle),
+                        y: Math.sin(angle)
+                    });
+                }
+            }
 
+            // Create particles
             particles = [];
-            for (let i = 0; i < 500; i++) {
+            for (let i = 0; i < numParticles; i++) {
                 particles.push(new Particle());
             }
-
-            updateFlowField();
         }
 
-        function updateFlowField() {
-            flowField = [];
-            let yoff = time;
-
-            for (let y = 0; y < rows; y++) {
-                let xoff = 0;
-                for (let x = 0; x < cols; x++) {
-                    const angle = noise.noise2D(xoff, yoff) * Math.PI * 4;
-                    flowField.push(angle);
-                    xoff += 0.1;
-                }
-                yoff += 0.1;
-            }
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.floor(width / scale) + 1;
+            rows = Math.floor(height / scale) + 1;
         }
 
         function animate() {
-            // トレイル効果
-            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            // Fade effect
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.05)';
             ctx.fillRect(0, 0, width, height);
 
-            time += 0.005;
-            if (Math.floor(time * 1000) % 100 === 0) {
-                updateFlowField();
-            }
+            // Update hue for color cycling
+            hue += 0.5;
 
-            particles.forEach(p => {
-                p.update();
-                p.draw();
+            // Update and draw particles
+            particles.forEach(particle => {
+                particle.follow(flowField);
+                particle.update();
+                particle.draw();
             });
 
             requestAnimationFrame(animate);
         }
 
-        function toggleFullscreen() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
-            } else {
-                document.exitFullscreen();
-            }
-        }
-
-        // イベントリスナー
-        window.addEventListener('resize', init);
+        // Event listeners
+        window.addEventListener('resize', () => {
+            resize();
+            init();
+        });
 
         canvas.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
         });
 
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            mouseX = e.touches[0].clientX;
-            mouseY = e.touches[0].clientY;
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
         }, { passive: false });
 
         canvas.addEventListener('touchend', () => {
-            mouseX = -1000;
-            mouseY = -1000;
+            mouse.x = null;
+            mouse.y = null;
         });
 
         canvas.addEventListener('mouseleave', () => {
-            mouseX = -1000;
-            mouseY = -1000;
+            mouse.x = null;
+            mouse.y = null;
         });
 
-        // 初期化
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                fullscreenBtn.textContent = '元に戻す';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = '全画面';
+            }
+        });
+
+        // Initialize and start
         init();
         animate();
     </script>
