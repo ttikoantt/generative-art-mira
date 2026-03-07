@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sound Wave Visualization</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            max-height: 100vh;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        button.active {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            text-align: center;
+            z-index: 10;
+            font-family: monospace;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <div>🎵 Sound Wave Visualization</div>
+        <div id="status">Click "Start Microphone" or "Upload Audio"</div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <button id="micBtn">🎤 Start Microphone</button>
+        <button id="fileBtn">📁 Upload Audio</button>
+        <input type="file" id="audioFile" accept="audio/*">
+        <button id="modeBtn">🌈 Change Mode</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶ Fullscreen</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const micBtn = document.getElementById('micBtn');
+        const fileBtn = document.getElementById('fileBtn');
+        const audioFile = document.getElementById('audioFile');
+        const modeBtn = document.getElementById('modeBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const status = document.getElementById('status');
+
+        let audioContext;
+        let analyser;
+        let source;
+        let animationId;
+        let mode = 0;
+        const modes = ['wave', 'bars', 'circle', 'particles'];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        async function startMicrophone() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                setupAudio(stream);
+                micBtn.textContent = '🎤 Stop Microphone';
+                micBtn.classList.add('active');
+                status.textContent = 'Listening to microphone...';
+            } catch (err) {
+                alert('Could not access microphone: ' + err.message);
+            }
+        }
+
+        function stopMicrophone() {
+            if (source) {
+                source.disconnect();
+                source = null;
+            }
+            micBtn.textContent = '🎤 Start Microphone';
+            micBtn.classList.remove('active');
+            status.textContent = 'Click "Start Microphone" or "Upload Audio"';
+        }
+
+        micBtn.addEventListener('click', () => {
+            if (micBtn.classList.contains('active')) {
+                stopMicrophone();
+            } else {
+                if (audioContext) {
+                    stopFileAudio();
+                }
+                startMicrophone();
+            }
+        });
+
+        fileBtn.addEventListener('click', () => audioFile.click());
+
+        audioFile.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                stopMicrophone();
+                const audio = new Audio();
+                audio.src = URL.createObjectURL(file);
+                audio.play();
+                setupAudio(audio);
+                status.textContent = 'Playing: ' + file.name;
+            }
+        });
+
+        function stopFileAudio() {
+            if (source && source.mediaElement) {
+                source.mediaElement.pause();
+                source.disconnect();
+                source = null;
+            }
+        }
+
+        function setupAudio(audioSource) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 2048;
+
+            if (audioSource instanceof MediaStream) {
+                source = audioContext.createMediaStreamSource(audioSource);
+            } else {
+                source = audioContext.createMediaElementSource(audioSource);
+            }
+
+            source.connect(analyser);
+            if (audioSource instanceof HTMLAudioElement) {
+                analyser.connect(audioContext.destination);
+            }
+
+            visualize();
+        }
+
+        function visualize() {
+            if (!analyser) return;
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            function draw() {
+                animationId = requestAnimationFrame(draw);
+                analyser.getByteTimeDomainData(dataArray);
+
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                switch (modes[mode]) {
+                    case 'wave':
+                        drawWave(dataArray, bufferLength);
+                        break;
+                    case 'bars':
+                        drawBars(dataArray, bufferLength);
+                        break;
+                    case 'circle':
+                        drawCircle(dataArray, bufferLength);
+                        break;
+                    case 'particles':
+                        drawParticles(dataArray, bufferLength);
+                        break;
+                }
+            }
+
+            draw();
+        }
+
+        function drawWave(dataArray, bufferLength) {
+            ctx.lineWidth = 3;
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+            gradient.addColorStop(0, '#ff006e');
+            gradient.addColorStop(0.5, '#8338ec');
+            gradient.addColorStop(1, '#3a86ff');
+            ctx.strokeStyle = gradient;
+
+            ctx.beginPath();
+            const sliceWidth = canvas.width * 1.0 / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = v * canvas.height / 2;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                x += sliceWidth;
+            }
+
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
+        }
+
+        function drawBars(dataArray, bufferLength) {
+            analyser.getByteFrequencyData(dataArray);
+            const barCount = 64;
+            const barWidth = canvas.width / barCount;
+            const barGap = 2;
+
+            for (let i = 0; i < barCount; i++) {
+                const value = dataArray[i * 4];
+                const barHeight = (value / 255) * canvas.height * 0.8;
+                const x = i * barWidth;
+                const y = canvas.height - barHeight;
+
+                const hue = (i / barCount) * 360;
+                ctx.fillStyle = `hsl(${hue}, 80%, 60%)`;
+                ctx.fillRect(x + barGap / 2, y, barWidth - barGap, barHeight);
+            }
+        }
+
+        function drawCircle(dataArray, bufferLength) {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) * 0.25;
+
+            for (let i = 0; i < bufferLength; i += 10) {
+                const v = dataArray[i] / 128.0;
+                const angle = (i / bufferLength) * Math.PI * 2;
+                const r = radius + (v - 1) * 100;
+
+                const x = centerX + Math.cos(angle) * r;
+                const y = centerY + Math.sin(angle) * r;
+
+                const hue = (i / bufferLength) * 360;
+                ctx.fillStyle = `hsl(${hue}, 80%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        let particles = [];
+        function drawParticles(dataArray, bufferLength) {
+            analyser.getByteFrequencyData(dataArray);
+
+            // Add new particles based on audio
+            for (let i = 0; i < 5; i++) {
+                const freqIndex = Math.floor(Math.random() * bufferLength);
+                const value = dataArray[freqIndex];
+                if (value > 100) {
+                    particles.push({
+                        x: Math.random() * canvas.width,
+                        y: canvas.height,
+                        vx: (Math.random() - 0.5) * 4,
+                        vy: -Math.random() * 5 - 2,
+                        size: Math.random() * 10 + 5,
+                        hue: Math.random() * 360,
+                        life: 1
+                    });
+                }
+            }
+
+            // Update and draw particles
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.1;
+                p.life -= 0.01;
+
+                if (p.life > 0) {
+                    ctx.globalAlpha = p.life;
+                    ctx.fillStyle = `hsl(${p.hue}, 80%, 60%)`;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                    return true;
+                }
+                return false;
+            });
+
+            // Limit particles
+            if (particles.length > 500) {
+                particles = particles.slice(-500);
+            }
+        }
+
+        modeBtn.addEventListener('click', () => {
+            mode = (mode + 1) % modes.length;
+            status.textContent = 'Mode: ' + modes[mode].toUpperCase();
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Touch support
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+    </script>
+</body>
+</html>

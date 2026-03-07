@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Gravity Orbit</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        body {
+            background: #0a0a0a;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        #gameCanvas {
+            border: 2px solid #333;
+            max-width: 100%;
+            max-height: 100vh;
+        }
+
+        .ui {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .score {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .high-score {
+            font-size: 14px;
+            opacity: 0.7;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            z-index: 20;
+        }
+
+        .game-over h2 {
+            margin-bottom: 20px;
+            font-size: 32px;
+        }
+
+        .game-over p {
+            margin: 10px 0;
+            font-size: 18px;
+        }
+
+        .restart-btn {
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 18px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .restart-btn:hover {
+            background: #45a049;
+        }
+
+        .start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 30;
+        }
+
+        .start-screen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .start-screen p {
+            font-size: 18px;
+            margin: 10px 0;
+            opacity: 0.8;
+        }
+
+        .start-btn {
+            margin-top: 30px;
+            padding: 20px 40px;
+            font-size: 24px;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+
+        .start-btn:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="score">Score: <span id="score">0</span></div>
+        <div class="high-score">Best: <span id="highScore">0</span></div>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶ Fullscreen</button>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="start-screen" id="startScreen">
+        <h1>🌌 Gravity Orbit</h1>
+        <p>Tap or Click to thrust away from the center star</p>
+        <p>Avoid the red obstacles!</p>
+        <p>Collect energy orbs for bonus points</p>
+        <button class="start-btn" id="startBtn">START</button>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <h2>💥 Game Over!</h2>
+        <p>Score: <span id="finalScore">0</span></p>
+        <p>Best: <span id="finalHighScore">0</span></p>
+        <button class="restart-btn" id="restartBtn">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth, window.innerHeight) * 0.95;
+            canvas.width = size;
+            canvas.height = size;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Game state
+        let gameState = 'start'; // start, playing, gameOver
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('gravityOrbitHighScore')) || 0;
+
+        document.getElementById('highScore').textContent = highScore;
+
+        // Player
+        const player = {
+            angle: 0,
+            distance: 150,
+            velocity: { x: 0, y: 0 },
+            radius: 10,
+            trail: []
+        };
+
+        // Central star
+        const star = {
+            x: 0,
+            y: 0,
+            radius: 30,
+            gravity: 0.5
+        };
+
+        // Obstacles and collectibles
+        let obstacles = [];
+        let energyOrbs = [];
+
+        function initGame() {
+            player.angle = Math.random() * Math.PI * 2;
+            player.distance = 150;
+            player.velocity = { x: 0, y: 0 };
+            player.trail = [];
+            score = 0;
+            obstacles = [];
+            energyOrbs = [];
+
+            star.x = canvas.width / 2;
+            star.y = canvas.height / 2;
+
+            // Spawn initial obstacles
+            for (let i = 0; i < 5; i++) {
+                spawnObstacle();
+            }
+
+            // Spawn initial energy orbs
+            for (let i = 0; i < 3; i++) {
+                spawnEnergyOrb();
+            }
+
+            document.getElementById('score').textContent = score;
+        }
+
+        function spawnObstacle() {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 200 + Math.random() * 200;
+            obstacles.push({
+                angle: angle,
+                distance: distance,
+                radius: 15 + Math.random() * 10,
+                speed: (Math.random() - 0.5) * 0.02,
+                color: '#ff4444'
+            });
+        }
+
+        function spawnEnergyOrb() {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 150 + Math.random() * 200;
+            energyOrbs.push({
+                angle: angle,
+                distance: distance,
+                radius: 8,
+                speed: (Math.random() - 0.5) * 0.01
+            });
+        }
+
+        function update() {
+            if (gameState !== 'playing') return;
+
+            // Apply gravity
+            const dx = star.x - (star.x + Math.cos(player.angle) * player.distance);
+            const dy = star.y - (star.y + Math.sin(player.angle) * player.distance);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist > star.radius) {
+                const gravityForce = star.gravity * (1000 / (dist * dist));
+                const angleToStar = Math.atan2(dy, dx);
+
+                player.velocity.x += Math.cos(angleToStar) * gravityForce;
+                player.velocity.y += Math.sin(angleToStar) * gravityForce;
+            }
+
+            // Apply velocity
+            const currentX = star.x + Math.cos(player.angle) * player.distance;
+            const currentY = star.y + Math.sin(player.angle) * player.distance;
+
+            player.velocity.x *= 0.99;
+            player.velocity.y *= 0.99;
+
+            const newX = currentX + player.velocity.x;
+            const newY = currentY + player.velocity.y;
+
+            player.angle = Math.atan2(newY - star.y, newX - star.x);
+            player.distance = Math.sqrt(
+                Math.pow(newX - star.x, 2) + Math.pow(newY - star.y, 2)
+            );
+
+            // Update trail
+            player.trail.push({ x: newX, y: newY });
+            if (player.trail.length > 50) {
+                player.trail.shift();
+            }
+
+            // Update obstacles
+            obstacles.forEach(obs => {
+                obs.angle += obs.speed;
+
+                // Check collision with player
+                const obsX = star.x + Math.cos(obs.angle) * obs.distance;
+                const obsY = star.y + Math.sin(obs.angle) * obs.distance;
+                const playerX = star.x + Math.cos(player.angle) * player.distance;
+                const playerY = star.y + Math.sin(player.angle) * player.distance;
+
+                const distToObs = Math.sqrt(
+                    Math.pow(obsX - playerX, 2) + Math.pow(obsY - playerY, 2)
+                );
+
+                if (distToObs < obs.radius + player.radius) {
+                    gameOver();
+                }
+            });
+
+            // Update energy orbs
+            energyOrbs.forEach((orb, index) => {
+                orb.angle += orb.speed;
+
+                // Check collision with player
+                const orbX = star.x + Math.cos(orb.angle) * orb.distance;
+                const orbY = star.y + Math.sin(orb.angle) * orb.distance;
+                const playerX = star.x + Math.cos(player.angle) * player.distance;
+                const playerY = star.y + Math.sin(player.angle) * player.distance;
+
+                const distToOrb = Math.sqrt(
+                    Math.pow(orbX - playerX, 2) + Math.pow(orbY - playerY, 2)
+                );
+
+                if (distToOrb < orb.radius + player.radius) {
+                    energyOrbs.splice(index, 1);
+                    score += 10;
+                    document.getElementById('score').textContent = score;
+                    spawnEnergyOrb();
+                }
+            });
+
+            // Spawn new obstacles periodically
+            if (Math.random() < 0.01) {
+                spawnObstacle();
+            }
+
+            // Limit obstacles
+            if (obstacles.length > 15) {
+                obstacles.shift();
+            }
+
+            // Check if player hit the star
+            if (player.distance < star.radius + player.radius) {
+                gameOver();
+            }
+
+            // Check if player flew off
+            if (player.distance > Math.max(canvas.width, canvas.height)) {
+                gameOver();
+            }
+
+            // Passive score increase
+            score += 0.1;
+            document.getElementById('score').textContent = score;
+        }
+
+        function draw() {
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw star
+            const gradient = ctx.createRadialGradient(
+                star.x, star.y, 0,
+                star.x, star.y, star.radius
+            );
+            gradient.addColorStop(0, '#ffff00');
+            gradient.addColorStop(0.5, '#ffa500');
+            gradient.addColorStop(1, '#ff6600');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw obstacles
+            obstacles.forEach(obs => {
+                const x = star.x + Math.cos(obs.angle) * obs.distance;
+                const y = star.y + Math.sin(obs.angle) * obs.distance;
+
+                ctx.fillStyle = obs.color;
+                ctx.beginPath();
+                ctx.arc(x, y, obs.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Glow effect
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = obs.color;
+                ctx.beginPath();
+                ctx.arc(x, y, obs.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Draw energy orbs
+            energyOrbs.forEach(orb => {
+                const x = star.x + Math.cos(orb.angle) * orb.distance;
+                const y = star.y + Math.sin(orb.angle) * orb.distance;
+
+                ctx.fillStyle = '#4ecdc4';
+                ctx.beginPath();
+                ctx.arc(x, y, orb.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Glow
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#4ecdc4';
+                ctx.beginPath();
+                ctx.arc(x, y, orb.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Draw player trail
+            player.trail.forEach((pos, i) => {
+                const alpha = i / player.trail.length;
+                ctx.fillStyle = `rgba(78, 205, 196, ${alpha * 0.5})`;
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw player
+            const playerX = star.x + Math.cos(player.angle) * player.distance;
+            const playerY = star.y + Math.sin(player.angle) * player.distance;
+
+            ctx.fillStyle = '#4ecdc4';
+            ctx.beginPath();
+            ctx.arc(playerX, playerY, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Player glow
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#4ecdc4';
+            ctx.beginPath();
+            ctx.arc(playerX, playerY, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+
+            if (gameState === 'playing') {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function thrust() {
+            if (gameState !== 'playing') return;
+
+            const thrustForce = 3;
+            const thrustAngle = player.angle + Math.PI; // Away from star
+
+            player.velocity.x += Math.cos(thrustAngle) * thrustForce;
+            player.velocity.y += Math.sin(thrustAngle) * thrustForce;
+        }
+
+        function gameOver() {
+            gameState = 'gameOver';
+
+            if (score > highScore) {
+                highScore = Math.floor(score);
+                localStorage.setItem('gravityOrbitHighScore', highScore);
+                document.getElementById('highScore').textContent = highScore;
+            }
+
+            document.getElementById('finalScore').textContent = Math.floor(score);
+            document.getElementById('finalHighScore').textContent = highScore;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        function startGame() {
+            gameState = 'playing';
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('gameOver').style.display = 'none';
+            initGame();
+            gameLoop();
+        }
+
+        // Event listeners
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+
+        canvas.addEventListener('click', thrust);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            thrust();
+        });
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Initial draw
+        initGame();
+        draw();
+    </script>
+</body>
+</html>
