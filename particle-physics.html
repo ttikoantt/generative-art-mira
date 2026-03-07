@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Particle Physics - 粒子物理シミュレーション</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .controls button {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .controls button:active {
+            transform: scale(0.95);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            z-index: 100;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <div>Particles: <span id="particleCount">0</span></div>
+        <div>FPS: <span id="fps">0</span></div>
+        <div>Click to add particles</div>
+    </div>
+
+    <div class="controls">
+        <button onclick="reset()">Reset</button>
+        <button onclick="toggleGravity()">Toggle Gravity</button>
+        <button onclick="explosion()">Explosion</button>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">Fullscreen</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let gravity = true;
+        let lastTime = 0;
+        let frameCount = 0;
+        let fps = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Particle {
+            constructor(x, y, vx = 0, vy = 0) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.radius = Math.random() * 15 + 10;
+                this.mass = this.radius * this.radius;
+                this.restitution = 0.8;
+                this.friction = 0.99;
+
+                const hue = Math.random() * 60 + 180; // Blue to cyan
+                const saturation = Math.random() * 30 + 70;
+                const lightness = Math.random() * 20 + 50;
+                this.color = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+                this.glowColor = `hsl(${hue}, ${saturation}%, ${lightness + 20}%)`;
+            }
+
+            update() {
+                if (gravity) {
+                    this.vy += 0.3;
+                }
+
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Wall collision
+                if (this.x - this.radius < 0) {
+                    this.x = this.radius;
+                    this.vx *= -this.restitution;
+                }
+                if (this.x + this.radius > width) {
+                    this.x = width - this.radius;
+                    this.vx *= -this.restitution;
+                }
+                if (this.y - this.radius < 0) {
+                    this.y = this.radius;
+                    this.vy *= -this.restitution;
+                }
+                if (this.y + this.radius > height) {
+                    this.y = height - this.radius;
+                    this.vy *= -this.restitution;
+                }
+            }
+
+            draw() {
+                // Glow effect
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius * 2
+                );
+                gradient.addColorStop(0, this.glowColor);
+                gradient.addColorStop(0.5, this.color);
+                gradient.addColorStop(1, 'transparent');
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Core
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+            }
+        }
+
+        function checkCollision(p1, p2) {
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance < p1.radius + p2.radius;
+        }
+
+        function resolveCollision(p1, p2) {
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance === 0) return;
+
+            const nx = dx / distance;
+            const ny = dy / distance;
+
+            const relativeVx = p1.vx - p2.vx;
+            const relativeVy = p1.vy - p2.vy;
+            const relativeVn = relativeVx * nx + relativeVy * ny;
+
+            if (relativeVn > 0) return;
+
+            const restitution = Math.min(p1.restitution, p2.restitution);
+            const impulse = -(1 + restitution) * relativeVn / (1 / p1.mass + 1 / p2.mass);
+
+            p1.vx += impulse * nx / p1.mass;
+            p1.vy += impulse * ny / p1.mass;
+            p2.vx -= impulse * nx / p2.mass;
+            p2.vy -= impulse * ny / p2.mass;
+
+            // Separate particles
+            const overlap = p1.radius + p2.radius - distance;
+            const separationX = overlap * nx * 0.5;
+            const separationY = overlap * ny * 0.5;
+
+            p1.x -= separationX;
+            p1.y -= separationY;
+            p2.x += separationX;
+            p2.y += separationY;
+        }
+
+        function init() {
+            particles = [];
+
+            const numParticles = Math.min(20, Math.floor((width * height) / 40000));
+
+            for (let i = 0; i < numParticles; i++) {
+                const radius = Math.random() * 15 + 10;
+                const x = Math.random() * (width - radius * 2) + radius;
+                const y = Math.random() * (height / 2);
+                const vx = (Math.random() - 0.5) * 8;
+                const vy = (Math.random() - 0.5) * 8;
+
+                particles.push(new Particle(x, y, vx, vy));
+            }
+
+            document.getElementById('particleCount').textContent = particles.length;
+        }
+
+        function update(timestamp) {
+            // FPS calculation
+            frameCount++;
+            if (timestamp - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = timestamp;
+                document.getElementById('fps').textContent = fps;
+            }
+
+            // Clear with trail effect
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Update particles
+            for (const particle of particles) {
+                particle.update();
+            }
+
+            // Check collisions
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    if (checkCollision(particles[i], particles[j])) {
+                        resolveCollision(particles[i], particles[j]);
+                    }
+                }
+            }
+
+            // Draw particles
+            for (const particle of particles) {
+                particle.draw();
+            }
+
+            // Draw connections
+            ctx.strokeStyle = 'rgba(100, 200, 255, 0.1)';
+            ctx.lineWidth = 1;
+
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[j].x - particles[i].x;
+                    const dy = particles[j].y - particles[i].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < 150) {
+                        ctx.globalAlpha = 1 - distance / 150;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            ctx.globalAlpha = 1;
+
+            requestAnimationFrame(update);
+        }
+
+        function reset() {
+            init();
+        }
+
+        function toggleGravity() {
+            gravity = !gravity;
+        }
+
+        function explosion() {
+            const centerX = width / 2;
+            const centerY = height / 2;
+
+            for (const particle of particles) {
+                const dx = particle.x - centerX;
+                const dy = particle.y - centerY;
+                const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+                const force = 500 / distance;
+
+                particle.vx += (dx / distance) * force;
+                particle.vy += (dy / distance) * force;
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Click to add particle
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            const vx = (Math.random() - 0.5) * 10;
+            const vy = (Math.random() - 0.5) * 10 - 5;
+
+            particles.push(new Particle(x, y, vx, vy));
+            document.getElementById('particleCount').textContent = particles.length;
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+
+            const vx = (Math.random() - 0.5) * 10;
+            const vy = (Math.random() - 0.5) * 10 - 5;
+
+            particles.push(new Particle(x, y, vx, vy));
+            document.getElementById('particleCount').textContent = particles.length;
+        });
+
+        init();
+        update(0);
+    </script>
+</body>
+</html>

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Delaunay Triangles Animation | Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            z-index: 100;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                bottom: 10px;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .btn {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+
+            .info {
+                font-size: 10px;
+                top: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        タップ/クリックで頂点追加 | ドラッグで頂点移動
+    </div>
+
+    <div class="controls">
+        <button class="btn" onclick="reset()">リセット</button>
+        <button class="btn" onclick="toggleAnimation()">一時停止</button>
+        <button class="btn" onclick="randomPoints()">ランダム配置</button>
+    </div>
+
+    <button class="btn fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let points = [];
+        let triangles = [];
+        let isAnimating = true;
+        let draggedPoint = null;
+        let mouseX = 0, mouseY = 0;
+
+        // 色相
+        let hueOffset = 0;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function init() {
+            resize();
+            randomPoints();
+            animate();
+        }
+
+        function randomPoints() {
+            points = [];
+            const numPoints = Math.floor((canvas.width * canvas.height) / 30000);
+
+            for (let i = 0; i < numPoints; i++) {
+                points.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    vx: (Math.random() - 0.5) * 0.5,
+                    vy: (Math.random() - 0.5) * 0.5
+                });
+            }
+        }
+
+        function reset() {
+            points = [];
+            randomPoints();
+        }
+
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+            document.querySelector('.controls .btn:nth-child(2)').textContent =
+                isAnimating ? '一時停止' : '再生';
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // スーパー三角形（外枠）
+        function getSuperTriangle() {
+            const w = canvas.width * 2;
+            const h = canvas.height * 2;
+            return [
+                { x: -w, y: -h },
+                { x: w * 2, y: -h },
+                { x: w / 2, y: h * 2 }
+            ];
+        }
+
+        // ドロネー三角形分割（ボロノイ図の双対）
+        function triangulate() {
+            const superTriangle = getSuperTriangle();
+            const allPoints = [...points, ...superTriangle];
+            const triangles = [superTriangle];
+
+            for (const point of allPoints.slice(0, -3)) {
+                const badTriangles = [];
+
+                for (const tri of triangles) {
+                    const circum = getCircumcircle(tri);
+                    if (dist(point, circum.center) < circum.radius) {
+                        badTriangles.push(tri);
+                    }
+                }
+
+                const polygon = [];
+                for (const tri of badTriangles) {
+                    for (let i = 0; i < 3; i++) {
+                        const edge = [tri[i], tri[(i + 1) % 3]];
+                        let shared = false;
+
+                        for (const otherTri of badTriangles) {
+                            if (tri === otherTri) continue;
+                            for (let j = 0; j < 3; j++) {
+                                const otherEdge = [otherTri[j], otherTri[(j + 1) % 3]];
+                                if ((edge[0] === otherEdge[0] && edge[1] === otherEdge[1]) ||
+                                    (edge[0] === otherEdge[1] && edge[1] === otherEdge[0])) {
+                                    shared = true;
+                                    break;
+                                }
+                            }
+                            if (shared) break;
+                        }
+
+                        if (!shared) {
+                            polygon.push(edge);
+                        }
+                    }
+                }
+
+                for (const tri of badTriangles) {
+                    const index = triangles.indexOf(tri);
+                    if (index > -1) triangles.splice(index, 1);
+                }
+
+                for (const edge of polygon) {
+                    triangles.push([edge[0], edge[1], point]);
+                }
+            }
+
+            // スーパー三角形に関連する三角形を削除
+            const validTriangles = triangles.filter(tri => {
+                return !tri.some(p => superTriangle.includes(p));
+            });
+
+            return validTriangles;
+        }
+
+        function getCircumcircle(tri) {
+            const [a, b, c] = tri;
+            const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+
+            const ux = ((a.x * a.x + a.y * a.y) * (b.y - c.y) +
+                       (b.x * b.x + b.y * b.y) * (c.y - a.y) +
+                       (c.x * c.x + c.y * c.y) * (a.y - b.y)) / d;
+
+            const uy = ((a.x * a.x + a.y * a.y) * (c.x - b.x) +
+                       (b.x * b.x + b.y * b.y) * (a.x - c.x) +
+                       (c.x * c.x + c.y * c.y) * (b.x - a.x)) / d;
+
+            const center = { x: ux, y: uy };
+            const radius = dist(a, center);
+
+            return { center, radius };
+        }
+
+        function dist(p1, p2) {
+            return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
+        }
+
+        function animate() {
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 点を更新
+            if (isAnimating) {
+                for (const point of points) {
+                    point.x += point.vx;
+                    point.y += point.vy;
+
+                    if (point.x < 0 || point.x > canvas.width) point.vx *= -1;
+                    if (point.y < 0 || point.y > canvas.height) point.vy *= -1;
+                }
+                hueOffset += 0.2;
+            }
+
+            // 三角形を計算
+            triangles = triangulate();
+
+            // 三角形を描画
+            for (let i = 0; i < triangles.length; i++) {
+                const tri = triangles[i];
+                const [a, b, c] = tri;
+
+                // 重心を計算
+                const cx = (a.x + b.x + c.x) / 3;
+                const cy = (a.y + b.y + c.y) / 3;
+
+                // 色を計算（位置と時間に基づく）
+                const hue = (cx / canvas.width * 60 + cy / canvas.height * 60 + hueOffset) % 360;
+                const saturation = 70 + Math.sin(hueOffset * 0.01) * 20;
+                const lightness = 40 + Math.sin(hueOffset * 0.02 + i * 0.1) * 15;
+
+                ctx.beginPath();
+                ctx.moveTo(a.x, a.y);
+                ctx.lineTo(b.x, b.y);
+                ctx.lineTo(c.x, c.y);
+                ctx.closePath();
+
+                ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, 0.6)`;
+                ctx.fill();
+
+                ctx.strokeStyle = `hsla(${hue}, ${saturation}%, ${lightness + 20}%, 0.3)`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            // 点を描画
+            for (const point of points) {
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.fill();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベントハンドラー
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // 既存の点を探す
+            for (const point of points) {
+                if (dist({ x, y }, point) < 20) {
+                    draggedPoint = point;
+                    return;
+                }
+            }
+
+            // 新しい点を追加
+            points.push({
+                x, y,
+                vx: (Math.random() - 0.5) * 0.5,
+                vy: (Math.random() - 0.5) * 0.5
+            });
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+
+            if (draggedPoint) {
+                draggedPoint.x = mouseX;
+                draggedPoint.y = mouseY;
+                draggedPoint.vx = 0;
+                draggedPoint.vy = 0;
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            if (draggedPoint) {
+                draggedPoint.vx = (Math.random() - 0.5) * 0.5;
+                draggedPoint.vy = (Math.random() - 0.5) * 0.5;
+            }
+            draggedPoint = null;
+        });
+
+        // タッチイベント
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+
+            for (const point of points) {
+                if (dist({ x, y }, point) < 30) {
+                    draggedPoint = point;
+                    return;
+                }
+            }
+
+            points.push({
+                x, y,
+                vx: (Math.random() - 0.5) * 0.5,
+                vy: (Math.random() - 0.5) * 0.5
+            });
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!draggedPoint) return;
+
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            draggedPoint.x = touch.clientX - rect.left;
+            draggedPoint.y = touch.clientY - rect.top;
+            draggedPoint.vx = 0;
+            draggedPoint.vy = 0;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            if (draggedPoint) {
+                draggedPoint.vx = (Math.random() - 0.5) * 0.5;
+                draggedPoint.vy = (Math.random() - 0.5) * 0.5;
+            }
+            draggedPoint = null;
+        });
+
+        window.addEventListener('resize', () => {
+            resize();
+        });
+
+        init();
+    </script>
+</body>
+</html>
