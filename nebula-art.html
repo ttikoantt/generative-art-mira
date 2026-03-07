@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nebula Art - Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        canvas {
+            border-radius: 12px;
+            box-shadow: 0 0 40px rgba(138, 43, 226, 0.3);
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .fullscreen-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
+        }
+
+        .fullscreen-btn:hover {
+            box-shadow: 0 6px 20px rgba(245, 87, 108, 0.6);
+        }
+
+        .info {
+            color: #aaa;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .title {
+            color: #fff;
+            font-size: 28px;
+            font-weight: 300;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        @media (max-width: 768px) {
+            canvas {
+                width: 95vw;
+                height: 95vw;
+                max-width: 500px;
+                max-height: 500px;
+            }
+
+            .title {
+                font-size: 20px;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">Nebula Art</h1>
+        <canvas id="canvas" width="600" height="600"></canvas>
+        <div class="controls">
+            <button id="generate">新しい星雲</button>
+            <button id="pause">一時停止</button>
+            <button id="fullscreen" class="fullscreen-btn">全画面</button>
+        </div>
+        <p class="info">Perlinノイズによるジェネレーティブアート</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let isAnimating = true;
+        let time = 0;
+        let animationId;
+        let particles = [];
+
+        // Perlinノイズの簡易実装
+        class PerlinNoise {
+            constructor() {
+                this.permutation = [];
+                for (let i = 0; i < 256; i++) {
+                    this.permutation[i] = i;
+                }
+                // シャッフル
+                for (let i = 255; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [this.permutation[i], this.permutation[j]] = [this.permutation[j], this.permutation[i]];
+                }
+                this.permutation = [...this.permutation, ...this.permutation];
+            }
+
+            fade(t) {
+                return t * t * t * (t * (t * 6 - 15) + 10);
+            }
+
+            lerp(a, b, t) {
+                return a + t * (b - a);
+            }
+
+            grad(hash, x, y) {
+                const h = hash & 3;
+                const u = h < 2 ? x : y;
+                const v = h < 2 ? y : x;
+                return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
+            }
+
+            noise(x, y) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+
+                const u = this.fade(x);
+                const v = this.fade(y);
+
+                const A = this.permutation[X] + Y;
+                const B = this.permutation[X + 1] + Y;
+
+                return this.lerp(
+                    this.lerp(this.grad(this.permutation[A], x, y), this.grad(this.permutation[B], x - 1, y), u),
+                    this.lerp(this.grad(this.permutation[A + 1], x, y - 1), this.grad(this.permutation[B + 1], x - 1, y - 1), u),
+                    v
+                );
+            }
+        }
+
+        const perlin = new PerlinNoise();
+
+        // 粒子クラス
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 2 + 0.5;
+                this.speedX = (Math.random() - 0.5) * 0.5;
+                this.speedY = (Math.random() - 0.5) * 0.5;
+                this.life = Math.random() * 100 + 100;
+                this.maxLife = this.life;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life--;
+
+                // ノイズによる動き
+                const noiseX = perlin.noise(this.x * 0.01, time * 0.001) * 0.5;
+                const noiseY = perlin.noise(this.y * 0.01, time * 0.001 + 100) * 0.5;
+                this.x += noiseX;
+                this.y += noiseY;
+
+                if (this.life <= 0 || this.x < 0 || this.x > canvas.width ||
+                    this.y < 0 || this.y > canvas.height) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = this.life / this.maxLife;
+                const hue = (time * 0.01 + this.x * 0.1 + this.y * 0.1) % 360;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        // 粒子を初期化
+        for (let i = 0; i < 300; i++) {
+            particles.push(new Particle());
+        }
+
+        function draw() {
+            // 背景を半透明で塗りつぶしてトレイル効果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // ノイズベースの雲を描画
+            for (let x = 0; x < canvas.width; x += 8) {
+                for (let y = 0; y < canvas.height; y += 8) {
+                    const noise1 = perlin.noise(x * 0.005, y * 0.005 + time * 0.0001);
+                    const noise2 = perlin.noise(x * 0.01 + 100, y * 0.01 + time * 0.0002 + 100);
+                    const combined = (noise1 + noise2) / 2;
+
+                    if (combined > 0.3) {
+                        const hue = (combined * 180 + time * 0.05) % 360;
+                        const alpha = (combined - 0.3) * 0.3;
+                        ctx.fillStyle = `hsla(${hue}, 70%, 50%, ${alpha})`;
+                        ctx.fillRect(x, y, 8, 8);
+                    }
+                }
+            }
+
+            // 粒子を更新・描画
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            time++;
+        }
+
+        function animate() {
+            if (!isAnimating) return;
+            draw();
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        document.getElementById('generate').addEventListener('click', () => {
+            perlin.permutation = [];
+            for (let i = 0; i < 256; i++) {
+                perlin.permutation[i] = i;
+            }
+            for (let i = 255; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [perlin.permutation[i], perlin.permutation[j]] = [perlin.permutation[j], perlin.permutation[i]];
+            }
+            perlin.permutation = [...perlin.permutation, ...perlin.permutation];
+            particles.forEach(p => p.reset());
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        });
+
+        document.getElementById('pause').addEventListener('click', (e) => {
+            isAnimating = !isAnimating;
+            e.target.textContent = isAnimating ? '一時停止' : '再生';
+            if (isAnimating) animate();
+        });
+
+        document.getElementById('fullscreen').addEventListener('click', () => {
+            if (canvas.requestFullscreen) {
+                canvas.requestFullscreen();
+            } else if (canvas.webkitRequestFullscreen) {
+                canvas.webkitRequestFullscreen();
+            }
+        });
+
+        // 初期化
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        animate();
+    </script>
+</body>
+</html>
