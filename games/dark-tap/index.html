@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dark Tap - 暗闇のターゲット</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #050508;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: manipulation;
+        }
+
+        #game {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at center, #0a0a12 0%, #050508 100%);
+        }
+
+        #ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .ui-element {
+            color: rgba(200, 230, 255, 0.9);
+            text-shadow: 0 0 10px rgba(100, 200, 255, 0.8),
+                         0 0 20px rgba(100, 200, 255, 0.4);
+        }
+
+        #score {
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        #combo {
+            font-size: 24px;
+            color: rgba(255, 200, 100, 0.9);
+            text-shadow: 0 0 10px rgba(255, 200, 100, 0.8);
+        }
+
+        #lives {
+            font-size: 24px;
+        }
+
+        #start-screen, #game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 5, 8, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+        }
+
+        #game-over-screen {
+            display: none;
+        }
+
+        h1 {
+            color: rgba(150, 220, 255, 0.9);
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(100, 200, 255, 0.8),
+                         0 0 40px rgba(100, 200, 255, 0.4);
+        }
+
+        .subtitle {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 18px;
+            margin-bottom: 40px;
+        }
+
+        button {
+            background: rgba(100, 200, 255, 0.2);
+            border: 2px solid rgba(100, 200, 255, 0.6);
+            color: rgba(255, 255, 255, 0.9);
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+            box-shadow: 0 0 20px rgba(100, 200, 255, 0.3);
+        }
+
+        button:hover {
+            background: rgba(100, 200, 255, 0.3);
+            box-shadow: 0 0 30px rgba(100, 200, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        #final-score {
+            font-size: 64px;
+            color: rgba(150, 220, 255, 0.9);
+            margin: 20px 0;
+            text-shadow: 0 0 20px rgba(100, 200, 255, 0.8);
+        }
+
+        #fullscreen {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(100, 200, 255, 0.2);
+            border: 1px solid rgba(100, 200, 255, 0.4);
+            color: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 100;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        #fullscreen:hover {
+            background: rgba(100, 200, 255, 0.3);
+            box-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+        }
+
+        .target {
+            position: absolute;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.1s ease;
+            animation: pulse 0.5s ease-in-out infinite;
+        }
+
+        .target:active {
+            transform: scale(0.9);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+
+        @keyframes explode {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(2);
+                opacity: 0;
+            }
+        }
+
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
+            animation: particle-fly 0.6s ease-out forwards;
+        }
+
+        @keyframes particle-fly {
+            0% {
+                transform: translate(0, 0) scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(var(--tx), var(--ty)) scale(0);
+                opacity: 0;
+            }
+        }
+
+        .score-popup {
+            position: absolute;
+            color: rgba(150, 220, 255, 0.9);
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(100, 200, 255, 0.8);
+            pointer-events: none;
+            animation: score-float 0.8s ease-out forwards;
+        }
+
+        @keyframes score-float {
+            0% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game">
+        <div id="ui">
+            <div id="score" class="ui-element">Score: 0</div>
+            <div id="combo" class="ui-element"></div>
+            <div id="lives" class="ui-element">❤️❤️❤️</div>
+        </div>
+        <button id="fullscreen">全画面</button>
+    </div>
+
+    <div id="start-screen">
+        <h1>🌑 Dark Tap</h1>
+        <div class="subtitle">光るターゲットをタップしてスコアを稼ごう！</div>
+        <button id="start-btn">ゲーム開始</button>
+    </div>
+
+    <div id="game-over-screen">
+        <h1>💀 Game Over</h1>
+        <div class="subtitle">最終スコア</div>
+        <div id="final-score">0</div>
+        <button id="restart-btn">もう一度</button>
+    </div>
+
+    <script>
+        const game = document.getElementById('game');
+        const scoreEl = document.getElementById('score');
+        const comboEl = document.getElementById('combo');
+        const livesEl = document.getElementById('lives');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const finalScoreEl = document.getElementById('final-score');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const fullscreenBtn = document.getElementById('fullscreen');
+
+        let score = 0;
+        let combo = 0;
+        let lives = 3;
+        let gameActive = false;
+        let targets = [];
+        let gameLoop = null;
+        let difficulty = 1;
+        let spawnRate = 1500;
+        let targetLifetime = 2500;
+
+        const colors = [
+            { bg: 'radial-gradient(circle, rgba(100, 200, 255, 0.8), rgba(100, 200, 255, 0))', glow: 'rgba(100, 200, 255, 0.6)' },
+            { bg: 'radial-gradient(circle, rgba(255, 150, 200, 0.8), rgba(255, 150, 200, 0))', glow: 'rgba(255, 150, 200, 0.6)' },
+            { bg: 'radial-gradient(circle, rgba(150, 255, 200, 0.8), rgba(150, 255, 200, 0))', glow: 'rgba(150, 255, 200, 0.6)' },
+            { bg: 'radial-gradient(circle, rgba(255, 200, 100, 0.8), rgba(255, 200, 100, 0))', glow: 'rgba(255, 200, 100, 0.6)' }
+        ];
+
+        function createTarget() {
+            if (!gameActive) return;
+
+            const target = document.createElement('div');
+            target.className = 'target';
+
+            const size = 40 + Math.random() * 40;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            target.style.width = size + 'px';
+            target.style.height = size + 'px';
+            target.style.background = color.bg;
+            target.style.boxShadow = `0 0 ${size}px ${color.glow}`;
+
+            const maxX = window.innerWidth - size;
+            const maxY = window.innerHeight - size;
+
+            target.style.left = Math.random() * maxX + 'px';
+            target.style.top = Math.random() * maxY + 'px';
+
+            const lifetime = targetLifetime / difficulty;
+            const createdAt = Date.now();
+
+            target.onclick = (e) => {
+                e.stopPropagation();
+                hitTarget(target, size, color.glow);
+            };
+
+            game.appendChild(target);
+            targets.push(target);
+
+            // タイムアウトで消える
+            setTimeout(() => {
+                if (target.parentNode && gameActive) {
+                    missTarget(target);
+                }
+            }, lifetime);
+        }
+
+        function hitTarget(target, size, glow) {
+            if (!gameActive) return;
+
+            // パーティクルエフェクト
+            createParticles(target.offsetLeft + size / 2, target.offsetTop + size / 2, glow);
+
+            // スコア計算
+            combo++;
+            const baseScore = 10;
+            const comboBonus = Math.min(combo * 5, 50);
+            const points = baseScore + comboBonus;
+
+            score += points;
+            scoreEl.textContent = `Score: ${score}`;
+
+            if (combo >= 2) {
+                comboEl.textContent = `Combo x${combo}!`;
+                comboEl.style.animation = 'none';
+                setTimeout(() => comboEl.style.animation = 'pulse 0.3s ease-in-out', 0);
+            } else {
+                comboEl.textContent = '';
+            }
+
+            // スコアポップアップ
+            showScorePopup(target.offsetLeft, target.offsetTop, points);
+
+            // ターゲット削除
+            target.remove();
+            targets = targets.filter(t => t !== target);
+
+            // 難易度上昇
+            updateDifficulty();
+        }
+
+        function missTarget(target) {
+            if (!gameActive) return;
+
+            combo = 0;
+            comboEl.textContent = '';
+
+            lives--;
+            updateLives();
+
+            target.remove();
+            targets = targets.filter(t => t !== target);
+
+            if (lives <= 0) {
+                endGame();
+            }
+        }
+
+        function createParticles(x, y, color) {
+            const particleCount = 12;
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+
+                const angle = (i / particleCount) * Math.PI * 2;
+                const distance = 50 + Math.random() * 50;
+                const tx = Math.cos(angle) * distance;
+                const ty = Math.sin(angle) * distance;
+
+                particle.style.setProperty('--tx', tx + 'px');
+                particle.style.setProperty('--ty', ty + 'px');
+                particle.style.left = x + 'px';
+                particle.style.top = y + 'px';
+                particle.style.width = '10px';
+                particle.style.height = '10px';
+                particle.style.background = color;
+                particle.style.boxShadow = `0 0 10px ${color}`;
+
+                game.appendChild(particle);
+
+                setTimeout(() => particle.remove(), 600);
+            }
+        }
+
+        function showScorePopup(x, y, points) {
+            const popup = document.createElement('div');
+            popup.className = 'score-popup';
+            popup.textContent = `+${points}`;
+            popup.style.left = x + 'px';
+            popup.style.top = y + 'px';
+
+            game.appendChild(popup);
+
+            setTimeout(() => popup.remove(), 800);
+        }
+
+        function updateDifficulty() {
+            // スコアに応じて難易度上昇
+            difficulty = 1 + Math.floor(score / 100) * 0.2;
+            spawnRate = Math.max(500, 1500 - score * 2);
+            targetLifetime = Math.max(1000, 2500 - score * 5);
+        }
+
+        function updateLives() {
+            livesEl.textContent = '❤️'.repeat(Math.max(0, lives));
+        }
+
+        function startGame() {
+            score = 0;
+            combo = 0;
+            lives = 3;
+            difficulty = 1;
+            spawnRate = 1500;
+            targetLifetime = 2500;
+            gameActive = true;
+
+            scoreEl.textContent = 'Score: 0';
+            comboEl.textContent = '';
+            updateLives();
+
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+
+            // 既存のターゲットを削除
+            targets.forEach(t => t.remove());
+            targets = [];
+
+            // ゲームループ開始
+            gameLoop = setInterval(createTarget, spawnRate);
+
+            // 難易度に応じてスポーンレートを更新
+            setInterval(() => {
+                if (gameActive) {
+                    clearInterval(gameLoop);
+                    gameLoop = setInterval(createTarget, spawnRate);
+                }
+            }, 5000);
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(gameLoop);
+
+            finalScoreEl.textContent = score;
+            gameOverScreen.style.display = 'flex';
+
+            // 残ったターゲットを削除
+            targets.forEach(t => t.remove());
+            targets = [];
+        }
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // 背景のクリックはミスにカウントしない（誤爆防止）
+        game.addEventListener('click', (e) => {
+            if (e.target === game || e.target.id === 'ui') {
+                // 背景クリックは何もしない
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Waves - 時間の波</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            z-index: 100;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+        }
+
+        #time {
+            font-size: 48px;
+            font-weight: bold;
+            color: rgba(150, 220, 255, 0.9);
+            text-shadow: 0 0 20px rgba(100, 200, 255, 0.8),
+                         0 0 40px rgba(100, 200, 255, 0.4);
+            margin-bottom: 10px;
+        }
+
+        #fullscreen {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(100, 200, 255, 0.2);
+            border: 1px solid rgba(100, 200, 255, 0.4);
+            color: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 100;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        #fullscreen:hover {
+            background: rgba(100, 200, 255, 0.3);
+            box-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+        }
+
+        .touch-hint {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            pointer-events: none;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 0.8; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="waves"></canvas>
+
+    <div id="info">
+        <div id="time">00:00:00</div>
+        <div>Time Waves</div>
+    </div>
+
+    <button id="fullscreen">全画面</button>
+
+    <div class="touch-hint">Click or touch to create ripples</div>
+
+    <script>
+        const canvas = document.getElementById('waves');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let waves = [];
+        let ripples = [];
+        let time = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+
+        class Wave {
+            constructor(index, total) {
+                this.index = index;
+                this.total = total;
+                this.baseY = height / 2;
+                this.amplitude = 50 + Math.random() * 100;
+                this.frequency = 0.002 + Math.random() * 0.003;
+                this.speed = 0.01 + Math.random() * 0.02;
+                this.phase = Math.random() * Math.PI * 2;
+                this.hue = 180 + (index / total) * 60;
+                this.alpha = 0.3 + Math.random() * 0.4;
+            }
+
+            update(t) {
+                const now = new Date();
+                const seconds = now.getSeconds() + now.getMilliseconds() / 1000;
+                const minutes = now.getMinutes();
+
+                // 時間に応じて振幅が変化
+                const timeFactor = Math.sin(t * 0.001 + this.phase) * 0.5 + 0.5;
+                this.amplitude = (50 + timeFactor * 150) * (1 + minutes / 60);
+
+                // 波の動き
+                this.baseY = height / 2 + Math.sin(t * this.speed + this.phase) * 100;
+            }
+
+            draw(ctx, t) {
+                ctx.beginPath();
+                ctx.moveTo(0, this.baseY);
+
+                for (let x = 0; x < width; x += 2) {
+                    const y = this.baseY +
+                        Math.sin(x * this.frequency + t * this.speed + this.phase) * this.amplitude +
+                        Math.sin(x * this.frequency * 2 + t * this.speed * 1.5) * this.amplitude * 0.5;
+
+                    ctx.lineTo(x, y);
+                }
+
+                ctx.strokeStyle = `hsla(${this.hue}, 70%, 60%, ${this.alpha})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // グロー効果
+                ctx.strokeStyle = `hsla(${this.hue}, 70%, 60%, ${this.alpha * 0.3})`;
+                ctx.lineWidth = 6;
+                ctx.stroke();
+            }
+        }
+
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = 200 + Math.random() * 200;
+                this.speed = 2 + Math.random() * 3;
+                this.alpha = 1;
+                this.hue = 180 + Math.random() * 60;
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.alpha = 1 - (this.radius / this.maxRadius);
+            }
+
+            draw(ctx) {
+                if (this.alpha <= 0) return;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, this.radius * 0.5,
+                    this.x, this.y, this.radius
+                );
+
+                gradient.addColorStop(0, `hsla(${this.hue}, 70%, 60%, 0)`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 70%, 60%, ${this.alpha * 0.5})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 70%, 60%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue}, 70%, 70%, ${this.alpha * 0.8})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            isDead() {
+                return this.alpha <= 0;
+            }
+        }
+
+        // 初期化
+        for (let i = 0; i < 8; i++) {
+            waves.push(new Wave(i, 8));
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', (e) => {
+            ripples.push(new Ripple(e.clientX, e.clientY));
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            for (let touch of e.touches) {
+                ripples.push(new Ripple(touch.clientX, touch.clientY));
+            }
+        }, { passive: false });
+
+        document.getElementById('fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // 時刻更新
+        function updateTime() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('ja-JP', { hour12: false });
+            document.getElementById('time').textContent = timeStr;
+        }
+        setInterval(updateTime, 100);
+        updateTime();
+
+        // 自動で波紋を作成
+        setInterval(() => {
+            if (Math.random() > 0.5) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                ripples.push(new Ripple(x, y));
+            }
+        }, 3000);
+
+        function animate() {
+            // 深い闇の背景
+            ctx.fillStyle = 'rgba(5, 5, 10, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            time++;
+
+            // 波の更新と描画
+            waves.forEach(wave => {
+                wave.update(time);
+                wave.draw(ctx, time);
+            });
+
+            // 波紋の更新と描画
+            ripples = ripples.filter(ripple => {
+                ripple.update();
+                ripple.draw(ctx);
+                return !ripple.isDead();
+            });
+
+            // グロー効果全体
+            const glowGradient = ctx.createRadialGradient(
+                width / 2, height / 2, 0,
+                width / 2, height / 2, Math.max(width, height) / 2
+            );
+            glowGradient.addColorStop(0, 'rgba(100, 200, 255, 0.02)');
+            glowGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+            ctx.fillStyle = glowGradient;
+            ctx.fillRect(0, 0, width, height);
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
