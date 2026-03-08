@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Constellation - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 50%, #0f0f23 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 50px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 100;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 20px;
+            border-radius: 15px;
+            color: white;
+            font-size: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 100;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            padding: 10px 15px;
+            border-radius: 10px;
+            color: white;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <strong>⭐ Particle Constellation</strong><br>
+        マウスを動かして星々を繋ぐ<br>
+        <span id="particleCount">0</span> パーティクル
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="controls">
+        <button class="control-btn" onclick="reset()">🔄 リセット</button>
+        <button class="control-btn" onclick="addParticles(20)">✨ 追加</button>
+        <button class="control-btn" onclick="togglePause()">⏸️ 一時停止</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let particles = [];
+        let mouse = { x: null, y: null, radius: 150 };
+        let isPaused = false;
+        let animationId;
+
+        // 色パレット（星の色）
+        const colors = [
+            '#ffffff',
+            '#ffe4e1',
+            '#e6e6fa',
+            '#b0e0e6',
+            '#87ceeb',
+            '#ffd700',
+            '#ff69b4',
+            '#00bfff'
+        ];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x || Math.random() * canvas.width;
+                this.y = y || Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.radius = Math.random() * 2 + 1;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.alpha = Math.random() * 0.5 + 0.5;
+                this.twinkle = Math.random() * 0.02 + 0.01;
+                this.twinkleDir = 1;
+            }
+
+            update() {
+                if (isPaused) return;
+
+                // 移動
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 境界で反転
+                if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+
+                // マウス反応
+                if (mouse.x !== null && mouse.y !== null) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < mouse.radius) {
+                        const force = (mouse.radius - distance) / mouse.radius;
+                        this.vx -= (dx / distance) * force * 0.02;
+                        this.vy -= (dy / distance) * force * 0.02;
+                    }
+                }
+
+                // キラキラ効果
+                this.alpha += this.twinkle * this.twinkleDir;
+                if (this.alpha > 1 || this.alpha < 0.3) {
+                    this.twinkleDir *= -1;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.alpha;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // 光る効果
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 3, 0, Math.PI * 2);
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius * 3
+                );
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(1, 'transparent');
+                ctx.fillStyle = gradient;
+                ctx.globalAlpha = this.alpha * 0.2;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function init() {
+            particles = [];
+            const numParticles = Math.floor((canvas.width * canvas.height) / 15000);
+            for (let i = 0; i < numParticles; i++) {
+                particles.push(new Particle());
+            }
+            updateParticleCount();
+        }
+
+        function addParticles(count) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle());
+            }
+            updateParticleCount();
+        }
+
+        function updateParticleCount() {
+            document.getElementById('particleCount').textContent = particles.length;
+        }
+
+        function drawLines() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < 120) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+
+                        // 距離に応じて透明度を変える
+                        const opacity = (1 - distance / 120) * 0.5;
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+
+                // マウスとも繋ぐ
+                if (mouse.x !== null && mouse.y !== null) {
+                    const dx = particles[i].x - mouse.x;
+                    const dy = particles[i].y - mouse.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < mouse.radius) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(mouse.x, mouse.y);
+
+                        const opacity = (1 - distance / mouse.radius) * 0.7;
+                        const hue = (distance / mouse.radius) * 60 + 200; // 青から紫
+                        ctx.strokeStyle = `hsla(${hue}, 70%, 60%, ${opacity})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 線を描画（パーティクルの後ろ）
+            drawLines();
+
+            // パーティクルを描画
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function reset() {
+            cancelAnimationFrame(animationId);
+            init();
+            animate();
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            const btn = event.target;
+            btn.textContent = isPaused ? '▶️ 再開' : '⏸️ 一時停止';
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', () => {
+            resize();
+            init();
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        // タッチ対応
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouse.x = touch.clientX;
+            mouse.y = touch.clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        // 初期化
+        resize();
+        init();
+        animate();
+    </script>
+</body>
+</html>
