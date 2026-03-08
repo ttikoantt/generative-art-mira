@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Wave - Mira's Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .info h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+            background: linear-gradient(45deg, #ff6b9d, #c44cff, #6bb3ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h1>Cosmic Wave</h1>
+        <p>Interactive particle waves</p>
+    </div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let particles = [];
+        let waves = [];
+        let time = 0;
+
+        // Resize
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initWaves();
+        }
+
+        // Initialize waves
+        function initWaves() {
+            waves = [];
+            const numWaves = 7;
+            for (let i = 0; i < numWaves; i++) {
+                waves.push({
+                    amplitude: 30 + Math.random() * 50,
+                    frequency: 0.005 + Math.random() * 0.01,
+                    speed: 0.02 + Math.random() * 0.03,
+                    phase: Math.random() * Math.PI * 2,
+                    y: height / 2 + (Math.random() - 0.5) * height * 0.5,
+                    color: `hsl(${280 + i * 20}, 80%, 60%)`
+                });
+            }
+        }
+
+        // Particle class
+        class Particle {
+            constructor(x, y, waveIndex) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.life = 1;
+                this.decay = 0.005 + Math.random() * 0.01;
+                this.size = 2 + Math.random() * 3;
+                this.waveIndex = waveIndex;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+
+                // Attract to mouse
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 200) {
+                    this.vx += dx * 0.0001;
+                    this.vy += dy * 0.0001;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = waves[this.waveIndex].color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Draw waves
+        function drawWaves() {
+            waves.forEach((wave, index) => {
+                ctx.beginPath();
+                ctx.strokeStyle = wave.color;
+                ctx.lineWidth = 2;
+                ctx.globalAlpha = 0.6;
+
+                for (let x = 0; x < width; x += 5) {
+                    const y = wave.y +
+                        Math.sin(x * wave.frequency + time * wave.speed + wave.phase) * wave.amplitude +
+                        Math.sin(x * wave.frequency * 2 + time * wave.speed * 1.5) * wave.amplitude * 0.5;
+
+                    // Mouse influence
+                    const dx = x - mouseX;
+                    const dy = y - mouseY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const influence = Math.max(0, 1 - dist / 300);
+
+                    const offsetY = y + Math.sin(dist * 0.02 - time * 0.1) * 20 * influence;
+
+                    if (x === 0) {
+                        ctx.moveTo(x, offsetY);
+                    } else {
+                        ctx.lineTo(x, offsetY);
+                    }
+
+                    // Spawn particles occasionally
+                    if (Math.random() < 0.001 * (1 + influence * 5)) {
+                        particles.push(new Particle(x, offsetY, index));
+                    }
+                }
+
+                ctx.stroke();
+            });
+        }
+
+        // Update and draw particles
+        function updateParticles() {
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+        }
+
+        // Animate
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            time += 1;
+            drawWaves();
+            updateParticles();
+
+            requestAnimationFrame(animate);
+        }
+
+        // Events
+        window.addEventListener('resize', resize);
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        window.addEventListener('touchmove', (e) => {
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        // Fullscreen
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Start
+        resize();
+        mouseX = width / 2;
+        mouseY = height / 2;
+        animate();
+    </script>
+</body>
+</html>
