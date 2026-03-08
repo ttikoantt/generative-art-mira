@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Flow Garden</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        .control-group {
+            margin-bottom: 10px;
+        }
+
+        .control-group label {
+            color: white;
+            font-size: 12px;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .control-group input[type="range"] {
+            width: 150px;
+        }
+
+        .stats {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            z-index: 100;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        マウスを動かすと粒子が反応します
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>粒子数: <span id="particleCountValue">200</span></label>
+            <input type="range" id="particleCount" min="50" max="500" value="200">
+        </div>
+        <div class="control-group">
+            <label>流れの強さ: <span id="flowStrengthValue">2</span></label>
+            <input type="range" id="flowStrength" min="1" max="5" value="2" step="0.5">
+        </div>
+        <div class="control-group">
+            <label>色の変化: <span id="colorSpeedValue">1</span></label>
+            <input type="range" id="colorSpeed" min="0.5" max="3" value="1" step="0.5">
+        </div>
+    </div>
+
+    <div class="stats">
+        FPS: <span id="fps">60</span><br>
+        粒子: <span id="particleNum">200</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let mouseX = -1000, mouseY = -1000;
+        let hue = 0;
+
+        // Settings
+        let settings = {
+            particleCount: 200,
+            flowStrength: 2,
+            colorSpeed: 1
+        };
+
+        // FPS calculation
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 60;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.size = Math.random() * 3 + 1;
+                this.life = Math.random() * 100 + 100;
+                this.hue = Math.random() * 60 - 30;
+            }
+
+            update() {
+                // Base flow
+                const angle = (this.x / width) * Math.PI * 2 + (this.y / height) * Math.PI;
+                this.vx += Math.cos(angle) * 0.1;
+                this.vy += Math.sin(angle) * 0.1;
+
+                // Mouse influence
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 200) {
+                    const force = (200 - dist) / 200;
+                    this.vx += (dx / dist) * force * settings.flowStrength;
+                    this.vy += (dy / dist) * force * settings.flowStrength;
+                }
+
+                // Noise-like movement
+                this.vx += (Math.random() - 0.5) * 0.5;
+                this.vy += (Math.random() - 0.5) * 0.5;
+
+                // Friction
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Life
+                this.life--;
+                if (this.life <= 0 || this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const alpha = (this.life / 200) * 0.8;
+                const h = (hue + this.hue + speed * 10) % 360;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * (1 + speed * 0.5), 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${h}, 70%, 60%, ${alpha})`;
+                ctx.fill();
+
+                // Glow
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${h}, 70%, 60%, ${alpha * 0.3})`;
+                ctx.fill();
+            }
+        }
+
+        function createParticles() {
+            particles = [];
+            for (let i = 0; i < settings.particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function animate() {
+            // Semi-transparent black for trail effect
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Update hue
+            hue += settings.colorSpeed;
+
+            // Update and draw particles
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // Draw connecting lines
+            ctx.strokeStyle = `hsla(${hue}, 50%, 50%, 0.1)`;
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 80) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.globalAlpha = 1 - dist / 80;
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    }
+                }
+            }
+
+            // Calculate FPS
+            frameCount++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+                document.getElementById('fps').textContent = fps;
+                document.getElementById('particleNum').textContent = particles.length;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        // Controls
+        document.getElementById('particleCount').addEventListener('input', (e) => {
+            settings.particleCount = parseInt(e.target.value);
+            document.getElementById('particleCountValue').textContent = settings.particleCount;
+            createParticles();
+        });
+
+        document.getElementById('flowStrength').addEventListener('input', (e) => {
+            settings.flowStrength = parseFloat(e.target.value);
+            document.getElementById('flowStrengthValue').textContent = settings.flowStrength;
+        });
+
+        document.getElementById('colorSpeed').addEventListener('input', (e) => {
+            settings.colorSpeed = parseFloat(e.target.value);
+            document.getElementById('colorSpeedValue').textContent = settings.colorSpeed;
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Initialize
+        resize();
+        createParticles();
+        animate();
+    </script>
+</body>
+</html>
