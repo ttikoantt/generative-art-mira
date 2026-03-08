@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Sound Reactive Aurora | 音楽に反応するオーロラ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(to bottom, #0a0a1a, #1a1a2e, #0f0f23);
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #bgCanvas {
+            z-index: 1;
+        }
+
+        #auroraCanvas {
+            z-index: 2;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .btn.active {
+            background: rgba(100, 200, 255, 0.3);
+            border-color: rgba(100, 200, 255, 0.6);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            color: white;
+            text-align: center;
+            opacity: 0.7;
+            font-size: 14px;
+        }
+
+        .fullscreen {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-wrap: wrap;
+                justify-content: center;
+                padding: 10px;
+            }
+
+            .info {
+                font-size: 12px;
+                padding: 0 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="bgCanvas"></canvas>
+    <canvas id="auroraCanvas"></canvas>
+
+    <div class="info">
+        <div>🎵 音楽に反応するオーロラ</div>
+        <div style="font-size: 12px; margin-top: 5px;">マイクまたは音楽を再生して楽しんでください</div>
+    </div>
+
+    <div class="controls">
+        <button class="btn" id="micBtn">🎤 マイク開始</button>
+        <button class="btn" id="demoBtn">🎵 デモ音楽</button>
+    </div>
+
+    <button class="btn fullscreen" id="fullscreenBtn">⛶</button>
+
+    <script>
+        // Canvas setup
+        const bgCanvas = document.getElementById('bgCanvas');
+        const auroraCanvas = document.getElementById('auroraCanvas');
+        const bgCtx = bgCanvas.getContext('2d');
+        const auroraCtx = auroraCanvas.getContext('2d');
+
+        let width, height;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            bgCanvas.width = width;
+            bgCanvas.height = height;
+            auroraCanvas.width = width;
+            auroraCanvas.height = height;
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Audio setup
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let isRunning = false;
+        let demoOscillators = [];
+
+        async function startMicrophone() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 512;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+
+                isRunning = true;
+                document.getElementById('micBtn').classList.add('active');
+                document.getElementById('demoBtn').classList.remove('active');
+            } catch (err) {
+                console.error('Microphone error:', err);
+                alert('マイクへのアクセスが許可されていません');
+            }
+        }
+
+        function startDemo() {
+            stopAudio();
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 512;
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+            // Create demo sound
+            const osc1 = audioContext.createOscillator();
+            const osc2 = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+
+            osc1.connect(gain);
+            osc2.connect(gain);
+            gain.connect(analyser);
+            gain.connect(audioContext.destination);
+
+            osc1.type = 'sine';
+            osc2.type = 'sine';
+            osc1.frequency.setValueAtTime(220, audioContext.currentTime);
+            osc2.frequency.setValueAtTime(330, audioContext.currentTime);
+            gain.gain.setValueAtTime(0.1, audioContext.currentTime);
+
+            osc1.start();
+            osc2.start();
+
+            demoOscillators = [osc1, osc2, gain];
+            isRunning = true;
+            document.getElementById('demoBtn').classList.add('active');
+            document.getElementById('micBtn').classList.remove('active');
+
+            // Modulate frequency
+            setInterval(() => {
+                if (isRunning && demoOscillators.length > 0) {
+                    const freq1 = 200 + Math.random() * 200;
+                    const freq2 = 300 + Math.random() * 300;
+                    osc1.frequency.setValueAtTime(freq1, audioContext.currentTime);
+                    osc2.frequency.setValueAtTime(freq2, audioContext.currentTime);
+                }
+            }, 500);
+        }
+
+        function stopAudio() {
+            if (demoOscillators.length > 0) {
+                demoOscillators.forEach(osc => {
+                    try { osc.stop(); } catch(e) {}
+                    try { osc.disconnect(); } catch(e) {}
+                });
+                demoOscillators = [];
+            }
+            if (audioContext) {
+                try { audioContext.close(); } catch(e) {}
+            }
+            isRunning = false;
+            document.getElementById('micBtn').classList.remove('active');
+            document.getElementById('demoBtn').classList.remove('active');
+        }
+
+        // Stars
+        class Star {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height * 0.7;
+                this.size = Math.random() * 2 + 0.5;
+                this.twinkle = Math.random() * Math.PI * 2;
+                this.speed = Math.random() * 0.02 + 0.01;
+            }
+
+            update() {
+                this.twinkle += this.speed;
+            }
+
+            draw(ctx) {
+                const alpha = 0.3 + Math.sin(this.twinkle) * 0.3;
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        const stars = Array(100).fill().map(() => new Star());
+
+        // Aurora wave
+        class AuroraWave {
+            constructor(yOffset, phase, color) {
+                this.yOffset = yOffset;
+                this.phase = phase;
+                this.color = color;
+                this.points = [];
+            }
+
+            update(audioLevel, bassLevel) {
+                this.points = [];
+                const amplitude = 30 + bassLevel * 0.5;
+                const frequency = 0.003 + audioLevel * 0.00002;
+                const speed = 0.002 + audioLevel * 0.00001;
+
+                this.phase += speed;
+
+                for (let x = 0; x <= width; x += 5) {
+                    const y = this.yOffset +
+                              Math.sin(x * frequency + this.phase) * amplitude +
+                              Math.sin(x * frequency * 2 + this.phase * 1.5) * amplitude * 0.5;
+                    this.points.push({ x, y });
+                }
+            }
+
+            draw(ctx) {
+                if (this.points.length < 2) return;
+
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+
+                // Draw multiple layers for glow effect
+                for (let layer = 0; layer < 3; layer++) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.points[0].x, this.points[0].y);
+
+                    for (let i = 1; i < this.points.length - 1; i++) {
+                        const xc = (this.points[i].x + this.points[i + 1].x) / 2;
+                        const yc = (this.points[i].y + this.points[i + 1].y) / 2;
+                        ctx.quadraticCurveTo(this.points[i].x, this.points[i].y, xc, yc);
+                    }
+
+                    ctx.lineTo(this.points[this.points.length - 1].x, this.points[this.points.length - 1].y);
+
+                    const alpha = 0.15 - layer * 0.04;
+                    const hue = this.color + layer * 10;
+                    ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
+                    ctx.lineWidth = 30 - layer * 8;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        const auroras = [
+            new AuroraWave(height * 0.3, 0, 160),
+            new AuroraWave(height * 0.35, 2, 180),
+            new AuroraWave(height * 0.4, 4, 200),
+            new AuroraWave(height * 0.45, 1, 140),
+            new AuroraWave(height * 0.5, 3, 220)
+        ];
+
+        // Get audio data
+        function getAudioData() {
+            if (!isRunning || !analyser) {
+                return { bass: 0, mid: 0, high: 0, total: 0 };
+            }
+
+            analyser.getByteFrequencyData(dataArray);
+
+            const bass = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+            const mid = dataArray.slice(10, 100).reduce((a, b) => a + b, 0) / 90;
+            const high = dataArray.slice(100, 200).reduce((a, b) => a + b, 0) / 100;
+            const total = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+
+            return { bass, mid, high, total };
+        }
+
+        // Draw background with mountains
+        function drawBackground() {
+            // Gradient sky
+            const gradient = bgCtx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#0a0a1a');
+            gradient.addColorStop(0.5, '#1a1a2e');
+            gradient.addColorStop(1, '#0f0f23');
+            bgCtx.fillStyle = gradient;
+            bgCtx.fillRect(0, 0, width, height);
+
+            // Draw stars
+            stars.forEach(star => {
+                star.update();
+                star.draw(bgCtx);
+            });
+
+            // Draw mountains
+            bgCtx.fillStyle = '#1a1a2e';
+            bgCtx.beginPath();
+            bgCtx.moveTo(0, height);
+
+            let x = 0;
+            while (x < width) {
+                const mountainHeight = height * 0.15 + Math.random() * height * 0.1;
+                const mountainWidth = 100 + Math.random() * 200;
+                bgCtx.lineTo(x + mountainWidth / 2, height - mountainHeight);
+                bgCtx.lineTo(x + mountainWidth, height);
+                x += mountainWidth;
+            }
+
+            bgCtx.closePath();
+            bgCtx.fill();
+        }
+
+        // Animation loop
+        let frame = 0;
+
+        function animate() {
+            frame++;
+
+            // Clear and redraw background occasionally
+            if (frame % 60 === 0) {
+                drawBackground();
+            }
+
+            auroraCtx.clearRect(0, 0, width, height);
+
+            const audio = getAudioData();
+
+            // Update and draw auroras
+            auroras.forEach((aurora, i) => {
+                const yOffset = height * 0.3 + i * 0.05 * height;
+                const audioMod = audio.bass * 0.3 + audio.mid * 0.2;
+                aurora.yOffset = yOffset + Math.sin(frame * 0.01 + i) * 20 + audioMod;
+                aurora.update(audio.total, audio.bass);
+                aurora.draw(auroraCtx);
+            });
+
+            // Add glow particles based on audio
+            if (audio.total > 30) {
+                const particleCount = Math.floor(audio.total / 50);
+                for (let i = 0; i < particleCount; i++) {
+                    const x = Math.random() * width;
+                    const y = height * 0.3 + Math.random() * height * 0.3;
+                    const hue = 140 + Math.random() * 100;
+                    const size = Math.random() * 3 + 1;
+
+                    auroraCtx.save();
+                    auroraCtx.globalCompositeOperation = 'lighter';
+                    auroraCtx.fillStyle = `hsla(${hue}, 80%, 70%, ${0.3 + Math.random() * 0.3})`;
+                    auroraCtx.beginPath();
+                    auroraCtx.arc(x, y, size, 0, Math.PI * 2);
+                    auroraCtx.fill();
+                    auroraCtx.restore();
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize
+        drawBackground();
+        animate();
+
+        // Event listeners
+        document.getElementById('micBtn').addEventListener('click', startMicrophone);
+        document.getElementById('demoBtn').addEventListener('click', startDemo);
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.getElementById('fullscreenBtn').addEventListener('fullscreenchange', () => {
+            document.getElementById('fullscreenBtn').textContent =
+                document.fullscreenElement ? '⛶' : '⛶';
+        });
+
+        // Touch/click to create aurora burst
+        function createBurst(x, y) {
+            auroraCtx.save();
+            auroraCtx.globalCompositeOperation = 'lighter';
+
+            for (let i = 0; i < 20; i++) {
+                const angle = (Math.PI * 2 / 20) * i;
+                const radius = 50 + Math.random() * 100;
+                const hue = 140 + Math.random() * 100;
+
+                auroraCtx.strokeStyle = `hsla(${hue}, 80%, 60%, 0.5)`;
+                auroraCtx.lineWidth = 2 + Math.random() * 3;
+                auroraCtx.beginPath();
+                auroraCtx.moveTo(x, y);
+                auroraCtx.lineTo(
+                    x + Math.cos(angle) * radius,
+                    y + Math.sin(angle) * radius
+                );
+                auroraCtx.stroke();
+            }
+
+            auroraCtx.restore();
+        }
+
+        auroraCanvas.addEventListener('click', (e) => {
+            createBurst(e.clientX, e.clientY);
+        });
+
+        auroraCanvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            createBurst(touch.clientX, touch.clientY);
+        });
+    </script>
+</body>
+</html>
