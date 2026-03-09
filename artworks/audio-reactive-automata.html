@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio-Reactive Cellular Automata</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+        .container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        h1 {
+            color: #ffffff;
+            font-size: clamp(24px, 5vw, 48px);
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+            text-align: center;
+        }
+        .subtitle {
+            color: #a0a0a0;
+            font-size: clamp(12px, 2vw, 16px);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        #canvas {
+            border: 2px solid rgba(100, 200, 255, 0.3);
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(100, 200, 255, 0.2);
+            max-width: 100%;
+            max-height: 60vh;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        button:disabled {
+            background: #333;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .info {
+            margin-top: 15px;
+            color: #888;
+            font-size: 12px;
+            text-align: center;
+        }
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 10px 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Audio-Reactive Cellular Automata</h1>
+        <p class="subtitle">サウンドに反応して進化するセルオートマトン</p>
+        <canvas id="canvas"></canvas>
+        <div class="controls">
+            <button id="startBtn">🎤 マイクを開始</button>
+            <button id="resetBtn">🔄 リセット</button>
+            <button id="randomBtn">🎲 ランダム初期化</button>
+        </div>
+        <div class="info">
+            マイクに話しかけたり、音楽を流すとセルが反応します
+        </div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const randomBtn = document.getElementById('randomBtn');
+
+        // セットアップ
+        const CELL_SIZE = 4;
+        const GRID_WIDTH = 120;
+        const GRID_HEIGHT = 80;
+        canvas.width = GRID_WIDTH * CELL_SIZE;
+        canvas.height = GRID_HEIGHT * CELL_SIZE;
+
+        // セルオートマトン
+        let grid = [];
+        let nextGrid = [];
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let isRunning = false;
+        let animationId;
+        let bassEnergy = 0;
+        let midEnergy = 0;
+        let highEnergy = 0;
+
+        // 初期化
+        function init() {
+            grid = [];
+            nextGrid = [];
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                grid[y] = [];
+                nextGrid[y] = [];
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    grid[y][x] = Math.random() > 0.8 ? 1 : 0;
+                    nextGrid[y][x] = 0;
+                }
+            }
+        }
+
+        function randomInit() {
+            grid = [];
+            nextGrid = [];
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                grid[y] = [];
+                nextGrid[y] = [];
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    grid[y][x] = Math.random() > 0.5 ? 1 : 0;
+                    nextGrid[y][x] = 0;
+                }
+            }
+        }
+
+        // セルオートマトンのルール（Audio-Reactive）
+        function updateGrid() {
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    const neighbors = countNeighbors(x, y);
+                    const cell = grid[y][x];
+
+                    // オーディオリアクティブなルール修正
+                    let survivalRule = [2, 3];
+                    let birthRule = [3];
+
+                    // ベースが強いとルールが変化
+                    if (bassEnergy > 150) {
+                        survivalRule = [2, 3, 4];
+                        birthRule = [2, 3];
+                    }
+
+                    // 高音が強いとより活発に
+                    if (highEnergy > 100) {
+                        birthRule = [1, 2, 3];
+                    }
+
+                    if (cell === 1) {
+                        nextGrid[y][x] = survivalRule.includes(neighbors) ? 1 : 0;
+                    } else {
+                        nextGrid[y][x] = birthRule.includes(neighbors) ? 1 : 0;
+                    }
+                }
+            }
+
+            // オーディオエネルギーでランダムにセルを追加
+            if (bassEnergy > 180) {
+                for (let i = 0; i < Math.floor(bassEnergy / 50); i++) {
+                    const x = Math.floor(Math.random() * GRID_WIDTH);
+                    const y = Math.floor(Math.random() * GRID_HEIGHT);
+                    nextGrid[y][x] = 1;
+                }
+            }
+
+            // スワップ
+            [grid, nextGrid] = [nextGrid, grid];
+        }
+
+        function countNeighbors(x, y) {
+            let count = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = (x + dx + GRID_WIDTH) % GRID_WIDTH;
+                    const ny = (y + dy + GRID_HEIGHT) % GRID_HEIGHT;
+                    count += grid[ny][nx];
+                }
+            }
+            return count;
+        }
+
+        // 描画
+        function draw() {
+            ctx.fillStyle = '#0c0c0c';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y][x] === 1) {
+                        const hue = (x / GRID_WIDTH * 60 + y / GRID_HEIGHT * 60 + bassEnergy) % 360;
+                        const saturation = 70 + midEnergy / 5;
+                        const lightness = 50 + highEnergy / 5;
+                        ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+                        ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE - 1, CELL_SIZE - 1);
+                    }
+                }
+            }
+        }
+
+        // アニメーションループ
+        function animate() {
+            if (!isRunning) return;
+
+            // オーディオデータ取得
+            analyser.getByteFrequencyData(dataArray);
+
+            // 周波数帯域ごとのエネルギー計算
+            bassEnergy = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+            midEnergy = dataArray.slice(10, 100).reduce((a, b) => a + b, 0) / 90;
+            highEnergy = dataArray.slice(100, 200).reduce((a, b) => a + b, 0) / 100;
+
+            updateGrid();
+            draw();
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // マイク開始
+        async function startAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 512;
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                isRunning = true;
+                animate();
+
+                startBtn.disabled = true;
+                startBtn.textContent = '✓ 実行中';
+            } catch (err) {
+                alert('マイクにアクセスできませんでした: ' + err.message);
+            }
+        }
+
+        function reset() {
+            isRunning = false;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+            init();
+            draw();
+            startBtn.disabled = false;
+            startBtn.textContent = '🎤 マイクを開始';
+        }
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        startBtn.addEventListener('click', startAudio);
+        resetBtn.addEventListener('click', reset);
+        randomBtn.addEventListener('click', () => {
+            randomInit();
+            draw();
+        });
+
+        // 初期化
+        init();
+        draw();
+
+        // タッチ操作対応
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((touch.clientX - rect.left) / CELL_SIZE);
+            const y = Math.floor((touch.clientY - rect.top) / CELL_SIZE);
+
+            for (let dy = -5; dy <= 5; dy++) {
+                for (let dx = -5; dx <= 5; dx++) {
+                    const nx = (x + dx + GRID_WIDTH) % GRID_WIDTH;
+                    const ny = (y + dy + GRID_HEIGHT) % GRID_HEIGHT;
+                    if (Math.random() > 0.3) {
+                        grid[ny][nx] = 1;
+                    }
+                }
+            }
+            draw();
+        });
+
+        // マウス操作対応
+        let isMouseDown = false;
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / CELL_SIZE);
+            const y = Math.floor((e.clientY - rect.top) / CELL_SIZE);
+
+            for (let dy = -5; dy <= 5; dy++) {
+                for (let dx = -5; dx <= 5; dx++) {
+                    const nx = (x + dx + GRID_WIDTH) % GRID_WIDTH;
+                    const ny = (y + dy + GRID_HEIGHT) % GRID_HEIGHT;
+                    if (Math.random() > 0.3) {
+                        grid[ny][nx] = 1;
+                    }
+                }
+            }
+            draw();
+        });
+        canvas.addEventListener('mouseup', () => isMouseDown = false);
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isMouseDown) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / CELL_SIZE);
+            const y = Math.floor((e.clientY - rect.top) / CELL_SIZE);
+
+            for (let dy = -3; dy <= 3; dy++) {
+                for (let dx = -3; dx <= 3; dx++) {
+                    const nx = (x + dx + GRID_WIDTH) % GRID_WIDTH;
+                    const ny = (y + dy + GRID_HEIGHT) % GRID_HEIGHT;
+                    if (Math.random() > 0.5) {
+                        grid[ny][nx] = 1;
+                    }
+                }
+            }
+            draw();
+        });
+    </script>
+</body>
+</html>
