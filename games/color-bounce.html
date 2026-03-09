@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Color Bounce - 色の反射</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+        }
+        #gameCanvas {
+            border: 3px solid #00ff88;
+            border-radius: 10px;
+            display: block;
+            width: 100%;
+            max-width: 600px;
+            background: #111;
+        }
+        .score-display {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #00ff88;
+            text-shadow: 0 0 10px #00ff88;
+            pointer-events: none;
+        }
+        .lives-display {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 1.2rem;
+            color: #ff6b6b;
+            pointer-events: none;
+        }
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.85);
+            border-radius: 10px;
+            z-index: 10;
+        }
+        .overlay.hidden {
+            display: none;
+        }
+        .overlay h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            color: #00ff88;
+            text-shadow: 0 0 20px #00ff88;
+        }
+        .overlay p {
+            font-size: 1rem;
+            margin-bottom: 10px;
+            color: #aaa;
+        }
+        .overlay .final-score {
+            font-size: 1.5rem;
+            color: #ffcc00;
+            margin: 20px 0;
+        }
+        button {
+            font-family: 'Courier New', monospace;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border: 2px solid #00ff88;
+            background: #0a0a0a;
+            color: #00ff88;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s;
+            margin-top: 20px;
+        }
+        button:hover {
+            background: #00ff88;
+            color: #0a0a0a;
+            transform: scale(1.05);
+        }
+        .instructions {
+            margin-top: 15px;
+            font-size: 0.85rem;
+            color: #666;
+            text-align: center;
+            max-width: 600px;
+        }
+        @media (max-width: 600px) {
+            .overlay h1 { font-size: 1.8rem; }
+            .score-display { font-size: 1.2rem; }
+            .lives-display { font-size: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="600" height="700"></canvas>
+        <div class="score-display" id="score">0</div>
+        <div class="lives-display" id="lives">❤️❤️❤️</div>
+
+        <div class="overlay" id="startScreen">
+            <h1>🎨 Color Bounce</h1>
+            <p>パドルで色のボールを反射！</p>
+            <p>同じ色のブロックで+2点、違う色で+1点</p>
+            <button id="startBtn">START</button>
+        </div>
+
+        <div class="overlay hidden" id="gameOverScreen">
+            <h1>GAME OVER</h1>
+            <p class="final-score" id="finalScore">Score: 0</p>
+            <button id="restartBtn">RESTART</button>
+        </div>
+    </div>
+
+    <p class="instructions">🖱️ マウス/タッチでパドル操作 | ⬆️ ボールの色を変える</p>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // キャンバスサイズ調整
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const maxWidth = Math.min(600, window.innerWidth - 20);
+            const scale = maxWidth / 600;
+            canvas.style.width = maxWidth + 'px';
+            canvas.style.height = (700 * scale) + 'px';
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ゲーム変数
+        let score = 0;
+        let lives = 3;
+        let gameRunning = false;
+
+        // 色パレット
+        const colors = ['#00ff88', '#00ccff', '#ff00ff', '#ffcc00', '#ff6b6b'];
+        const colorNames = ['green', 'cyan', 'magenta', 'yellow', 'red'];
+
+        // パドル
+        const paddle = {
+            width: 100,
+            height: 15,
+            x: 250,
+            y: 650,
+            speed: 8
+        };
+
+        // ボール
+        const ball = {
+            x: 300,
+            y: 600,
+            radius: 10,
+            dx: 4,
+            dy: -4,
+            colorIndex: 0
+        };
+
+        // ブロック
+        let blocks = [];
+        const blockRowCount = 6;
+        const blockColumnCount = 7;
+        const blockWidth = 75;
+        const blockHeight = 25;
+        const blockPadding = 5;
+        const blockOffsetTop = 50;
+        const blockOffsetLeft = 20;
+
+        // パーティクル
+        let particles = [];
+
+        function initBlocks() {
+            blocks = [];
+            for (let c = 0; c < blockColumnCount; c++) {
+                for (let r = 0; r < blockRowCount; r++) {
+                    const colorIndex = Math.floor(Math.random() * colors.length);
+                    blocks.push({
+                        x: c * (blockWidth + blockPadding) + blockOffsetLeft,
+                        y: r * (blockHeight + blockPadding) + blockOffsetTop,
+                        colorIndex: colorIndex,
+                        alive: true
+                    });
+                }
+            }
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    dx: (Math.random() - 0.5) * 8,
+                    dy: (Math.random() - 0.5) * 8,
+                    radius: Math.random() * 4 + 2,
+                    color: color,
+                    life: 1
+                });
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.dx;
+                p.y += p.dy;
+                p.life -= 0.02;
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            });
+        }
+
+        function drawPaddle() {
+            ctx.fillStyle = '#00ff88';
+            ctx.shadowColor = '#00ff88';
+            ctx.shadowBlur = 15;
+            ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+            ctx.shadowBlur = 0;
+        }
+
+        function drawBall() {
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = colors[ball.colorIndex];
+            ctx.shadowColor = colors[ball.colorIndex];
+            ctx.shadowBlur = 20;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.closePath();
+        }
+
+        function drawBlocks() {
+            blocks.forEach(block => {
+                if (block.alive) {
+                    ctx.fillStyle = colors[block.colorIndex];
+                    ctx.shadowColor = colors[block.colorIndex];
+                    ctx.shadowBlur = 10;
+                    ctx.fillRect(block.x, block.y, blockWidth, blockHeight);
+                    ctx.shadowBlur = 0;
+
+                    // ブロックの光沢
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                    ctx.fillRect(block.x, block.y, blockWidth, blockHeight / 2);
+                }
+            });
+        }
+
+        function moveBall() {
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+
+            // 壁反射
+            if (ball.x - ball.radius < 0 || ball.x + ball.radius > canvas.width) {
+                ball.dx = -ball.dx;
+            }
+            if (ball.y - ball.radius < 0) {
+                ball.dy = -ball.dy;
+            }
+
+            // 底に落ちた
+            if (ball.y + ball.radius > canvas.height) {
+                lives--;
+                updateLives();
+                if (lives <= 0) {
+                    gameOver();
+                } else {
+                    resetBall();
+                }
+            }
+
+            // パドル反射
+            if (ball.y + ball.radius > paddle.y &&
+                ball.y - ball.radius < paddle.y + paddle.height &&
+                ball.x > paddle.x &&
+                ball.x < paddle.x + paddle.width) {
+                ball.dy = -ball.dy;
+                ball.y = paddle.y - ball.radius;
+
+                // パドルの位置で角度調整
+                const hitPos = (ball.x - paddle.x) / paddle.width;
+                ball.dx = (hitPos - 0.5) * 10;
+            }
+
+            // ブロック衝突
+            blocks.forEach(block => {
+                if (block.alive &&
+                    ball.x > block.x &&
+                    ball.x < block.x + blockWidth &&
+                    ball.y > block.y &&
+                    ball.y < block.y + blockHeight) {
+                    ball.dy = -ball.dy;
+                    block.alive = false;
+
+                    // 同じ色なら+2点、違う色なら+1点
+                    if (block.colorIndex === ball.colorIndex) {
+                        score += 2;
+                    } else {
+                        score += 1;
+                    }
+                    updateScore();
+
+                    createParticles(
+                        block.x + blockWidth / 2,
+                        block.y + blockHeight / 2,
+                        colors[block.colorIndex]
+                    );
+                }
+            });
+
+            // 全ブロック破壊でリセット
+            if (blocks.every(b => !b.alive)) {
+                initBlocks();
+                ball.dx *= 1.1;
+                ball.dy *= 1.1;
+            }
+        }
+
+        function resetBall() {
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height - 100;
+            ball.dx = 4 * (Math.random() > 0.5 ? 1 : -1);
+            ball.dy = -4;
+            ball.colorIndex = Math.floor(Math.random() * colors.length);
+        }
+
+        function updateScore() {
+            document.getElementById('score').textContent = score;
+        }
+
+        function updateLives() {
+            document.getElementById('lives').textContent = '❤️'.repeat(lives);
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = 'Score: ' + score;
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        function startGame() {
+            score = 0;
+            lives = 3;
+            gameRunning = true;
+            particles = [];
+            updateScore();
+            updateLives();
+            initBlocks();
+            resetBall();
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBlocks();
+            drawPaddle();
+            drawBall();
+            drawParticles();
+        }
+
+        function update() {
+            if (gameRunning) {
+                moveBall();
+                updateParticles();
+            }
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // マウス/タッチ操作
+        function handleMove(clientX) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const x = (clientX - rect.left) * scaleX;
+            paddle.x = x - paddle.width / 2;
+
+            // 境界
+            if (paddle.x < 0) paddle.x = 0;
+            if (paddle.x + paddle.width > canvas.width) {
+                paddle.x = canvas.width - paddle.width;
+            }
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (gameRunning) handleMove(e.clientX);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (gameRunning) {
+                e.preventDefault();
+                handleMove(e.touches[0].clientX);
+            }
+        }, { passive: false });
+
+        // ボールの色を変える
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowUp' && gameRunning) {
+                ball.colorIndex = (ball.colorIndex + 1) % colors.length;
+            }
+        });
+
+        // ボタン
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+
+        // ゲーム開始
+        gameLoop();
+    </script>
+</body>
+</html>
