@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Dodge - 宇宙回避ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(to bottom, #0a0a1a, #1a1a2a);
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            z-index: 100;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            z-index: 200;
+            display: none;
+        }
+
+        .game-over h2 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
+        }
+
+        .game-over p {
+            font-size: 24px;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #00ffff, #0080ff);
+            border: none;
+            color: #0a0a1a;
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            border-radius: 25px;
+            transition: all 0.3s;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+        }
+
+        .start-screen {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            z-index: 200;
+        }
+
+        .start-screen h1 {
+            font-size: 42px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+        }
+
+        .start-screen p {
+            font-size: 16px;
+            margin-bottom: 30px;
+            opacity: 0.8;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            backdrop-filter: blur(10px);
+        }
+
+        @media (max-width: 768px) {
+            .ui {
+                font-size: 14px;
+            }
+
+            .game-over h2 {
+                font-size: 32px;
+            }
+
+            .game-over p {
+                font-size: 18px;
+            }
+
+            .start-screen h1 {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="ui">
+        <div>スコア: <span id="score">0</span></div>
+        <div>ライフ: <span id="lives">3</span></div>
+    </div>
+
+    <div class="start-screen" id="startScreen">
+        <h1>🚀 Space Dodge</h1>
+        <p>隕石を避けてスターを集めよう！</p>
+        <p>PC: 左右矢印キー / モバイル: 画面を左右にタップ</p>
+        <button class="btn" onclick="startGame()">スタート</button>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <h2>GAME OVER</h2>
+        <p>最終スコア: <span id="finalScore">0</span></p>
+        <button class="btn" onclick="restartGame()">再挑戦</button>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let gameState = 'start'; // start, playing, gameover
+        let score = 0;
+        let lives = 3;
+        let difficulty = 1;
+
+        const player = {
+            x: width / 2,
+            y: height - 100,
+            width: 40,
+            height: 50,
+            speed: 8,
+            dx: 0
+        };
+
+        let meteors = [];
+        let stars = [];
+        let particles = [];
+
+        class Meteor {
+            constructor() {
+                this.size = Math.random() * 30 + 20;
+                this.x = Math.random() * (width - this.size);
+                this.y = -this.size;
+                this.speed = (Math.random() * 3 + 2) * difficulty;
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+            }
+
+            update() {
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // 隕石のボディ
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size);
+                gradient.addColorStop(0, '#8B4513');
+                gradient.addColorStop(0.7, '#654321');
+                gradient.addColorStop(1, '#3d2914');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // クレーター
+                for (let i = 0; i < 3; i++) {
+                    const craterX = (Math.random() - 0.5) * this.size;
+                    const craterY = (Math.random() - 0.5) * this.size;
+                    const craterSize = this.size * 0.2;
+                    ctx.beginPath();
+                    ctx.arc(craterX, craterY, craterSize, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        class Star {
+            constructor() {
+                this.size = 15;
+                this.x = Math.random() * (width - this.size);
+                this.y = -this.size;
+                this.speed = 3;
+                this.rotation = 0;
+            }
+
+            update() {
+                this.y += this.speed;
+                this.rotation += 0.05;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                ctx.beginPath();
+                for (let i = 0; i < 5; i++) {
+                    const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+                    const x = Math.cos(angle) * this.size;
+                    const y = Math.sin(angle) * this.size;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size);
+                gradient.addColorStop(0, '#ffffff');
+                gradient.addColorStop(0.5, '#ffff00');
+                gradient.addColorStop(1, '#ffa500');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // グロー効果
+                ctx.shadowColor = '#ffff00';
+                ctx.shadowBlur = 20;
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 4 + 2;
+                this.speedX = (Math.random() - 0.5) * 8;
+                this.speedY = (Math.random() - 0.5) * 8;
+                this.color = color;
+                this.life = 1;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= 0.02;
+                this.size *= 0.98;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${this.color}, ${this.life})`;
+                ctx.fill();
+            }
+        }
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 20; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function spawnMeteor() {
+            if (Math.random() < 0.03 * difficulty) {
+                meteors.push(new Meteor());
+            }
+        }
+
+        function spawnStar() {
+            if (Math.random() < 0.01) {
+                stars.push(new Star());
+            }
+        }
+
+        function drawPlayer() {
+            // 宇宙船のボディ
+            ctx.beginPath();
+            ctx.moveTo(player.x, player.y - player.height / 2);
+            ctx.lineTo(player.x - player.width / 2, player.y + player.height / 2);
+            ctx.lineTo(player.x, player.y + player.height / 3);
+            ctx.lineTo(player.x + player.width / 2, player.y + player.height / 2);
+            ctx.closePath();
+
+            const gradient = ctx.createLinearGradient(player.x, player.y - player.height / 2, player.x, player.y + player.height / 2);
+            gradient.addColorStop(0, '#00ffff');
+            gradient.addColorStop(0.5, '#0080ff');
+            gradient.addColorStop(1, '#004080');
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // エンジンの炎
+            ctx.beginPath();
+            ctx.moveTo(player.x - 10, player.y + player.height / 3);
+            ctx.lineTo(player.x, player.y + player.height / 2 + Math.random() * 20 + 10);
+            ctx.lineTo(player.x + 10, player.y + player.height / 3);
+            ctx.closePath();
+
+            const flameGradient = ctx.createLinearGradient(player.x, player.y + player.height / 3, player.x, player.y + player.height / 2 + 30);
+            flameGradient.addColorStop(0, '#ffffff');
+            flameGradient.addColorStop(0.3, '#ffff00');
+            flameGradient.addColorStop(0.6, '#ff8000');
+            flameGradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = flameGradient;
+            ctx.fill();
+        }
+
+        function checkCollision(obj1, obj2) {
+            const dx = obj1.x - obj2.x;
+            const dy = obj1.y - obj2.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance < (obj1.width / 2 + obj2.size);
+        }
+
+        function update() {
+            if (gameState !== 'playing') return;
+
+            // プレイヤーの移動
+            player.x += player.dx;
+
+            // 境界チェック
+            if (player.x < player.width / 2) player.x = player.width / 2;
+            if (player.x > width - player.width / 2) player.x = width - player.width / 2;
+
+            // 隕石の更新
+            meteors = meteors.filter(m => {
+                m.update();
+                return m.y < height + m.size;
+            });
+
+            // スターの更新
+            stars = stars.filter(s => {
+                s.update();
+                return s.y < height + s.size;
+            });
+
+            // パーティクルの更新
+            particles = particles.filter(p => {
+                p.update();
+                return p.life > 0;
+            });
+
+            // 衝突判定
+            meteors.forEach((meteor, index) => {
+                if (checkCollision(player, meteor)) {
+                    createExplosion(meteor.x, meteor.y, '255, 100, 100');
+                    meteors.splice(index, 1);
+                    lives--;
+                    document.getElementById('lives').textContent = lives;
+
+                    if (lives <= 0) {
+                        endGame();
+                    }
+                }
+            });
+
+            stars.forEach((star, index) => {
+                if (checkCollision(player, star)) {
+                    createExplosion(star.x, star.y, '255, 255, 100');
+                    stars.splice(index, 1);
+                    score += 10;
+                    document.getElementById('score').textContent = score;
+
+                    // 難易度上昇
+                    if (score % 50 === 0) {
+                        difficulty += 0.1;
+                    }
+                }
+            });
+
+            // スポーン
+            spawnMeteor();
+            spawnStar();
+        }
+
+        function draw() {
+            // 背景（宇宙空間）
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 背景の星
+            for (let i = 0; i < 50; i++) {
+                const x = (Math.sin(i * 123.456 + Date.now() * 0.0001) * 0.5 + 0.5) * width;
+                const y = (Math.cos(i * 789.012 + Date.now() * 0.0001) * 0.5 + 0.5) * height;
+                const size = Math.sin(i) * 1 + 1.5;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.5 + 0.3})`;
+                ctx.fill();
+            }
+
+            // パーティクル
+            particles.forEach(p => p.draw());
+
+            // スター
+            stars.forEach(s => s.draw());
+
+            // プレイヤー
+            if (gameState === 'playing') {
+                drawPlayer();
+            }
+
+            // 隕石
+            meteors.forEach(m => m.draw());
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            lives = 3;
+            difficulty = 1;
+            meteors = [];
+            stars = [];
+            particles = [];
+            player.x = width / 2;
+
+            document.getElementById('score').textContent = score;
+            document.getElementById('lives').textContent = lives;
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('gameOver').style.display = 'none';
+        }
+
+        function endGame() {
+            gameState = 'gameover';
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // キーボード操作
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') player.dx = -player.speed;
+            if (e.key === 'ArrowRight') player.dx = player.speed;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' && player.dx < 0) player.dx = 0;
+            if (e.key === 'ArrowRight' && player.dx > 0) player.dx = 0;
+        });
+
+        // タッチ操作
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touchX = e.touches[0].clientX;
+            if (touchX < width / 2) {
+                player.dx = -player.speed;
+            } else {
+                player.dx = player.speed;
+            }
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            player.dx = 0;
+        });
+
+        // ウィンドウリサイズ
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            player.y = height - 100;
+        });
+
+        // ゲーム開始
+        gameLoop();
+    </script>
+</body>
+</html>
