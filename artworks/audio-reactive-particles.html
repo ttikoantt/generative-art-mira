@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio Reactive Particles - Mira</title>
+    <title>Audio Reactive Particles</title>
     <style>
         * {
             margin: 0;
@@ -14,343 +14,301 @@
         body {
             background: #000;
             overflow: hidden;
-            font-family: 'Segoe UI', sans-serif;
+            font-family: 'Helvetica', sans-serif;
         }
 
         canvas {
             display: block;
         }
 
-        .controls {
+        #start-overlay {
             position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 100;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
             display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
+            flex-direction: column;
+            align-items: center;
             justify-content: center;
-        }
-
-        .controls button {
-            padding: 12px 24px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: #fff;
-            border-radius: 25px;
+            z-index: 100;
             cursor: pointer;
-            font-size: 14px;
-            transition: all 0.3s;
-            backdrop-filter: blur(10px);
         }
 
-        .controls button:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: scale(1.05);
+        #start-overlay h1 {
+            color: #0ff;
+            font-size: 2em;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px #0ff;
         }
 
-        .controls button:active {
-            transform: scale(0.95);
+        #start-overlay p {
+            color: #fff;
+            font-size: 1em;
         }
 
-        .controls input[type="file"] {
-            display: none;
-        }
-
-        .info {
+        #controls {
             position: fixed;
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            color: rgba(255, 255, 255, 0.5);
-            font-size: 12px;
-            text-align: center;
-            z-index: 100;
+            z-index: 50;
+            display: flex;
+            gap: 10px;
         }
 
-        .fullscreen-btn {
+        .control-btn {
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .control-btn:hover {
+            background: rgba(0, 255, 255, 0.4);
+        }
+
+        #fullscreen {
             position: fixed;
             top: 20px;
             right: 20px;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: #fff;
-            border-radius: 50%;
+            z-index: 50;
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 10px 15px;
             cursor: pointer;
-            font-size: 18px;
-            width: 44px;
-            height: 44px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            backdrop-filter: blur(10px);
-            z-index: 100;
+            font-size: 14px;
         }
 
-        .fullscreen-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
+        @media (max-width: 768px) {
+            #start-overlay h1 {
+                font-size: 1.5em;
+            }
         }
     </style>
 </head>
 <body>
-    <canvas id="canvas"></canvas>
-
-    <div class="controls">
-        <button id="micBtn">🎤 マイク</button>
-        <button id="fileBtn">📁 ファイル</button>
-        <input type="file" id="audioFile" accept="audio/*">
+    <div id="start-overlay">
+        <h1>🎵 Audio Reactive Particles</h1>
+        <p>Tap to Start (Microphone Access Required)</p>
     </div>
 
-    <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
+    <canvas id="canvas"></canvas>
 
-    <div class="info">音楽に合わせてパーティクルが踊ります | マイクまたはファイルで音声入力</div>
+    <button id="fullscreen">⛶ Fullscreen</button>
+
+    <div id="controls">
+        <button class="control-btn" id="mode-btn">Change Pattern</button>
+    </div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const startOverlay = document.getElementById('start-overlay');
+        const fullscreenBtn = document.getElementById('fullscreen');
+        const modeBtn = document.getElementById('mode-btn');
 
-        let audioContext;
-        let analyser;
-        let source;
-        let isPlaying = false;
+        let width, height;
         let particles = [];
-        let mouseX = 0;
-        let mouseY = 0;
+        let audioContext, analyser, dataArray, source;
+        let isRunning = false;
+        let patternMode = 0;
+        const patternCount = 4;
 
-        // Canvas size
         function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
         }
-        resize();
+
         window.addEventListener('resize', resize);
+        resize();
 
-        // Particle class
         class Particle {
-            constructor() {
-                this.reset();
-            }
-
-            reset() {
-                this.x = Math.random() * canvas.width;
-                this.y = Math.random() * canvas.height;
-                this.baseSize = Math.random() * 2 + 1;
-                this.size = this.baseSize;
-                this.baseSpeedX = (Math.random() - 0.5) * 0.5;
-                this.baseSpeedY = (Math.random() - 0.5) * 0.5;
-                this.speedX = this.baseSpeedX;
-                this.speedY = this.baseSpeedY;
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.baseX = this.x;
+                this.baseY = this.y;
+                this.size = Math.random() * 3 + 1;
+                this.baseSize = this.size;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.speedY = (Math.random() - 0.5) * 2;
                 this.hue = Math.random() * 360;
-                this.life = Math.random();
-                this.maxLife = Math.random() * 0.5 + 0.5;
+                this.life = 0;
+                this.maxLife = Math.random() * 100 + 100;
             }
 
-            update(frequencyData) {
-                // Get frequency value based on position
-                const freqIndex = Math.floor(
-                    (this.x / canvas.width) * (this.y / canvas.height) * frequencyData.length
-                );
-                const frequency = frequencyData[freqIndex] || 0;
-                const normalized = frequency / 255;
+            update(audioValue, frequencyData) {
+                this.life++;
+                this.hue += 0.5;
 
-                // Update size based on frequency
-                this.size = this.baseSize + normalized * 8;
+                const audioFactor = audioValue / 255;
 
-                // Update speed based on frequency
-                const speedMultiplier = 1 + normalized * 3;
-                this.speedX = this.baseSpeedX * speedMultiplier;
-                this.speedY = this.baseSpeedY * speedMultiplier;
+                switch (patternMode) {
+                    case 0: // Circular explosion
+                        const centerX = width / 2;
+                        const centerY = height / 2;
+                        const dx = this.x - centerX;
+                        const dy = this.y - centerY;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        const angle = Math.atan2(dy, dx);
+                        const boost = audioFactor * 5;
+                        this.x += Math.cos(angle) * boost + this.speedX;
+                        this.y += Math.sin(angle) * boost + this.speedY;
+                        this.size = this.baseSize * (1 + audioFactor * 3);
+                        break;
 
-                // Update position
-                this.x += this.speedX;
-                this.y += this.speedY;
+                    case 1: // Wave motion
+                        this.x += this.speedX * (1 + audioFactor * 2);
+                        this.y += Math.sin(this.life * 0.02 + this.x * 0.01) * (2 + audioFactor * 5);
+                        this.size = this.baseSize * (1 + audioFactor * 2);
+                        break;
 
-                // Wrap around
-                if (this.x < 0) this.x = canvas.width;
-                if (this.x > canvas.width) this.x = 0;
-                if (this.y < 0) this.y = canvas.height;
-                if (this.y > canvas.height) this.y = 0;
+                    case 2: // Spiral
+                        const spiralX = width / 2;
+                        const spiralY = height / 2;
+                        const sdx = this.x - spiralX;
+                        const sdy = this.y - spiralY;
+                        const sangle = Math.atan2(sdy, sdx);
+                        const sdist = Math.sqrt(sdx * sdx + sdy * sdy);
+                        this.x = spiralX + Math.cos(sangle + 0.02 * (1 + audioFactor)) * sdist;
+                        this.y = spiralY + Math.sin(sangle + 0.02 * (1 + audioFactor)) * sdist;
+                        this.x += Math.cos(sangle) * audioFactor * 3;
+                        this.y += Math.sin(sangle) * audioFactor * 3;
+                        this.size = this.baseSize * (1 + audioFactor * 2);
+                        break;
 
-                // Update hue based on frequency
-                this.hue = (this.hue + normalized * 5) % 360;
+                    case 3: // Random scatter
+                        this.x += (Math.random() - 0.5) * 10 * audioFactor;
+                        this.y += (Math.random() - 0.5) * 10 * audioFactor;
+                        this.x += this.speedX;
+                        this.y += this.speedY;
+                        this.size = this.baseSize * (1 + audioFactor * 4);
+                        break;
+                }
 
-                // Life cycle
-                this.life += 0.002;
+                // Wrap around edges
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+
+                // Respawn if too old
                 if (this.life > this.maxLife) {
-                    this.reset();
+                    this.x = Math.random() * width;
+                    this.y = Math.random() * height;
+                    this.life = 0;
                 }
             }
 
-            draw(frequencyData) {
-                const freqIndex = Math.floor(
-                    (this.x / canvas.width) * (this.y / canvas.height) * frequencyData.length
-                );
-                const frequency = frequencyData[freqIndex] || 0;
-                const normalized = frequency / 255;
-                const alpha = (1 - this.life / this.maxLife) * (0.3 + normalized * 0.7);
+            draw(audioValue) {
+                const audioFactor = audioValue / 255;
+                const saturation = 50 + audioFactor * 50;
+                const lightness = 40 + audioFactor * 30;
+                const alpha = 0.3 + audioFactor * 0.7;
 
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                ctx.fillStyle = `hsla(${this.hue}, 80%, ${50 + normalized * 30}%, ${alpha})`;
+                ctx.fillStyle = `hsla(${this.hue}, ${saturation}%, ${lightness}%, ${alpha})`;
                 ctx.fill();
 
-                // Glow effect for high frequencies
-                if (normalized > 0.5) {
+                // Glow effect
+                if (audioFactor > 0.5) {
                     ctx.beginPath();
                     ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
-                    ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${alpha * 0.3})`;
+                    ctx.fillStyle = `hsla(${this.hue}, ${saturation}%, ${lightness}%, ${alpha * 0.3})`;
                     ctx.fill();
                 }
             }
         }
 
-        // Initialize particles
         function initParticles() {
             particles = [];
-            const count = Math.min(300, Math.floor((canvas.width * canvas.height) / 5000));
-            for (let i = 0; i < count; i++) {
+            const particleCount = 500;
+            for (let i = 0; i < particleCount; i++) {
                 particles.push(new Particle());
             }
         }
-        initParticles();
 
-        // Audio setup
-        async function setupAudio(stream) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
-
-            source = audioContext.createMediaStreamSource(stream);
-            source.connect(analyser);
-
-            isPlaying = true;
-            animate();
-        }
-
-        async function setupAudioFile(file) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
-
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                const audioData = await audioContext.decodeAudioData(e.target.result);
-                source = audioContext.createBufferSource();
-                source.buffer = audioData;
+        async function initAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
                 source.connect(analyser);
-                analyser.connect(audioContext.destination);
-                source.start(0);
-                source.loop = true;
-                isPlaying = true;
+
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                isRunning = true;
+                startOverlay.style.display = 'none';
                 animate();
-            };
-            reader.readAsArrayBuffer(file);
+            } catch (err) {
+                console.error('Microphone access denied:', err);
+                startOverlay.innerHTML = '<h1>❌ Error</h1><p>Microphone access required</p>';
+            }
         }
 
-        // Animation loop
         function animate() {
-            if (!isPlaying) return;
+            if (!isRunning) return;
 
             requestAnimationFrame(animate);
 
-            const frequencyData = new Uint8Array(analyser.frequencyBinCount);
-            analyser.getByteFrequencyData(frequencyData);
+            analyser.getByteFrequencyData(dataArray);
 
-            // Clear with trail effect
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Draw center glow based on bass
-            const bass = frequencyData[0] / 255;
-            if (bass > 0.3) {
-                const gradient = ctx.createRadialGradient(
-                    canvas.width / 2, canvas.height / 2, 0,
-                    canvas.width / 2, canvas.height / 2, canvas.width * 0.4
-                );
-                gradient.addColorStop(0, `hsla(${Date.now() / 50 % 360}, 80%, 50%, ${bass * 0.2})`);
-                gradient.addColorStop(1, 'transparent');
-                ctx.fillStyle = gradient;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // Get average audio level
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
             }
+            const average = sum / dataArray.length;
+
+            // Clear with fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
 
             // Update and draw particles
-            particles.forEach(p => {
-                p.update(frequencyData);
-                p.draw(frequencyData);
+            particles.forEach((particle, index) => {
+                const freqIndex = Math.floor(index / particles.length * dataArray.length);
+                const freqValue = dataArray[freqIndex];
+                particle.update(freqValue, dataArray);
+                particle.draw(freqValue);
             });
 
-            // Draw circular visualizer
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            const radius = Math.min(canvas.width, canvas.height) * 0.25;
-
-            ctx.beginPath();
-            for (let i = 0; i < frequencyData.length; i++) {
-                const angle = (i / frequencyData.length) * Math.PI * 2;
-                const amplitude = (frequencyData[i] / 255) * 100;
-                const x = centerX + Math.cos(angle) * (radius + amplitude);
-                const y = centerY + Math.sin(angle) * (radius + amplitude);
-
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
+            // Draw audio visualization bars at bottom
+            const barWidth = width / dataArray.length;
+            for (let i = 0; i < dataArray.length; i++) {
+                const barHeight = (dataArray[i] / 255) * 100;
+                const hue = (i / dataArray.length) * 360;
+                ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
+                ctx.fillRect(i * barWidth, height - barHeight, barWidth - 1, barHeight);
             }
-            ctx.closePath();
-            ctx.strokeStyle = `hsla(${Date.now() / 50 % 360}, 80%, 60%, 0.5)`;
-            ctx.lineWidth = 2;
-            ctx.stroke();
         }
 
-        // Event listeners
-        document.getElementById('micBtn').addEventListener('click', async () => {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                setupAudio(stream);
-            } catch (err) {
-                alert('マイクにアクセスできませんでした: ' + err.message);
-            }
+        startOverlay.addEventListener('click', () => {
+            initAudio();
         });
 
-        document.getElementById('fileBtn').addEventListener('click', () => {
-            document.getElementById('audioFile').click();
-        });
-
-        document.getElementById('audioFile').addEventListener('change', (e) => {
-            if (e.target.files[0]) {
-                setupAudioFile(e.target.files[0]);
-            }
-        });
-
-        // Fullscreen
-        document.getElementById('fullscreenBtn').addEventListener('click', () => {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
-            } else {
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
                 document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
             }
         });
 
-        // Idle animation when no audio
-        function idleAnimate() {
-            if (isPlaying) return;
+        modeBtn.addEventListener('click', () => {
+            patternMode = (patternMode + 1) % patternCount;
+            const modes = ['Circular Explosion', 'Wave Motion', 'Spiral', 'Random Scatter'];
+            modeBtn.textContent = `Pattern: ${modes[patternMode]}`;
+        });
 
-            requestAnimationFrame(idleAnimate);
-
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            const frequencyData = new Uint8Array(128).fill(0);
-
-            particles.forEach(p => {
-                p.update(frequencyData);
-                p.draw(frequencyData);
-            });
-        }
-        idleAnimate();
+        initParticles();
     </script>
 </body>
 </html>
