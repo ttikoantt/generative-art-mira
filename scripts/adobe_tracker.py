@@ -99,9 +99,12 @@ def check_url_changes(source_key, url):
             tracking_data = load_tracking_data()
             last_hash = tracking_data.get(source_key, {}).get('last_hash')
 
-            # 最新の情報を抽出
+            # 最新の情報を抽出（現在の年または近い将来のみ）
+            current_year = datetime.now().year
             dates = re.findall(r'(20[2-9][0-9])', content)
-            latest_year = max(dates) if dates else 'N/A'
+            # 不自然な年（2095など）を除外
+            valid_dates = [int(d) for d in dates if current_year - 1 <= int(d) <= current_year + 2]
+            latest_year = str(max(valid_dates)) if valid_dates else 'N/A'
 
             is_changed = last_hash != content_hash
 

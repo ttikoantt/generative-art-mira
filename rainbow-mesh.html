@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Rainbow Mesh</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        #canvas-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            display: block;
+            background: transparent;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 25px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 90%;
+            z-index: 100;
+        }
+
+        .control {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .control label {
+            color: #fff;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .control input[type="range"] {
+            width: 100px;
+            height: 6px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .control input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .control input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(102, 126, 234, 0.8);
+            transform: scale(1.05);
+        }
+
+        .title {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 10px rgba(0, 0, 0, 0.5);
+            z-index: 100;
+        }
+
+        .palette-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .palette-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .palette-btn:hover, .palette-btn.active {
+            transform: scale(1.2);
+            border-color: #fff;
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                padding: 10px 15px;
+                gap: 10px;
+            }
+
+            .control input[type="range"] {
+                width: 70px;
+            }
+
+            .title {
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="canvas"></canvas>
+        <div class="title">🌈 Rainbow Mesh</div>
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ 全画面</button>
+        <div class="controls">
+            <div class="control">
+                <label>パーティクル数</label>
+                <input type="range" id="particleCount" min="20" max="150" value="80">
+            </div>
+            <div class="control">
+                <label>接続距離</label>
+                <input type="range" id="connectionDistance" min="50" max="200" value="120">
+            </div>
+            <div class="control">
+                <label>速度</label>
+                <input type="range" id="speed" min="1" max="10" value="3">
+            </div>
+            <div class="control">
+                <label>カラーパレット</label>
+                <div class="palette-buttons">
+                    <button class="palette-btn active" onclick="setPalette(0)" style="background: linear-gradient(135deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3);"></button>
+                    <button class="palette-btn" onclick="setPalette(1)" style="background: linear-gradient(135deg, #a29bfe, #fd79a8, #fdcb6e, #00cec9);"></button>
+                    <button class="palette-btn" onclick="setPalette(2)" style="background: linear-gradient(135deg, #2ecc71, #3498db, #9b59b6, #e74c3c);"></button>
+                    <button class="palette-btn" onclick="setPalette(3)" style="background: linear-gradient(135deg, #f39c12, #e91e63, #673ab7, #00bcd4);"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let mouseX = 0, mouseY = 0;
+        let isMouseDown = false;
+
+        // Settings
+        let particleCount = 80;
+        let connectionDistance = 120;
+        let speed = 3;
+        let currentPalette = 0;
+
+        // Color palettes
+        const palettes = [
+            ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff'],
+            ['#a29bfe', '#fd79a8', '#fdcb6e', '#00cec9', '#6c5ce7'],
+            ['#2ecc71', '#3498db', '#9b59b6', '#e74c3c', '#1abc9c'],
+            ['#f39c12', '#e91e63', '#673ab7', '#00bcd4', '#4caf50']
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.vx = (Math.random() - 0.5) * speed;
+                this.vy = (Math.random() - 0.5) * speed;
+                this.radius = Math.random() * 3 + 2;
+                this.color = palettes[currentPalette][Math.floor(Math.random() * palettes[currentPalette].length)];
+                this.baseColor = this.color;
+                this.hue = Math.random() * 360;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Bounce off edges
+                if (this.x < 0 || this.x > width) this.vx *= -1;
+                if (this.y < 0 || this.y > height) this.vy *= -1;
+
+                // Mouse interaction
+                if (isMouseDown) {
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 150) {
+                        this.vx += dx * 0.001;
+                        this.vy += dy * 0.001;
+                    }
+                }
+
+                // Color cycling
+                this.hue += 0.5;
+                const hue = this.hue % 360;
+                this.color = `hsl(${hue}, 80%, 60%)`;
+
+                // Speed control
+                const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (currentSpeed > speed) {
+                    this.vx = (this.vx / currentSpeed) * speed;
+                    this.vy = (this.vy / currentSpeed) * speed;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // Glow effect
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function drawConnection(p1, p2, distance) {
+            const opacity = (1 - distance / connectionDistance) * 0.6;
+            const gradient = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
+            gradient.addColorStop(0, p1.color);
+            gradient.addColorStop(1, p2.color);
+
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = opacity;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Update and draw particles
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // Draw connections
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < connectionDistance) {
+                        drawConnection(particles[i], particles[j], distance);
+                    }
+                }
+            }
+
+            ctx.shadowBlur = 0;
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            // Add new particle on click
+            particles.push(new Particle(mouseX, mouseY));
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isMouseDown = true;
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+            particles.push(new Particle(mouseX, mouseY));
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isMouseDown = false;
+        });
+
+        // Control listeners
+        document.getElementById('particleCount').addEventListener('input', (e) => {
+            particleCount = parseInt(e.target.value);
+            initParticles();
+        });
+
+        document.getElementById('connectionDistance').addEventListener('input', (e) => {
+            connectionDistance = parseInt(e.target.value);
+        });
+
+        document.getElementById('speed').addEventListener('input', (e) => {
+            speed = parseInt(e.target.value);
+        });
+
+        function setPalette(index) {
+            currentPalette = index;
+            document.querySelectorAll('.palette-btn').forEach((btn, i) => {
+                btn.classList.toggle('active', i === index);
+            });
+            particles.forEach(p => {
+                p.color = palettes[currentPalette][Math.floor(Math.random() * palettes[currentPalette].length)];
+            });
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Initialize
+        resize();
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>
