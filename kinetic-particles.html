@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kinetic Particles - Mira's Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 100;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 10px;
+                top: 10px;
+                left: 10px;
+            }
+
+            .fullscreen-btn {
+                padding: 8px 16px;
+                font-size: 12px;
+                top: 10px;
+                right: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <div>Kinetic Particles</div>
+        <div id="stats">Particles: 0</div>
+    </div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const statsEl = document.getElementById('stats');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // Mouse position
+        let mouse = { x: width / 2, y: height / 2 };
+        let targetMouse = { x: width / 2, y: height / 2 };
+
+        // Particles
+        const particles = [];
+        const maxParticles = 150;
+
+        // HSL color cycle
+        let hue = 0;
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.radius = Math.random() * 2 + 1;
+                this.baseRadius = this.radius;
+                this.hueOffset = Math.random() * 60 - 30;
+                this.life = Math.random() * 100 + 100;
+                this.maxLife = this.life;
+            }
+
+            update() {
+                // Attract to mouse
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 300) {
+                    const force = (300 - dist) / 300;
+                    this.vx += (dx / dist) * force * 0.5;
+                    this.vy += (dy / dist) * force * 0.5;
+                    this.radius = this.baseRadius + force * 3;
+                } else {
+                    this.radius = this.baseRadius;
+                }
+
+                // Drag
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Life decay
+                this.life--;
+
+                // Respawn
+                if (this.life <= 0 || this.x < -50 || this.x > width + 50 ||
+                    this.y < -50 || this.y > height + 50) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = this.life / this.maxLife;
+                const h = (hue + this.hueOffset) % 360;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${h}, 70%, 60%, ${alpha})`;
+                ctx.fill();
+
+                // Glow
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${h}, 70%, 60%, ${alpha * 0.3})`;
+                ctx.fill();
+            }
+        }
+
+        // Initialize particles
+        for (let i = 0; i < maxParticles; i++) {
+            particles.push(new Particle());
+        }
+
+        // Draw connections between nearby particles
+        function drawConnections() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 100) {
+                        const alpha = (1 - dist / 100) * 0.3;
+                        const h = (hue + particles[i].hueOffset) % 360;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `hsla(${h}, 70%, 60%, ${alpha})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            // Clear with fade effect
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Smooth mouse movement
+            mouse.x += (targetMouse.x - mouse.x) * 0.1;
+            mouse.y += (targetMouse.y - mouse.y) * 0.1;
+
+            // Update and draw particles
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // Draw connections
+            drawConnections();
+
+            // Update hue
+            hue = (hue + 0.5) % 360;
+
+            // Update stats
+            statsEl.textContent = `Particles: ${particles.length}`;
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        canvas.addEventListener('mousemove', (e) => {
+            targetMouse.x = e.clientX;
+            targetMouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            targetMouse.x = e.touches[0].clientX;
+            targetMouse.y = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            targetMouse.x = e.touches[0].clientX;
+            targetMouse.y = e.touches[0].clientY;
+        });
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            mouse.x = width / 2;
+            mouse.y = height / 2;
+            targetMouse.x = width / 2;
+            targetMouse.y = height / 2;
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        animate();
+    </script>
+</body>
+</html>
