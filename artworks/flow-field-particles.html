@@ -3,99 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flow Field Particles - Mira's Generative Art</title>
+    <title>Flow Field Particles - Mira</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
         body {
-            background: #0a0a0f;
+            background: #000;
             overflow: hidden;
-            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
         }
-
         canvas {
             display: block;
         }
-
         .info {
-            position: fixed;
-            bottom: 20px;
+            position: absolute;
+            top: 20px;
             left: 20px;
             color: rgba(255, 255, 255, 0.7);
-            font-size: 14px;
-            z-index: 100;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
             pointer-events: none;
+            text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
         }
-
-        .info h1 {
-            font-size: 18px;
-            margin-bottom: 5px;
-            color: #fff;
-        }
-
-        .info p {
-            margin: 2px 0;
-        }
-
         .fullscreen-btn {
-            position: fixed;
+            position: absolute;
             top: 20px;
             right: 20px;
+            padding: 10px 20px;
             background: rgba(255, 255, 255, 0.1);
             border: 1px solid rgba(255, 255, 255, 0.3);
-            color: #fff;
-            padding: 12px 20px;
-            border-radius: 25px;
+            color: white;
+            border-radius: 20px;
             cursor: pointer;
             font-size: 14px;
-            z-index: 100;
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
+            transition: all 0.3s;
         }
-
         .fullscreen-btn:hover {
             background: rgba(255, 255, 255, 0.2);
-            transform: scale(1.05);
-        }
-
-        .fullscreen-btn:active {
-            transform: scale(0.95);
-        }
-
-        @media (max-width: 768px) {
-            .info {
-                bottom: 10px;
-                left: 10px;
-                font-size: 12px;
-            }
-
-            .info h1 {
-                font-size: 16px;
-            }
-
-            .fullscreen-btn {
-                top: 10px;
-                right: 10px;
-                padding: 10px 16px;
-                font-size: 12px;
-            }
         }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
-
     <div class="info">
-        <h1>🌊 Flow Field Particles</h1>
-        <p>Move your mouse or touch to attract particles</p>
-        <p>Press 'R' to reset | 'T' to toggle trails</p>
+        <div>Flow Field Particles</div>
+        <div id="count">0 particles</div>
     </div>
-
-    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
 
     <script>
         const canvas = document.getElementById('canvas');
@@ -104,90 +64,41 @@
         let width, height;
         let particles = [];
         let flowField = [];
-        let scale = 20;
-        let rows, cols;
-        let zOff = 0;
-        let showTrails = true;
+        let cols, rows;
+        const scale = 20;
+        let hue = 0;
+        let mouseX = -1000, mouseY = -1000;
+        let isMouseDown = false;
 
-        const PARTICLE_COUNT = 3000;
-        const NOISE_SCALE = 0.003;
-        const TIME_SPEED = 0.0002;
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.floor(width / scale);
+            rows = Math.floor(height / scale);
+            initFlowField();
+        }
 
-        // Mouse position
-        let mouseX = -1000;
-        let mouseY = -1000;
-
-        // Simplex noise implementation
-        class SimplexNoise {
-            constructor() {
-                this.perm = new Uint8Array(512);
-                for (let i = 0; i < 256; i++) this.perm[i] = i;
-                for (let i = 255; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [this.perm[i], this.perm[j]] = [this.perm[j], this.perm[i]];
-                    this.perm[i + 256] = this.perm[i];
+        function initFlowField() {
+            flowField = [];
+            let yoff = 0;
+            for (let y = 0; y < rows; y++) {
+                let row = [];
+                let xoff = 0;
+                for (let x = 0; x < cols; x++) {
+                    const angle = noise(xoff, yoff) * Math.PI * 4;
+                    row.push(angle);
+                    xoff += 0.1;
                 }
-            }
-
-            noise2D(x, y) {
-                const F2 = 0.5 * (Math.sqrt(3) - 1);
-                const G2 = (3 - Math.sqrt(3)) / 6;
-
-                let n0, n1, n2;
-                const s = (x + y) * F2;
-                const i = Math.floor(x + s);
-                const j = Math.floor(y + s);
-                const t = (i + j) * G2;
-                const X0 = i - t;
-                const Y0 = j - t;
-                const x0 = x - X0;
-                const y0 = y - Y0;
-
-                let i1, j1;
-                if (x0 > y0) { i1 = 1; j1 = 0; }
-                else { i1 = 0; j1 = 1; }
-
-                const x1 = x0 - i1 + G2;
-                const y1 = y0 - j1 + G2;
-                const x2 = x0 - 1 + 2 * G2;
-                const y2 = y0 - 1 + 2 * G2;
-
-                const ii = i & 255;
-                const jj = j & 255;
-
-                let t0 = 0.5 - x0 * x0 - y0 * y0;
-                if (t0 < 0) n0 = 0;
-                else {
-                    t0 *= t0;
-                    n0 = t0 * t0 * this.grad(this.perm[ii + this.perm[jj]], x0, y0);
-                }
-
-                let t1 = 0.5 - x1 * x1 - y1 * y1;
-                if (t1 < 0) n1 = 0;
-                else {
-                    t1 *= t1;
-                    n1 = t1 * t1 * this.grad(this.perm[ii + i1 + this.perm[jj + j1]], x1, y1);
-                }
-
-                let t2 = 0.5 - x2 * x2 - y2 * y2;
-                if (t2 < 0) n2 = 0;
-                else {
-                    t2 *= t2;
-                    n2 = t2 * t2 * this.grad(this.perm[ii + 1 + this.perm[jj + 1]], x2, y2);
-                }
-
-                return 70 * (n0 + n1 + n2);
-            }
-
-            grad(hash, x, y) {
-                const h = hash & 7;
-                const u = h < 4 ? x : y;
-                const v = h < 4 ? y : x;
-                return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
+                flowField.push(row);
+                yoff += 0.1;
             }
         }
 
-        const noise = new SimplexNoise();
+        // シンプルなノイズ関数
+        function noise(x, y) {
+            const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+            return n - Math.floor(n);
+        }
 
         class Particle {
             constructor() {
@@ -199,23 +110,12 @@
                 this.y = Math.random() * height;
                 this.vx = 0;
                 this.vy = 0;
-                this.history = [];
-                this.maxHistory = 10;
-                this.color = this.getRandomColor();
-            }
-
-            getRandomColor() {
-                const colors = [
-                    '#00f5ff', // Cyan
-                    '#ff00ff', // Magenta
-                    '#ffff00', // Yellow
-                    '#00ff7f', // Spring green
-                    '#ff6347', // Tomato
-                    '#9400d3', // Dark violet
-                    '#00ced1', // Dark turquoise
-                    '#ff1493', // Deep pink
-                ];
-                return colors[Math.floor(Math.random() * colors.length)];
+                this.ax = 0;
+                this.ay = 0;
+                this.maxSpeed = 2 + Math.random() * 2;
+                this.life = 1;
+                this.decay = 0.001 + Math.random() * 0.002;
+                this.hueOffset = Math.random() * 60;
             }
 
             update() {
@@ -223,123 +123,78 @@
                 const row = Math.floor(this.y / scale);
 
                 if (col >= 0 && col < cols && row >= 0 && row < rows) {
-                    const index = col + row * cols;
-                    const angle = flowField[index];
-
-                    // Flow field influence
-                    this.vx += Math.cos(angle) * 0.5;
-                    this.vy += Math.sin(angle) * 0.5;
+                    const angle = flowField[row][col];
+                    this.ax = Math.cos(angle) * 0.5;
+                    this.ay = Math.sin(angle) * 0.5;
                 }
 
-                // Mouse attraction
-                const dx = mouseX - this.x;
-                const dy = mouseY - this.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < 200) {
-                    const force = (200 - dist) / 200;
-                    this.vx += (dx / dist) * force * 2;
-                    this.vy += (dy / dist) * force * 2;
+                // マウスの影響
+                if (isMouseDown) {
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 200) {
+                        const force = (200 - dist) / 200;
+                        this.ax += (dx / dist) * force * 2;
+                        this.ay += (dy / dist) * force * 2;
+                    }
                 }
 
-                // Speed limit
+                this.vx += this.ax;
+                this.vy += this.ay;
+
+                // 速度制限
                 const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                if (speed > 3) {
-                    this.vx = (this.vx / speed) * 3;
-                    this.vy = (this.vy / speed) * 3;
+                if (speed > this.maxSpeed) {
+                    this.vx = (this.vx / speed) * this.maxSpeed;
+                    this.vy = (this.vy / speed) * this.maxSpeed;
                 }
 
                 this.x += this.vx;
                 this.y += this.vy;
 
-                // Store history
-                this.history.push({ x: this.x, y: this.y });
-                if (this.history.length > this.maxHistory) {
-                    this.history.shift();
-                }
+                this.life -= this.decay;
 
-                // Wrap around
-                if (this.x < 0) {
-                    this.x = width;
-                    this.history = [];
-                }
-                if (this.x > width) {
-                    this.x = 0;
-                    this.history = [];
-                }
-                if (this.y < 0) {
-                    this.y = height;
-                    this.history = [];
-                }
-                if (this.y > height) {
-                    this.y = 0;
-                    this.history = [];
+                // 画面外または寿命切れでリセット
+                if (this.x < 0 || this.x > width ||
+                    this.y < 0 || this.y > height ||
+                    this.life <= 0) {
+                    this.reset();
                 }
             }
 
             draw() {
-                ctx.strokeStyle = this.color;
-                ctx.lineWidth = 1;
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const alpha = this.life * 0.8;
+                const h = (hue + this.hueOffset + speed * 20) % 360;
+
                 ctx.beginPath();
-
-                if (this.history.length > 1) {
-                    ctx.moveTo(this.history[0].x, this.history[0].y);
-                    for (let i = 1; i < this.history.length; i++) {
-                        ctx.lineTo(this.history[i].x, this.history[i].y);
-                    }
-                }
-                ctx.stroke();
-            }
-        }
-
-        function resize() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-
-            cols = Math.floor(width / scale) + 1;
-            rows = Math.floor(height / scale) + 1;
-
-            flowField = new Array(cols * rows);
-        }
-
-        function initFlowField() {
-            for (let y = 0; y < rows; y++) {
-                for (let x = 0; x < cols; x++) {
-                    const index = x + y * cols;
-                    const angle = noise.noise2D(x * NOISE_SCALE, y * NOISE_SCALE + zOff) * Math.PI * 4;
-                    flowField[index] = angle;
-                }
+                ctx.arc(this.x, this.y, 1.5, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${h}, 70%, 60%, ${alpha})`;
+                ctx.fill();
             }
         }
 
         function init() {
             resize();
-            initFlowField();
-
             particles = [];
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
+            for (let i = 0; i < 2000; i++) {
                 particles.push(new Particle());
             }
         }
 
         function animate() {
-            if (showTrails) {
-                ctx.fillStyle = 'rgba(10, 10, 15, 0.05)';
-            } else {
-                ctx.fillStyle = '#0a0a0f';
-            }
+            // 少しずつフェード
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
             ctx.fillRect(0, 0, width, height);
 
-            // Update flow field slowly
-            zOff += TIME_SPEED;
-            if (Math.random() < 0.1) {
-                initFlowField();
-            }
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
 
-            // Update and draw particles
-            for (const particle of particles) {
-                particle.update();
-                particle.draw();
-            }
+            hue += 0.2;
+            document.getElementById('count').textContent = `${particles.length} particles`;
 
             requestAnimationFrame(animate);
         }
@@ -352,10 +207,17 @@
             }
         }
 
-        // Event listeners
-        window.addEventListener('resize', () => {
-            resize();
-            initFlowField();
+        // イベントリスナー
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
         });
 
         canvas.addEventListener('mousemove', (e) => {
@@ -363,32 +225,23 @@
             mouseY = e.clientY;
         });
 
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isMouseDown = true;
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isMouseDown = false;
+        });
+
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
             mouseX = e.touches[0].clientX;
             mouseY = e.touches[0].clientY;
-        }, { passive: false });
-
-        canvas.addEventListener('touchend', () => {
-            mouseX = -1000;
-            mouseY = -1000;
         });
 
-        canvas.addEventListener('mouseleave', () => {
-            mouseX = -1000;
-            mouseY = -1000;
-        });
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'r' || e.key === 'R') {
-                init();
-            }
-            if (e.key === 't' || e.key === 'T') {
-                showTrails = !showTrails;
-            }
-        });
-
-        // Start
         init();
         animate();
     </script>
