@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Chase</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            font-size: 24px;
+            text-shadow: 0 0 10px #0ff;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .score {
+            margin-bottom: 10px;
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #f0f;
+            z-index: 100;
+            display: none;
+        }
+
+        .game-over h1 {
+            font-size: 48px;
+            text-shadow: 0 0 20px #f0f;
+            margin-bottom: 20px;
+        }
+
+        .game-over p {
+            font-size: 24px;
+            margin-bottom: 30px;
+        }
+
+        .game-over button {
+            background: transparent;
+            border: 2px solid #0ff;
+            color: #0ff;
+            padding: 15px 40px;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Arial', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .game-over button:hover {
+            background: #0ff;
+            color: #000;
+            box-shadow: 0 0 20px #0ff;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 255, 255, 0.2);
+            border: 2px solid #0ff;
+            color: #0ff;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.3s;
+            font-family: 'Arial', sans-serif;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.4);
+            box-shadow: 0 0 20px #0ff;
+        }
+
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #f0f;
+            font-size: 20px;
+            text-shadow: 0 0 20px #f0f;
+            z-index: 100;
+            letter-spacing: 4px;
+            pointer-events: none;
+        }
+
+        .start-screen {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #0ff;
+            z-index: 100;
+        }
+
+        .start-screen h1 {
+            font-size: 36px;
+            text-shadow: 0 0 20px #0ff;
+            margin-bottom: 20px;
+        }
+
+        .start-screen p {
+            font-size: 16px;
+            margin-bottom: 30px;
+            opacity: 0.8;
+        }
+
+        .start-screen button {
+            background: transparent;
+            border: 2px solid #f0f;
+            color: #f0f;
+            padding: 15px 40px;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Arial', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .start-screen button:hover {
+            background: #f0f;
+            color: #000;
+            box-shadow: 0 0 20px #f0f;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="title">NEON CHASE</div>
+
+    <div class="ui" id="ui" style="display: none;">
+        <div class="score">Score: <span id="score">0</span></div>
+        <div>High Score: <span id="highScore">0</span></div>
+    </div>
+
+    <div class="start-screen" id="startScreen">
+        <h1>NEON CHASE</h1>
+        <p>Drag or use Arrow Keys to move<br>Collect cyan orbs, avoid red enemies</p>
+        <button onclick="startGame()">START</button>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <h1>GAME OVER</h1>
+        <p>Score: <span id="finalScore">0</span></p>
+        <button onclick="startGame()">RESTART</button>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">FULLSCREEN</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let gameRunning = false;
+        let score = 0;
+        let highScore = localStorage.getItem('neonChaseHighScore') || 0;
+
+        document.getElementById('highScore').textContent = highScore;
+
+        // Player
+        const player = {
+            x: 0,
+            y: 0,
+            radius: 15,
+            speed: 5,
+            color: '#0ff',
+            targetX: 0,
+            targetY: 0,
+            dx: 0,
+            dy: 0
+        };
+
+        // Collectibles
+        let collectibles = [];
+        const collectibleRadius = 10;
+
+        // Enemies
+        let enemies = [];
+        const enemyRadius = 12;
+
+        // Input
+        const keys = {};
+        let mouseX = 0;
+        let mouseY = 0;
+        let usingMouse = false;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+
+            if (!gameRunning) {
+                player.x = width / 2;
+                player.y = height / 2;
+                player.targetX = width / 2;
+                player.targetY = height / 2;
+            }
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Keyboard input
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            usingMouse = false;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        // Touch/Mouse input
+        canvas.addEventListener('mousedown', (e) => {
+            usingMouse = true;
+            player.targetX = e.clientX;
+            player.targetY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (usingMouse) {
+                player.targetX = e.clientX;
+                player.targetY = e.clientY;
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            usingMouse = false;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            usingMouse = true;
+            player.targetX = e.touches[0].clientX;
+            player.targetY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (usingMouse) {
+                player.targetX = e.touches[0].clientX;
+                player.targetY = e.touches[0].clientY;
+            }
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            usingMouse = false;
+        });
+
+        function spawnCollectible() {
+            collectibles.push({
+                x: Math.random() * (width - 60) + 30,
+                y: Math.random() * (height - 60) + 30,
+                pulse: 0
+            });
+        }
+
+        function spawnEnemy() {
+            const side = Math.floor(Math.random() * 4);
+            let x, y, vx, vy;
+
+            switch (side) {
+                case 0: // Top
+                    x = Math.random() * width;
+                    y = -enemyRadius;
+                    break;
+                case 1: // Right
+                    x = width + enemyRadius;
+                    y = Math.random() * height;
+                    break;
+                case 2: // Bottom
+                    x = Math.random() * width;
+                    y = height + enemyRadius;
+                    break;
+                case 3: // Left
+                    x = -enemyRadius;
+                    y = Math.random() * height;
+                    break;
+            }
+
+            // Calculate velocity towards player
+            const angle = Math.atan2(player.y - y, player.x - x);
+            const speed = 2 + Math.random() * 2 + score * 0.05;
+            vx = Math.cos(angle) * speed;
+            vy = Math.sin(angle) * speed;
+
+            enemies.push({ x, y, vx, vy });
+        }
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            collectibles = [];
+            enemies = [];
+
+            player.x = width / 2;
+            player.y = height / 2;
+            player.targetX = width / 2;
+            player.targetY = height / 2;
+
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('gameOver').style.display = 'none';
+            document.getElementById('ui').style.display = 'block';
+            document.getElementById('score').textContent = score;
+
+            // Spawn initial collectibles
+            for (let i = 0; i < 5; i++) {
+                spawnCollectible();
+            }
+        }
+
+        function gameOver() {
+            gameRunning = false;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('neonChaseHighScore', highScore);
+                document.getElementById('highScore').textContent = highScore;
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').style.display = 'block';
+            document.getElementById('ui').style.display = 'none';
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            // Player movement
+            if (usingMouse) {
+                const dx = player.targetX - player.x;
+                const dy = player.targetY - player.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist > 5) {
+                    player.x += (dx / dist) * player.speed;
+                    player.y += (dy / dist) * player.speed;
+                }
+            } else {
+                if (keys['ArrowUp'] || keys['KeyW']) player.y -= player.speed;
+                if (keys['ArrowDown'] || keys['KeyS']) player.y += player.speed;
+                if (keys['ArrowLeft'] || keys['KeyA']) player.x -= player.speed;
+                if (keys['ArrowRight'] || keys['KeyD']) player.x += player.speed;
+            }
+
+            // Boundary check
+            player.x = Math.max(player.radius, Math.min(width - player.radius, player.x));
+            player.y = Math.max(player.radius, Math.min(height - player.radius, player.y));
+
+            // Update collectibles
+            collectibles.forEach(c => {
+                c.pulse += 0.1;
+            });
+
+            // Check collectible collision
+            for (let i = collectibles.length - 1; i >= 0; i--) {
+                const c = collectibles[i];
+                const dx = player.x - c.x;
+                const dy = player.y - c.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < player.radius + collectibleRadius) {
+                    collectibles.splice(i, 1);
+                    score += 10;
+                    document.getElementById('score').textContent = score;
+
+                    // Spawn new collectible
+                    spawnCollectible();
+
+                    // Spawn enemy occasionally
+                    if (Math.random() > 0.5) {
+                        spawnEnemy();
+                    }
+
+                    // Difficulty scaling
+                    if (score % 50 === 0) {
+                        spawnEnemy();
+                    }
+                }
+            }
+
+            // Update enemies
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const e = enemies[i];
+                e.x += e.vx;
+                e.y += e.vy;
+
+                // Remove if off screen
+                if (e.x < -50 || e.x > width + 50 || e.y < -50 || e.y > height + 50) {
+                    enemies.splice(i, 1);
+                    continue;
+                }
+
+                // Check player collision
+                const dx = player.x - e.x;
+                const dy = player.y - e.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < player.radius + enemyRadius) {
+                    gameOver();
+                    return;
+                }
+            }
+
+            // Spawn enemies periodically
+            if (Math.random() < 0.01 + score * 0.0001) {
+                spawnEnemy();
+            }
+        }
+
+        function draw() {
+            // Clear with trail effect
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (!gameRunning) return;
+
+            // Draw collectibles
+            collectibles.forEach(c => {
+                const pulseSize = Math.sin(c.pulse) * 3;
+                const radius = collectibleRadius + pulseSize;
+
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#0ff';
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#0ff';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Draw enemies
+            enemies.forEach(e => {
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, enemyRadius, 0, Math.PI * 2);
+                ctx.fillStyle = '#f00';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#f00';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Draw player
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = player.color;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = player.color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Draw player glow
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius + 5, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        function animate() {
+            update();
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        animate();
+    </script>
+</body>
+</html>
