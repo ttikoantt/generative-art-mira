@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Note Catcher</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .score-panel {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px 20px;
+            border-radius: 12px;
+            color: white;
+            backdrop-filter: blur(10px);
+        }
+
+        .score-panel .label {
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        .score-panel .value {
+            font-size: 28px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        .score-panel .value.gold {
+            color: #ffd700;
+        }
+
+        .lives {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .heart {
+            width: 20px;
+            height: 20px;
+            background: #ff4757;
+            border-radius: 50%;
+        }
+
+        .heart.lost {
+            opacity: 0.3;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            color: white;
+            display: none;
+            z-index: 50;
+        }
+
+        .game-over.show {
+            display: block;
+        }
+
+        .game-over h2 {
+            font-size: 32px;
+            margin-bottom: 20px;
+        }
+
+        .game-over .final-score {
+            font-size: 48px;
+            color: #ffd700;
+            margin-bottom: 20px;
+        }
+
+        .restart-btn {
+            background: #ffd700;
+            color: #1a1a2e;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            .score-panel {
+                padding: 10px 15px;
+            }
+
+            .score-panel .value {
+                font-size: 24px;
+            }
+
+            .game-over h2 {
+                font-size: 24px;
+            }
+
+            .game-over .final-score {
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="score-panel">
+            <div class="label">SCORE</div>
+            <div class="value gold" id="score">0</div>
+            <div class="lives" id="lives">
+                <div class="heart"></div>
+                <div class="heart"></div>
+                <div class="heart"></div>
+            </div>
+        </div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="game-over" id="gameOver">
+        <h2>🎵 Game Over</h2>
+        <div class="final-score" id="finalScore">0</div>
+        <button class="restart-btn" onclick="restartGame()">再プレイ</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // ゲーム状態
+        let score = 0;
+        let lives = 3;
+        let gameOver = false;
+        let combo = 0;
+        let comboTimer = 0;
+
+        // プレイヤー
+        const player = {
+            width: 80,
+            height: 20,
+            x: width / 2 - 40,
+            y: height - 100,
+            speed: 8,
+            color: '#ffd700'
+        };
+
+        // 音符配列
+        let notes = [];
+
+        // 音符クラス
+        class Note {
+            constructor() {
+                this.x = Math.random() * (width - 40) + 20;
+                this.y = -30;
+                this.size = Math.random() * 10 + 20;
+                this.speed = Math.random() * 2 + 2;
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+
+                // 音符のタイプ
+                const rand = Math.random();
+                if (rand < 0.7) {
+                    this.type = 'normal';
+                    this.color = '#ffd700';
+                    this.points = 10;
+                } else if (rand < 0.9) {
+                    this.type = 'silver';
+                    this.color = '#c0c0c0';
+                    this.points = 25;
+                } else {
+                    this.type = 'gold';
+                    this.color = '#ffed4e';
+                    this.points = 50;
+                }
+            }
+
+            update() {
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // 音符描画（♪）
+                ctx.fillStyle = this.color;
+                ctx.font = `${this.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('♪', 0, 0);
+
+                // グロー効果
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 15;
+                ctx.fillText('♪', 0, 0);
+
+                ctx.restore();
+            }
+
+            isOffScreen() {
+                return this.y > height + 50;
+            }
+
+            collidesWith(p) {
+                return this.x > p.x &&
+                       this.x < p.x + p.width &&
+                       this.y + this.size / 2 > p.y &&
+                       this.y - this.size / 2 < p.y + p.height;
+            }
+        }
+
+        // エフェクト配列
+        let effects = [];
+
+        // エフェクトクラス
+        class Effect {
+            constructor(x, y, text, color) {
+                this.x = x;
+                this.y = y;
+                this.text = text;
+                this.color = color;
+                this.life = 1;
+                this.vy = -2;
+            }
+
+            update() {
+                this.y += this.vy;
+                this.life -= 0.02;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.font = 'bold 20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(this.text, this.x, this.y);
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+
+        // キー入力
+        const keys = {};
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+        });
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // タッチ入力
+        let touchX = null;
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchX = e.touches[0].clientX;
+        });
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (touchX !== null) {
+                const newX = e.touches[0].clientX;
+                player.x += (newX - touchX) * 0.5;
+                touchX = newX;
+            }
+        });
+        canvas.addEventListener('touchend', () => {
+            touchX = null;
+        });
+
+        // スポーンタイマー
+        let spawnTimer = 0;
+        const spawnInterval = 60;
+
+        // 難易度
+        let difficulty = 1;
+
+        function spawnNote() {
+            notes.push(new Note());
+        }
+
+        function updatePlayer() {
+            if (keys['ArrowLeft'] || keys['a']) {
+                player.x -= player.speed;
+            }
+            if (keys['ArrowRight'] || keys['d']) {
+                player.x += player.speed;
+            }
+
+            // 境界チェック
+            if (player.x < 0) player.x = 0;
+            if (player.x > width - player.width) player.x = width - player.width;
+        }
+
+        function drawPlayer() {
+            // バスケット描画
+            ctx.fillStyle = player.color;
+            ctx.shadowColor = player.color;
+            ctx.shadowBlur = 20;
+
+            ctx.beginPath();
+            ctx.moveTo(player.x, player.y + player.height);
+            ctx.lineTo(player.x + player.width / 2, player.y);
+            ctx.lineTo(player.x + player.width, player.y + player.height);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+        }
+
+        function addEffect(x, y, text, color) {
+            effects.push(new Effect(x, y, text, color));
+        }
+
+        function catchNote(note) {
+            // コンボ処理
+            combo++;
+            comboTimer = 120;
+
+            // スコア計算
+            const points = note.points * (1 + Math.floor(combo / 5) * 0.5);
+            score += Math.floor(points);
+
+            // エフェクト
+            if (combo >= 5) {
+                addEffect(note.x, note.y, `${Math.floor(points)} (COMBO x${combo})!`, '#ff4757');
+            } else {
+                addEffect(note.x, note.y, `+${Math.floor(points)}`, note.color);
+            }
+
+            // スコア更新
+            document.getElementById('score').textContent = score;
+
+            // 難易度上昇
+            difficulty = 1 + Math.floor(score / 200) * 0.1;
+        }
+
+        function loseLife() {
+            lives--;
+            combo = 0;
+
+            // ライフ表示更新
+            const hearts = document.querySelectorAll('.heart');
+            hearts.forEach((h, i) => {
+                if (i >= lives) h.classList.add('lost');
+            });
+
+            // エフェクト
+            addEffect(player.x + player.width / 2, player.y, 'MISS!', '#ff4757');
+
+            if (lives <= 0) {
+                endGame();
+            }
+        }
+
+        function endGame() {
+            gameOver = true;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').classList.add('show');
+        }
+
+        function restartGame() {
+            score = 0;
+            lives = 3;
+            gameOver = false;
+            combo = 0;
+            difficulty = 1;
+            notes = [];
+            effects = [];
+
+            document.getElementById('score').textContent = '0';
+            document.querySelectorAll('.heart').forEach(h => h.classList.remove('lost'));
+            document.getElementById('gameOver').classList.remove('show');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function animate() {
+            // クリア
+            ctx.clearRect(0, 0, width, height);
+
+            if (!gameOver) {
+                // 更新
+                updatePlayer();
+
+                // 音符スポーン
+                spawnTimer++;
+                if (spawnTimer >= spawnInterval / difficulty) {
+                    spawnNote();
+                    spawnTimer = 0;
+                }
+
+                // 音符更新
+                notes = notes.filter(n => !n.isOffScreen());
+                notes.forEach(note => {
+                    note.update();
+
+                    // 衝突判定
+                    if (note.collidesWith(player)) {
+                        catchNote(note);
+                        note.y = height + 100; // 削除マーク
+                    }
+                });
+
+                // コンボタイマー
+                if (comboTimer > 0) {
+                    comboTimer--;
+                } else {
+                    combo = 0;
+                }
+
+                // 画面外の音符でライフ減少
+                notes.forEach(note => {
+                    if (note.isOffScreen() && note.y < height + 60) {
+                        loseLife();
+                    }
+                });
+            }
+
+            // 描画
+            drawPlayer();
+            notes.forEach(note => note.draw());
+
+            // エフェクト更新・描画
+            effects = effects.filter(e => !e.isDead());
+            effects.forEach(effect => {
+                effect.update();
+                effect.draw();
+            });
+
+            // コンボ表示
+            if (combo >= 5) {
+                ctx.fillStyle = '#ff4757';
+                ctx.font = 'bold 24px Arial';
+                ctx.textAlign = 'right';
+                ctx.fillText(`COMBO x${combo}`, width - 20, 60);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            player.y = height - 100;
+        });
+
+        // 開始
+        animate();
+    </script>
+</body>
+</html>
