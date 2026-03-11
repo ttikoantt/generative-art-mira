@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Snake - ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #gameCanvas {
+            border: 3px solid #4a9eff;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(74, 158, 255, 0.3);
+            max-width: 100%;
+            max-height: 80vh;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 30px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 30px;
+            border-radius: 50px;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #aaa;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #4a9eff 0%, #00f260 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            display: flex;
+            gap: 15px;
+            z-index: 10;
+        }
+
+        button {
+            background: linear-gradient(135deg, #4a9eff 0%, #00f260 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(74, 158, 255, 0.4);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        #overlay.hidden {
+            display: none;
+        }
+
+        #overlay h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #4a9eff 0%, #00f260 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        #overlay p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            color: #ccc;
+            text-align: center;
+            max-width: 400px;
+        }
+
+        #overlay .score {
+            font-size: 32px;
+            margin-bottom: 30px;
+        }
+
+        #fullscreen {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(74, 158, 255, 0.3);
+            border: none;
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: all 0.3s ease;
+        }
+
+        #fullscreen:hover {
+            background: rgba(74, 158, 255, 0.5);
+            transform: scale(1.1);
+        }
+
+        @media (max-width: 768px) {
+            #ui {
+                width: 90%;
+                padding: 10px 20px;
+                gap: 15px;
+            }
+
+            .stat-value {
+                font-size: 20px;
+            }
+
+            #overlay h1 {
+                font-size: 32px;
+            }
+
+            #overlay p {
+                font-size: 14px;
+                padding: 0 20px;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="ui">
+            <div class="stat">
+                <div class="stat-label">Score</div>
+                <div class="stat-value" id="score">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Length</div>
+                <div class="stat-value" id="length">3</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Words</div>
+                <div class="stat-value" id="words">0</div>
+            </div>
+        </div>
+
+        <button id="fullscreen" onclick="toggleFullscreen()">⛶</button>
+
+        <div id="controls">
+            <button onclick="restart()">🔄 Restart</button>
+        </div>
+
+        <div id="overlay">
+            <h1>🐍 Word Snake</h1>
+            <p>単語を食べてヘビを育てよう！<br>矢印キーまたはスワイプで操作</p>
+            <button onclick="startGame()">▶ Start Game</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Word list (simple words for the game)
+        const words = [
+            'CAT', 'DOG', 'SUN', 'RUN', 'FUN', 'BAT', 'HAT', 'MAT',
+            'CODE', 'NODE', 'MODE', 'RODE', 'TOAD', 'ROAD', 'LOAD',
+            'HELLO', 'WORLD', 'SNAKE', 'GAME', 'PLAY', 'WORD', 'FOOD',
+            'SMILE', 'HAPPY', 'DREAM', 'PEACE', 'LOVE', 'LIGHT',
+            'PYTHON', 'CODING', 'CREATE', 'EXPLORE', 'DISCOVER',
+            'AMAZING', 'BEAUTIFUL', 'WONDERFUL', 'FANTASTIC'
+        ];
+
+        let gridSize = 20;
+        let tileCount = 20;
+        let snake = [];
+        let food = null;
+        let dx = 0;
+        let dy = 0;
+        let score = 0;
+        let wordsEaten = 0;
+        let gameLoop = null;
+        let gameSpeed = 100;
+
+        function init() {
+            resize();
+            resetGame();
+        }
+
+        function resize() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 200, 600);
+            canvas.width = size;
+            canvas.height = size;
+            gridSize = size / tileCount;
+        }
+
+        function resetGame() {
+            snake = [
+                { x: 10, y: 10 },
+                { x: 9, y: 10 },
+                { x: 8, y: 10 }
+            ];
+            dx = 1;
+            dy = 0;
+            score = 0;
+            wordsEaten = 0;
+            updateUI();
+            spawnFood();
+        }
+
+        function spawnFood() {
+            let validPosition = false;
+            while (!validPosition) {
+                food = {
+                    x: Math.floor(Math.random() * tileCount),
+                    y: Math.floor(Math.random() * tileCount),
+                    word: words[Math.floor(Math.random() * words.length)]
+                };
+                validPosition = !snake.some(segment => segment.x === food.x && segment.y === food.y);
+            }
+        }
+
+        function update() {
+            const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+
+            // Wall collision
+            if (head.x < 0 || head.x >= tileCount || head.y < 0 || head.y >= tileCount) {
+                gameOver();
+                return;
+            }
+
+            // Self collision
+            if (snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+                gameOver();
+                return;
+            }
+
+            snake.unshift(head);
+
+            // Food collision
+            if (head.x === food.x && head.y === food.y) {
+                const points = food.word.length * 10;
+                score += points;
+                wordsEaten++;
+                updateUI();
+                spawnFood();
+            } else {
+                snake.pop();
+            }
+
+            draw();
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(74, 158, 255, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= tileCount; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * gridSize, 0);
+                ctx.lineTo(i * gridSize, canvas.height);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, i * gridSize);
+                ctx.lineTo(canvas.width, i * gridSize);
+                ctx.stroke();
+            }
+
+            // Draw food with word
+            ctx.fillStyle = '#00f260';
+            ctx.shadowColor = '#00f260';
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(
+                food.x * gridSize + gridSize / 2,
+                food.y * gridSize + gridSize / 2,
+                gridSize / 2 - 2,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Draw word on food
+            ctx.fillStyle = '#1a1a2e';
+            ctx.font = `bold ${Math.max(8, gridSize / 3)}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(
+                food.word,
+                food.x * gridSize + gridSize / 2,
+                food.y * gridSize + gridSize / 2
+            );
+
+            // Draw snake
+            snake.forEach((segment, index) => {
+                const gradient = ctx.createRadialGradient(
+                    segment.x * gridSize + gridSize / 2,
+                    segment.y * gridSize + gridSize / 2,
+                    0,
+                    segment.x * gridSize + gridSize / 2,
+                    segment.y * gridSize + gridSize / 2,
+                    gridSize / 2
+                );
+
+                if (index === 0) {
+                    gradient.addColorStop(0, '#4a9eff');
+                    gradient.addColorStop(1, '#0066cc');
+                } else {
+                    const alpha = 1 - (index / snake.length) * 0.5;
+                    gradient.addColorStop(0, `rgba(74, 158, 255, ${alpha})`);
+                    gradient.addColorStop(1, `rgba(0, 102, 204, ${alpha})`);
+                }
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.roundRect(
+                    segment.x * gridSize + 1,
+                    segment.y * gridSize + 1,
+                    gridSize - 2,
+                    gridSize - 2,
+                    4
+                );
+                ctx.fill();
+            });
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('length').textContent = snake.length;
+            document.getElementById('words').textContent = wordsEaten;
+        }
+
+        function gameOver() {
+            clearInterval(gameLoop);
+            gameLoop = null;
+
+            document.getElementById('overlay').classList.remove('hidden');
+            document.getElementById('overlay').innerHTML = `
+                <h1>Game Over</h1>
+                <div class="score">Score: ${score}</div>
+                <p>Words eaten: ${wordsEaten}<br>Snake length: ${snake.length}</p>
+                <button onclick="startGame()">▶ Play Again</button>
+            `;
+        }
+
+        function startGame() {
+            document.getElementById('overlay').classList.add('hidden');
+            resetGame();
+            if (gameLoop) clearInterval(gameLoop);
+            gameLoop = setInterval(update, gameSpeed);
+        }
+
+        function restart() {
+            clearInterval(gameLoop);
+            startGame();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (!gameLoop) return;
+
+            switch (e.key) {
+                case 'ArrowUp':
+                    if (dy === 0) { dx = 0; dy = -1; }
+                    break;
+                case 'ArrowDown':
+                    if (dy === 0) { dx = 0; dy = 1; }
+                    break;
+                case 'ArrowLeft':
+                    if (dx === 0) { dx = -1; dy = 0; }
+                    break;
+                case 'ArrowRight':
+                    if (dx === 0) { dx = 1; dy = 0; }
+                    break;
+            }
+        });
+
+        // Touch controls
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            if (!gameLoop) return;
+
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+
+            const diffX = touchEndX - touchStartX;
+            const diffY = touchEndY - touchStartY;
+
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                // Horizontal swipe
+                if (diffX > 0 && dx === 0) { dx = 1; dy = 0; }
+                else if (diffX < 0 && dx === 0) { dx = -1; dy = 0; }
+            } else {
+                // Vertical swipe
+                if (diffY > 0 && dy === 0) { dx = 0; dy = 1; }
+                else if (diffY < 0 && dy === 0) { dx = 0; dy = -1; }
+            }
+        });
+
+        // Prevent scrolling on touch
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        });
+
+        window.addEventListener('resize', () => {
+            resize();
+            draw();
+        });
+
+        // Initialize
+        init();
+    </script>
+</body>
+</html>
