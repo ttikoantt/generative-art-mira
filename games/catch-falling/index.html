@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Catch Falling - Simple Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .game-info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            z-index: 100;
+        }
+
+        .start-screen, .game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 200;
+        }
+
+        .start-screen h1, .game-over-screen h1 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
+        }
+
+        .start-screen p, .game-over-screen p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+
+        .start-btn, .restart-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.3s;
+        }
+
+        .start-btn:hover, .restart-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+
+        .start-btn:active, .restart-btn:active {
+            transform: scale(0.95);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .final-score {
+            font-size: 48px;
+            margin: 20px 0;
+            color: #ffd700;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-info">
+        <div>Score: <span id="score">0</span></div>
+        <div>Lives: <span id="lives">3</span></div>
+    </div>
+
+    <div class="start-screen" id="startScreen">
+        <h1>🎯 Catch Falling</h1>
+        <p>落ちてくるアイテムをキャッチ！</p>
+        <p>タップ/クリックで左右に移動</p>
+        <button class="start-btn" onclick="startGame()">Start Game</button>
+    </div>
+
+    <div class="game-over-screen hidden" id="gameOverScreen">
+        <h1>Game Over</h1>
+        <p>最終スコア</p>
+        <div class="final-score" id="finalScore">0</div>
+        <button class="restart-btn" onclick="restartGame()">Play Again</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // ゲーム状態
+        let gameState = 'start'; // start, playing, gameOver
+        let score = 0;
+        let lives = 3;
+        let gameSpeed = 1;
+
+        // プレイヤー
+        const player = {
+            width: 80,
+            height: 20,
+            x: width / 2 - 40,
+            y: height - 50,
+            speed: 8,
+            targetX: width / 2 - 40
+        };
+
+        // 落下アイテム
+        let items = [];
+        const itemTypes = [
+            { emoji: '⭐', points: 10, speed: 3, size: 30 },
+            { emoji: '💎', points: 25, speed: 4, size: 35 },
+            { emoji: '🌟', points: 15, speed: 3.5, size: 32 },
+            { emoji: '💫', points: 20, speed: 4, size: 28 },
+            { emoji: '🔴', points: -10, speed: 3.5, size: 30, bad: true },
+            { emoji: '⚫', points: -20, speed: 4, size: 35, bad: true }
+        ];
+
+        // パーティクル
+        let particles = [];
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.life = 1;
+                this.color = color;
+                this.size = Math.random() * 5 + 2;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.3;
+                this.life -= 0.02;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function createParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function spawnItem() {
+            const type = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+            items.push({
+                ...type,
+                x: Math.random() * (width - 50) + 25,
+                y: -50
+            });
+        }
+
+        function updatePlayer() {
+            // スムーズな移動
+            const dx = player.targetX - player.x;
+            player.x += dx * 0.15;
+
+            // 画面外に出ないように
+            if (player.x < 0) player.x = 0;
+            if (player.x > width - player.width) player.x = width - player.width;
+        }
+
+        function updateItems() {
+            items.forEach((item, index) => {
+                item.y += item.speed * gameSpeed;
+
+                // プレイヤーとの衝突判定
+                if (
+                    item.y + item.size > player.y &&
+                    item.y < player.y + player.height &&
+                    item.x + item.size > player.x &&
+                    item.x < player.x + player.width
+                ) {
+                    // キャッチ！
+                    score += item.points;
+                    if (score < 0) score = 0;
+
+                    if (item.bad) {
+                        lives--;
+                        createParticles(item.x, item.y, '#ff0000', 15);
+                    } else {
+                        createParticles(item.x, item.y, '#ffff00', 15);
+                    }
+
+                    items.splice(index, 1);
+                    return;
+                }
+
+                // 画面外に出たら
+                if (item.y > height) {
+                    // 良いアイテムを逃したらライフ減少
+                    if (!item.bad) {
+                        lives--;
+                    }
+                    items.splice(index, 1);
+                }
+            });
+        }
+
+        function updateParticles() {
+            particles.forEach((p, index) => {
+                p.update();
+                if (p.life <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+        }
+
+        function draw() {
+            // 背景
+            ctx.fillStyle = 'rgba(102, 126, 234, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // プレイヤー
+            const gradient = ctx.createLinearGradient(player.x, player.y, player.x, player.y + player.height);
+            gradient.addColorStop(0, '#f093fb');
+            gradient.addColorStop(1, '#f5576c');
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.roundRect(player.x, player.y, player.width, player.height, 10);
+            ctx.fill();
+
+            // グロー効果
+            ctx.shadowColor = '#f093fb';
+            ctx.shadowBlur = 20;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // アイテム
+            ctx.font = '30px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            items.forEach(item => {
+                ctx.fillText(item.emoji, item.x, item.y);
+            });
+
+            // パーティクル
+            particles.forEach(p => p.draw());
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('lives').textContent = lives;
+        }
+
+        function gameOver() {
+            gameState = 'gameOver';
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+            document.getElementById('finalScore').textContent = score;
+        }
+
+        function gameLoop() {
+            if (gameState !== 'playing') return;
+
+            updatePlayer();
+            updateItems();
+            updateParticles();
+            draw();
+            updateUI();
+
+            // ゲームオーバー判定
+            if (lives <= 0) {
+                gameOver();
+                return;
+            }
+
+            // スピードアップ
+            if (score > 0 && score % 100 === 0) {
+                gameSpeed = 1 + (score / 500);
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        let spawnInterval;
+
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            lives = 3;
+            gameSpeed = 1;
+            items = [];
+            particles = [];
+            player.x = width / 2 - player.width / 2;
+            player.targetX = player.x;
+
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+
+            // アイテム生成
+            spawnInterval = setInterval(() => {
+                if (gameState === 'playing') {
+                    spawnItem();
+                }
+            }, 1000);
+
+            gameLoop();
+        }
+
+        function restartGame() {
+            clearInterval(spawnInterval);
+            startGame();
+        }
+
+        // 入力処理
+        canvas.addEventListener('mousemove', (e) => {
+            if (gameState === 'playing') {
+                player.targetX = e.clientX - player.width / 2;
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (gameState === 'playing') {
+                player.targetX = e.touches[0].clientX - player.width / 2;
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameState === 'playing') {
+                player.targetX = e.touches[0].clientX - player.width / 2;
+            }
+        }, { passive: false });
+
+        // リサイズ
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            player.y = height - 50;
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
