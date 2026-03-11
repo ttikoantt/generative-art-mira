@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sonic Vortex Art | Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 12px 24px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 4px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            font-family: 'Courier New', monospace;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .btn.active {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: #0ff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        @media (max-width: 600px) {
+            .controls {
+                width: 90%;
+            }
+            .btn {
+                padding: 10px 16px;
+                font-size: 12px;
+            }
+            .info {
+                font-size: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <div>Sonic Vortex Art</div>
+        <div id="audioStatus">オーディオ開始待機...</div>
+    </div>
+
+    <div class="controls">
+        <button class="btn" id="startBtn">マイク開始</button>
+        <button class="btn" id="demoBtn">デモ音声</button>
+    </div>
+
+    <button class="btn fullscreen-btn" id="fullscreenBtn">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const demoBtn = document.getElementById('demoBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const audioStatus = document.getElementById('audioStatus');
+
+        let width, height;
+        let particles = [];
+        let audioContext, analyser, dataArray, bufferLength;
+        let isAudioRunning = false;
+        let hue = 0;
+        let time = 0;
+
+        // Resize canvas
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Particle class
+        class Particle {
+            constructor(angle, distance) {
+                this.angle = angle;
+                this.distance = distance;
+                this.size = Math.random() * 3 + 1;
+                this.speed = Math.random() * 0.02 + 0.01;
+                this.hue = hue;
+                this.alpha = 1;
+            }
+
+            update(audioLevel, audioFreq) {
+                // Audio influences
+                const level = audioLevel * 2;
+                const freq = audioFreq * 0.5;
+
+                this.angle += this.speed + (freq * 0.001);
+                this.distance += level * 0.5;
+                this.size = 1 + level * 3;
+                this.hue = hue + freq * 0.5;
+                this.alpha = Math.max(0, 1 - this.distance / (Math.max(width, height) * 0.6));
+            }
+
+            draw() {
+                const x = width / 2 + Math.cos(this.angle) * this.distance;
+                const y = height / 2 + Math.sin(this.angle) * this.distance;
+
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsl(${this.hue}, 100%, 50%)`;
+                ctx.beginPath();
+                ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Initialize audio with microphone
+        async function initAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                source.connect(analyser);
+                isAudioRunning = true;
+                audioStatus.textContent = 'マイクアクティブ';
+                startBtn.classList.add('active');
+            } catch (err) {
+                console.error('Audio initialization error:', err);
+                audioStatus.textContent = 'オーディオアクセスエラー';
+            }
+        }
+
+        // Demo audio (oscillator)
+        function initDemoAudio() {
+            if (audioContext) {
+                audioContext.close();
+            }
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            bufferLength = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+
+            // Create dynamic frequency modulation
+            setInterval(() => {
+                if (isAudioRunning) {
+                    const freq = 200 + Math.sin(Date.now() * 0.001) * 200;
+                    oscillator.frequency.setValueAtTime(freq, audioContext.currentTime);
+                }
+            }, 100);
+
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            oscillator.connect(gainNode);
+            gainNode.connect(analyser);
+            analyser.connect(audioContext.destination);
+            oscillator.start();
+
+            isAudioRunning = true;
+            audioStatus.textContent = 'デモ音声アクティブ';
+            demoBtn.classList.add('active');
+            startBtn.classList.remove('active');
+        }
+
+        // Get audio data
+        function getAudioData() {
+            if (!isAudioRunning) return { level: 0.1, freq: 50 };
+
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            let weightedSum = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                sum += dataArray[i];
+                weightedSum += dataArray[i] * i;
+            }
+
+            const average = sum / bufferLength;
+            const freqIndex = weightedSum / sum || 0;
+
+            return {
+                level: average / 128,
+                freq: freqIndex
+            };
+        }
+
+        // Spawn new particles
+        function spawnParticles(audioLevel) {
+            const count = Math.floor(audioLevel * 5) + 1;
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 50 + Math.random() * 50;
+                particles.push(new Particle(angle, distance));
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            const audioData = getAudioData();
+            hue = (hue + 0.5) % 360;
+            time += 0.01;
+
+            // Spawn particles
+            spawnParticles(audioData.level);
+
+            // Update and draw particles
+            particles = particles.filter(p => p.alpha > 0);
+            particles.forEach(p => {
+                p.update(audioData.level, audioData.freq);
+                p.draw();
+            });
+
+            // Draw central glow
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const glowSize = 50 + audioData.level * 100;
+
+            ctx.save();
+            ctx.globalAlpha = 0.3;
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, glowSize);
+            gradient.addColorStop(0, `hsl(${hue}, 100%, 70%)`);
+            gradient.addColorStop(0.5, `hsl(${hue + 60}, 100%, 50%)`);
+            gradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, glowSize, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', initAudio);
+        demoBtn.addEventListener('click', initDemoAudio);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // Start animation
+        animate();
+
+        // Auto-start demo after 3 seconds if no audio
+        setTimeout(() => {
+            if (!isAudioRunning) {
+                initDemoAudio();
+            }
+        }, 3000);
+    </script>
+</body>
+</html>
