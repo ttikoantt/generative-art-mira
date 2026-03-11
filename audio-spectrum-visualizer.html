@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>オーディオスペクトルビジュアライザー</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: rgba(139, 92, 246, 0.2);
+            border: 1px solid rgba(139, 92, 246, 0.5);
+            color: #c4b5fd;
+            padding: 12px 24px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+        }
+
+        button:hover {
+            background: rgba(139, 92, 246, 0.4);
+            border-color: rgba(139, 92, 246, 0.8);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(139, 92, 246, 0.3);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(196, 181, 253, 0.7);
+            font-size: 12px;
+            text-align: center;
+            z-index: 100;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(236, 72, 153, 0.2);
+            border: 1px solid rgba(236, 72, 153, 0.5);
+            color: #f9a8d4;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(236, 72, 153, 0.4);
+            border-color: rgba(236, 72, 153, 0.8);
+            box-shadow: 0 5px 20px rgba(236, 72, 153, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="spectrum"></canvas>
+
+    <div class="controls">
+        <button id="playBtn">▶ 再生</button>
+        <button id="micBtn">🎤 マイク使用</button>
+        <button id="demoBtn">🎵 デモ音源</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶ 全画面</button>
+
+    <div class="info">
+        🎨 オーディオスペクトルビジュアライザー | Web Audio API
+    </div>
+
+    <script>
+        const canvas = document.getElementById('spectrum');
+        const ctx = canvas.getContext('2d');
+        const playBtn = document.getElementById('playBtn');
+        const micBtn = document.getElementById('micBtn');
+        const demoBtn = document.getElementById('demoBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let width, height;
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let bufferLength;
+        let source;
+        let isPlaying = false;
+        let animationId;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 512;
+                bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+            }
+        }
+
+        function startMicrophone() {
+            initAudio();
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    if (source) source.disconnect();
+                    source = audioContext.createMediaStreamSource(stream);
+                    source.connect(analyser);
+                    isPlaying = true;
+                    playBtn.textContent = '⏸ 停止';
+                    draw();
+                })
+                .catch(err => {
+                    console.error('マイクアクセスエラー:', err);
+                    alert('マイクへのアクセスを許可してください');
+                });
+        }
+
+        function startDemo() {
+            initAudio();
+            if (source) source.disconnect();
+
+            // オシレーターでデモ音を生成
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+            
+            // 周期的に周波数を変化
+            const lfo = audioContext.createOscillator();
+            lfo.frequency.setValueAtTime(0.5, audioContext.currentTime);
+            const lfoGain = audioContext.createGain();
+            lfoGain.gain.setValueAtTime(200, audioContext.currentTime);
+            lfo.connect(lfoGain);
+            lfoGain.connect(oscillator.frequency);
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(analyser);
+            analyser.connect(audioContext.destination);
+            
+            oscillator.start();
+            lfo.start();
+            
+            source = { disconnect: () => { oscillator.stop(); lfo.stop(); } };
+            isPlaying = true;
+            playBtn.textContent = '⏸ 停止';
+            draw();
+        }
+
+        function stop() {
+            isPlaying = false;
+            playBtn.textContent = '▶ 再生';
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+        }
+
+        function draw() {
+            if (!isPlaying) return;
+
+            animationId = requestAnimationFrame(draw);
+            analyser.getByteFrequencyData(dataArray);
+
+            // 背景を半透明で塗ってトレイル効果
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const maxRadius = Math.min(width, height) * 0.4;
+
+            // 円形スペクトル
+            for (let i = 0; i < bufferLength; i++) {
+                const angle = (i / bufferLength) * Math.PI * 2;
+                const value = dataArray[i];
+                const radius = (value / 255) * maxRadius;
+                const hue = (i / bufferLength) * 360 + Date.now() * 0.05;
+
+                const x1 = centerX + Math.cos(angle) * 50;
+                const y1 = centerY + Math.sin(angle) * 50;
+                const x2 = centerX + Math.cos(angle) * (50 + radius);
+                const y2 = centerY + Math.sin(angle) * (50 + radius);
+
+                // グラデーションライン
+                const gradient = ctx.createLinearGradient(x1, y1, x2, y2);
+                gradient.addColorStop(0, `hsla(${hue}, 80%, 60%, 0.8)`);
+                gradient.addColorStop(1, `hsla(${hue + 60}, 80%, 50%, 0.2)`);
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+
+            // 中央の発光円
+            const avgValue = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
+            const pulseRadius = 30 + (avgValue / 255) * 20;
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, pulseRadius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(139, 92, 246, ${avgValue / 255 * 0.5})`;
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, pulseRadius * 0.6, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(196, 181, 253, ${avgValue / 255 * 0.8})`;
+            ctx.fill();
+
+            // 内側のリング
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 40, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(236, 72, 153, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // 波形表示
+            ctx.beginPath();
+            const waveRadius = 60;
+            for (let i = 0; i < bufferLength; i++) {
+                const angle = (i / bufferLength) * Math.PI * 2;
+                const value = dataArray[i];
+                const r = waveRadius + (value / 255) * 30;
+                const x = centerX + Math.cos(angle) * r;
+                const y = centerY + Math.sin(angle) * r;
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.closePath();
+            ctx.strokeStyle = 'rgba(249, 168, 212, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        playBtn.addEventListener('click', () => {
+            if (isPlaying) {
+                stop();
+            } else {
+                if (audioContext && analyser) {
+                    isPlaying = true;
+                    playBtn.textContent = '⏸ 停止';
+                    draw();
+                }
+            }
+        });
+
+        micBtn.addEventListener('click', () => {
+            if (!isPlaying) {
+                startMicrophone();
+            }
+        });
+
+        demoBtn.addEventListener('click', () => {
+            if (!isPlaying) {
+                startDemo();
+            }
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                fullscreenBtn.textContent = '⛶ 元に戻す';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = '⛶ 全画面';
+            }
+        });
+
+        // 初期描画
+        ctx.fillStyle = '#0a0a0f';
+        ctx.fillRect(0, 0, width, height);
+
+        // 待機中のアニメーション
+        function idleAnimation() {
+            if (!isPlaying) {
+                ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+                ctx.fillRect(0, 0, width, height);
+
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const time = Date.now() * 0.001;
+
+                // 輝く円
+                for (let i = 0; i < 5; i++) {
+                    const radius = 50 + i * 20 + Math.sin(time + i) * 10;
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(139, 92, 246, ${0.1 - i * 0.02})`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                ctx.fillStyle = 'rgba(196, 181, 253, 0.6)';
+                ctx.font = '16px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText('「再生」ボタンまたは「マイク使用」をクリック', centerX, centerY + 120);
+
+                requestAnimationFrame(idleAnimation);
+            }
+        }
+        idleAnimation();
+    </script>
+</body>
+</html>
