@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Coin Catcher - Mira's Games</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            cursor: none;
+        }
+
+        .ui {
+            position: fixed;
+            pointer-events: none;
+            color: white;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .score {
+            top: 20px;
+            left: 20px;
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .combo {
+            top: 70px;
+            left: 20px;
+            font-size: 24px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .combo.active {
+            opacity: 1;
+        }
+
+        .lives {
+            top: 20px;
+            right: 20px;
+            font-size: 32px;
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            display: none;
+            pointer-events: auto;
+        }
+
+        .game-over h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .game-over p {
+            font-size: 24px;
+            margin-bottom: 30px;
+        }
+
+        .restart-btn {
+            background: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            color: white;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 10px;
+            pointer-events: auto;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .score {
+                font-size: 24px;
+                top: 10px;
+                left: 10px;
+            }
+
+            .combo {
+                font-size: 18px;
+                top: 50px;
+                left: 10px;
+            }
+
+            .lives {
+                font-size: 24px;
+                top: 10px;
+                right: 10px;
+            }
+
+            .game-over h1 {
+                font-size: 32px;
+            }
+
+            .game-over p {
+                font-size: 18px;
+            }
+
+            .restart-btn {
+                padding: 12px 30px;
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui score">Score: <span id="score">0</span></div>
+    <div class="ui combo" id="combo">Combo x1</div>
+    <div class="ui lives" id="lives">❤️❤️❤️</div>
+
+    <div class="game-over" id="gameOver">
+        <h1>Game Over!</h1>
+        <p>Score: <span id="finalScore">0</span></p>
+        <button class="restart-btn" onclick="restart()">Play Again</button>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let player;
+        let coins = [];
+        let score = 0;
+        let lives = 3;
+        let combo = 1;
+        let comboTimer = 0;
+        let gameRunning = true;
+        let spawnRate = 60;
+        let frameCount = 0;
+
+        class Player {
+            constructor() {
+                this.width = 80;
+                this.height = 15;
+                this.x = width / 2 - this.width / 2;
+                this.y = height - 50;
+                this.targetX = this.x;
+            }
+
+            update() {
+                // Smooth movement
+                const dx = this.targetX - this.x;
+                this.x += dx * 0.15;
+
+                // Keep in bounds
+                if (this.x < 0) this.x = 0;
+                if (this.x + this.width > width) this.x = width - this.width;
+            }
+
+            draw() {
+                // Draw basket
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.roundRect(this.x, this.y, this.width, this.height, 5);
+                ctx.fill();
+
+                // Draw glow
+                ctx.shadowColor = '#fff';
+                ctx.shadowBlur = 20;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        class Coin {
+            constructor() {
+                this.radius = 20;
+                this.x = Math.random() * (width - this.radius * 2) + this.radius;
+                this.y = -this.radius;
+                this.speed = 2 + Math.random() * 2 + (score / 500);
+                this.rotation = 0;
+                this.rotationSpeed = 0.1 + Math.random() * 0.1;
+                this.type = this.getType();
+            }
+
+            getType() {
+                const rand = Math.random();
+                if (rand < 0.1) return 'bomb';
+                if (rand < 0.2) return 'bonus';
+                if (rand < 0.3) return 'speed';
+                return 'normal';
+            }
+
+            update() {
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                if (this.type === 'normal') {
+                    ctx.fillStyle = '#ffd700';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#ffed4e';
+                    ctx.beginPath();
+                    ctx.arc(-5, -5, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.type === 'bomb') {
+                    ctx.fillStyle = '#ff4757';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#2f3542';
+                    ctx.font = '20px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('💣', 0, 0);
+                } else if (this.type === 'bonus') {
+                    ctx.fillStyle = '#2ed573';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius * 1.2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 16px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('x2', 0, 0);
+                } else if (this.type === 'speed') {
+                    ctx.fillStyle = '#3742fa';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '20px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('⚡', 0, 0);
+                }
+
+                ctx.restore();
+            }
+
+            collidesWith(player) {
+                return this.y + this.radius >= player.y &&
+                       this.y - this.radius <= player.y + player.height &&
+                       this.x >= player.x &&
+                       this.x <= player.x + player.width;
+            }
+        }
+
+        function init() {
+            resize();
+            player = new Player();
+            coins = [];
+            score = 0;
+            lives = 3;
+            combo = 1;
+            comboTimer = 0;
+            gameRunning = true;
+            spawnRate = 60;
+            frameCount = 0;
+
+            document.getElementById('gameOver').style.display = 'none';
+            updateUI();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            if (player) {
+                player.y = height - 50;
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('combo').textContent = `Combo x${combo}`;
+            document.getElementById('combo').classList.toggle('active', combo > 1);
+
+            let heartsHTML = '';
+            for (let i = 0; i < lives; i++) {
+                heartsHTML += '❤️';
+            }
+            document.getElementById('lives').textContent = heartsHTML || '💔';
+        }
+
+        function spawnCoin() {
+            coins.push(new Coin());
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            player.update();
+
+            // Spawn coins
+            frameCount++;
+            if (frameCount % spawnRate === 0) {
+                spawnCoin();
+                // Increase difficulty
+                if (spawnRate > 20 && frameCount % 300 === 0) {
+                    spawnRate--;
+                }
+            }
+
+            // Update coins
+            for (let i = coins.length - 1; i >= 0; i--) {
+                const coin = coins[i];
+                coin.update();
+
+                // Check collision
+                if (coin.collidesWith(player)) {
+                    if (coin.type === 'bomb') {
+                        lives--;
+                        combo = 1;
+                        // Screen shake effect
+                        canvas.style.transform = 'translate(5px, 5px)';
+                        setTimeout(() => {
+                            canvas.style.transform = 'translate(-5px, -5px)';
+                            setTimeout(() => {
+                                canvas.style.transform = '';
+                            }, 50);
+                        }, 50);
+                    } else if (coin.type === 'bonus') {
+                        score += 20 * combo;
+                        combo++;
+                        comboTimer = 120;
+                    } else if (coin.type === 'speed') {
+                        score += 5 * combo;
+                        // Speed up all coins temporarily
+                        coins.forEach(c => c.speed *= 1.5);
+                    } else {
+                        score += 10 * combo;
+                        combo++;
+                        comboTimer = 120;
+                    }
+                    coins.splice(i, 1);
+                    updateUI();
+                } else if (coin.y > height + coin.radius) {
+                    // Missed coin
+                    if (coin.type === 'normal') {
+                        combo = 1;
+                        updateUI();
+                    }
+                    coins.splice(i, 1);
+                }
+            }
+
+            // Combo timer
+            if (comboTimer > 0) {
+                comboTimer--;
+                if (comboTimer === 0) {
+                    combo = 1;
+                    updateUI();
+                }
+            }
+
+            // Check game over
+            if (lives <= 0) {
+                gameRunning = false;
+                document.getElementById('finalScore').textContent = score;
+                document.getElementById('gameOver').style.display = 'block';
+            }
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw player
+            player.draw();
+
+            // Draw coins
+            coins.forEach(coin => coin.draw());
+
+            // Draw combo indicator
+            if (combo > 1) {
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 24px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${combo}x COMBO!`, width / 2, height / 2);
+            }
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function restart() {
+            init();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (gameRunning) {
+                player.targetX = e.clientX - player.width / 2;
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (gameRunning) {
+                const touch = e.touches[0];
+                player.targetX = touch.clientX - player.width / 2;
+            }
+        });
+
+        // Start
+        init();
+        gameLoop();
+    </script>
+</body>
+</html>
