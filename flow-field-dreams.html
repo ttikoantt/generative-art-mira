@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow Field Dreams</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        #fullscreenBtn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        #fullscreenBtn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        #resetBtn {
+            position: fixed;
+            top: 20px;
+            right: 160px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        #resetBtn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="info">Click and drag to add particles</div>
+    <button id="fullscreenBtn">Fullscreen</button>
+    <button id="resetBtn">Reset</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let flowField = [];
+        let cols, rows;
+        const scale = 20;
+        let hue = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.floor(width / scale);
+            rows = Math.floor(height / scale);
+            initFlowField();
+        }
+
+        function initFlowField() {
+            flowField = [];
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const angle = Math.cos(x * 0.1) * Math.sin(y * 0.1) * Math.PI * 2;
+                    flowField.push(angle);
+                }
+            }
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.history = [];
+                this.maxHistory = 50;
+                this.hueOffset = Math.random() * 60 - 30;
+                this.life = 1;
+                this.decay = 0.001 + Math.random() * 0.002;
+            }
+
+            update() {
+                const col = Math.floor(this.x / scale);
+                const row = Math.floor(this.y / scale);
+                const index = col + row * cols;
+
+                if (index >= 0 && index < flowField.length) {
+                    const angle = flowField[index];
+                    this.vx += Math.cos(angle) * 0.5;
+                    this.vy += Math.sin(angle) * 0.5;
+                }
+
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                this.history.push({x: this.x, y: this.y});
+                if (this.history.length > this.maxHistory) {
+                    this.history.shift();
+                }
+
+                this.life -= this.decay;
+
+                // Wrap around edges
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+            }
+
+            draw() {
+                if (this.history.length < 2) return;
+
+                const h = (hue + this.hueOffset) % 360;
+                ctx.beginPath();
+                ctx.moveTo(this.history[0].x, this.history[0].y);
+
+                for (let i = 1; i < this.history.length; i++) {
+                    ctx.lineTo(this.history[i].x, this.history[i].y);
+                }
+
+                ctx.strokeStyle = `hsla(${h}, 80%, 60%, ${this.life * 0.5})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Draw particle
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${h}, 80%, 70%, ${this.life})`;
+                ctx.fill();
+            }
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.02)';
+            ctx.fillRect(0, 0, width, height);
+
+            particles = particles.filter(p => p.life > 0);
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            hue += 0.1;
+
+            requestAnimationFrame(animate);
+        }
+
+        // Add particles on mouse move
+        let isMouseDown = false;
+
+        canvas.addEventListener('mousedown', () => isMouseDown = true);
+        canvas.addEventListener('mouseup', () => isMouseDown = false);
+        canvas.addEventListener('mousemove', (e) => {
+            if (isMouseDown || Math.random() > 0.7) {
+                for (let i = 0; i < 3; i++) {
+                    particles.push(new Particle(e.clientX, e.clientY));
+                }
+            }
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isMouseDown = true;
+            const touch = e.touches[0];
+            for (let i = 0; i < 5; i++) {
+                particles.push(new Particle(touch.clientX, touch.clientY));
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isMouseDown) {
+                const touch = e.touches[0];
+                for (let i = 0; i < 3; i++) {
+                    particles.push(new Particle(touch.clientX, touch.clientY));
+                }
+            }
+        });
+
+        canvas.addEventListener('touchend', () => isMouseDown = false);
+
+        // Auto-add particles
+        setInterval(() => {
+            if (particles.length < 500) {
+                for (let i = 0; i < 5; i++) {
+                    particles.push(new Particle());
+                }
+            }
+        }, 100);
+
+        // Fullscreen
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // Reset
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            particles = [];
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, width, height);
+            initFlowField();
+        });
+
+        window.addEventListener('resize', resize);
+        resize();
+        animate();
+    </script>
+</body>
+</html>
