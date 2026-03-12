@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Stacker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: #fff;
+            margin-bottom: 10px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 5px;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .score {
+            font-size: 24px;
+            color: #ffd93d;
+            font-weight: bold;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            z-index: 10;
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .overlay h2 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            color: #ff6b6b;
+        }
+
+        .overlay p {
+            font-size: 16px;
+            margin-bottom: 30px;
+            opacity: 0.8;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(255, 107, 107, 0.4);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .fullscreen-btn {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            color: #fff;
+            font-size: 14px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="header">
+            <h1>🎮 Stacker</h1>
+            <p class="score">Score: <span id="scoreDisplay">0</span></p>
+        </div>
+
+        <div class="canvas-wrapper">
+            <canvas id="gameCanvas"></canvas>
+
+            <div class="overlay" id="startOverlay">
+                <h2>🎮 Stacker</h2>
+                <p>Tap to stop the block</p>
+                <button class="btn" id="startBtn">Start Game</button>
+            </div>
+
+            <div class="overlay hidden" id="gameOverOverlay">
+                <h2>Game Over</h2>
+                <p>Final Score: <span id="finalScore">0</span></p>
+                <button class="btn" id="restartBtn">Try Again</button>
+            </div>
+
+            <div class="overlay hidden" id="winOverlay">
+                <h2>🎉 You Win!</h2>
+                <p>Perfect Stack!</p>
+                <button class="btn" id="playAgainBtn">Play Again</button>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="fullscreen-btn" id="fullscreenBtn">⛶ Fullscreen</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const finalScore = document.getElementById('finalScore');
+        const startOverlay = document.getElementById('startOverlay');
+        const gameOverOverlay = document.getElementById('gameOverOverlay');
+        const winOverlay = document.getElementById('winOverlay');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        // Settings
+        const CANVAS_WIDTH = 300;
+        const CANVAS_HEIGHT = 500;
+        const BLOCK_SIZE = 25;
+        const ROWS = 15;
+        const COLS = 10;
+        const MOVE_SPEED = 4;
+        const PERFECT_TOLERANCE = 3;
+
+        let scale = 1;
+
+        // Game state
+        let blocks = [];
+        let currentBlock = null;
+        let score = 0;
+        let gameRunning = false;
+        let currentRow = ROWS - 1;
+        let direction = 1;
+        let moveSpeed = MOVE_SPEED;
+
+        // Colors
+        const colors = [
+            '#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3',
+            '#54a0ff', '#5f27cd', '#00d2d3', '#ff9f43',
+            '#10ac84', '#ee5a6f', '#c8d6e5', '#5f27cd'
+        ];
+
+        class Block {
+            constructor(x, y, width, color, alpha = 1) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.color = color;
+                this.alpha = alpha;
+                this.falling = false;
+                this.vy = 0;
+                this.targetY = y;
+            }
+
+            update() {
+                if (this.falling) {
+                    this.vy += 0.5;
+                    this.y += this.vy;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 10;
+                ctx.fillRect(this.x, this.y, this.width, BLOCK_SIZE);
+                ctx.restore();
+            }
+        }
+
+        function resize() {
+            const maxWidth = Math.min(window.innerWidth - 40, CANVAS_WIDTH);
+            scale = maxWidth / CANVAS_WIDTH;
+
+            canvas.style.width = CANVAS_WIDTH * scale + 'px';
+            canvas.style.height = CANVAS_HEIGHT * scale + 'px';
+
+            canvas.width = CANVAS_WIDTH;
+            canvas.height = CANVAS_HEIGHT;
+        }
+
+        function init() {
+            resize();
+            blocks = [];
+            score = 0;
+            currentRow = ROWS - 1;
+            direction = 1;
+            moveSpeed = MOVE_SPEED;
+
+            // Create base row
+            const baseColor = colors[0];
+            for (let col = 0; col < COLS; col++) {
+                blocks.push(new Block(
+                    col * BLOCK_SIZE,
+                    (ROWS - 1) * BLOCK_SIZE,
+                    BLOCK_SIZE,
+                    baseColor
+                ));
+            }
+
+            spawnNextBlock();
+            scoreDisplay.textContent = score;
+        }
+
+        function spawnNextBlock() {
+            if (currentRow <= 0) {
+                winGame();
+                return;
+            }
+
+            const rowBlocks = blocks.filter(b => {
+                const blockRow = Math.floor(b.y / BLOCK_SIZE);
+                return blockRow === currentRow + 1;
+            });
+
+            if (rowBlocks.length === 0) {
+                gameOver();
+                return;
+            }
+
+            const leftMost = Math.min(...rowBlocks.map(b => b.x));
+            const rightMost = Math.max(...rowBlocks.map(b => b.x + b.width));
+            const totalWidth = rightMost - leftMost;
+
+            const color = colors[(ROWS - currentRow) % colors.length];
+
+            currentBlock = {
+                x: 0,
+                y: currentRow * BLOCK_SIZE,
+                width: totalWidth,
+                color: color
+            };
+
+            currentRow--;
+        }
+
+        function placeBlock() {
+            if (!currentBlock) return;
+
+            const rowBlocks = blocks.filter(b => {
+                const blockRow = Math.floor(b.y / BLOCK_SIZE);
+                return blockRow === currentRow + 2;
+            });
+
+            const newBlock = new Block(
+                currentBlock.x,
+                currentBlock.y,
+                currentBlock.width,
+                currentBlock.color
+            );
+
+            let perfect = true;
+            let trimmedBlocks = [];
+
+            rowBlocks.forEach(refBlock => {
+                const overlap = Math.max(0,
+                    Math.min(currentBlock.x + currentBlock.width, refBlock.x + refBlock.width) -
+                    Math.max(currentBlock.x, refBlock.x)
+                );
+
+                if (overlap < PERFECT_TOLERANCE) {
+                    // No overlap, this block falls
+                    const fallingBlock = new Block(
+                        currentBlock.x,
+                        currentBlock.y,
+                        currentBlock.width,
+                        currentBlock.color
+                    );
+                    fallingBlock.falling = true;
+                    fallingBlock.alpha = 0.5;
+                    blocks.push(fallingBlock);
+                    perfect = false;
+                } else if (overlap < currentBlock.width) {
+                    // Trim the block
+                    if (currentBlock.x < refBlock.x) {
+                        const trimmedLeft = new Block(
+                            currentBlock.x,
+                            currentBlock.y,
+                            refBlock.x - currentBlock.x,
+                            currentBlock.color,
+                            0.5
+                        );
+                        trimmedLeft.falling = true;
+                        trimmedBlocks.push(trimmedLeft);
+                        currentBlock.x = refBlock.x;
+                    }
+
+                    if (currentBlock.x + currentBlock.width > refBlock.x + refBlock.width) {
+                        const rightOverlap = (currentBlock.x + currentBlock.width) - (refBlock.x + refBlock.width);
+                        const trimmedRight = new Block(
+                            refBlock.x + refBlock.width,
+                            currentBlock.y,
+                            rightOverlap,
+                            currentBlock.color,
+                            0.5
+                        );
+                        trimmedRight.falling = true;
+                        trimmedBlocks.push(trimmedRight);
+                        currentBlock.width = refBlock.width;
+                    }
+
+                    perfect = false;
+                }
+            });
+
+            trimmedBlocks.forEach(b => blocks.push(b));
+
+            if (perfect) {
+                score += 100;
+                currentBlock.width = rowBlocks[0].width;
+                currentBlock.x = rowBlocks[0].x;
+            }
+
+            score += 10;
+            scoreDisplay.textContent = score;
+
+            blocks.push(newBlock(
+                currentBlock.x,
+                currentBlock.y,
+                currentBlock.width,
+                currentBlock.color
+            ));
+
+            spawnNextBlock();
+        }
+
+        function update() {
+            if (!gameRunning || !currentBlock) return;
+
+            currentBlock.x += moveSpeed * direction;
+
+            if (currentBlock.x <= 0) {
+                direction = 1;
+            } else if (currentBlock.x + currentBlock.width >= CANVAS_WIDTH) {
+                direction = -1;
+            }
+
+            // Update falling blocks
+            blocks.forEach(block => block.update());
+
+            // Remove off-screen blocks
+            blocks = blocks.filter(block => block.y < CANVAS_HEIGHT + 50);
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // Draw placed blocks
+            blocks.forEach(block => block.draw());
+
+            // Draw current block
+            if (currentBlock && gameRunning) {
+                ctx.save();
+                ctx.fillStyle = currentBlock.color;
+                ctx.shadowColor = currentBlock.color;
+                ctx.shadowBlur = 15;
+                ctx.fillRect(currentBlock.x, currentBlock.y, currentBlock.width, BLOCK_SIZE);
+                ctx.restore();
+            }
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+
+            if (gameRunning) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function startGame() {
+            init();
+            gameRunning = true;
+            startOverlay.classList.add('hidden');
+            gameOverOverlay.classList.add('hidden');
+            winOverlay.classList.add('hidden');
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            finalScore.textContent = score;
+            gameOverOverlay.classList.remove('hidden');
+        }
+
+        function winGame() {
+            gameRunning = false;
+            winOverlay.classList.remove('hidden');
+        }
+
+        function handleClick() {
+            if (gameRunning) {
+                placeBlock();
+            }
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('click', handleClick);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleClick();
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        });
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+        playAgainBtn.addEventListener('click', startGame);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                fullscreenBtn.textContent = '⛶ Exit';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = '⛶ Fullscreen';
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                fullscreenBtn.textContent = '⛶ Fullscreen';
+            }
+        });
+
+        // Initial setup
+        resize();
+        init();
+        draw();
+    </script>
+</body>
+</html>
