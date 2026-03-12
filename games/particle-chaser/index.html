@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Particle Chaser | Games by Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .game-container {
+            text-align: center;
+            z-index: 10;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+        }
+
+        .score-display {
+            color: #ffd700;
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin: 1rem 0;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+        }
+
+        .combo-display {
+            color: #ff6b6b;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            min-height: 2rem;
+        }
+
+        #gameCanvas {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            box-shadow: 0 0 40px rgba(100, 200, 255, 0.3);
+            max-width: 95vw;
+            max-height: 60vh;
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        .info {
+            margin-top: 1rem;
+            color: #aaa;
+            font-size: 0.9rem;
+        }
+
+        .start-screen, .game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 2rem 3rem;
+            border-radius: 20px;
+            text-align: center;
+            color: white;
+            z-index: 100;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .start-screen h2, .game-over-screen h2 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: #ffd700;
+        }
+
+        .start-screen p, .game-over-screen p {
+            margin-bottom: 1.5rem;
+            color: #ccc;
+        }
+
+        .start-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .start-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 100;
+            font-size: 1.2rem;
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.4rem;
+            }
+
+            .score-display {
+                font-size: 2rem;
+            }
+
+            .start-screen, .game-over-screen {
+                padding: 1.5rem 2rem;
+                width: 90%;
+                max-width: 350px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全画面表示">⛶</button>
+
+    <div class="game-container">
+        <h1>🎯 Particle Chaser</h1>
+        <div class="score-display">スコア: <span id="score">0</span></div>
+        <div class="combo-display" id="combo"></div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <p class="info">タップしてキャッチ！素早く正確に！</p>
+    </div>
+
+    <div class="start-screen" id="startScreen">
+        <h2>🎯 Particle Chaser</h2>
+        <p>動き回る粒子をタップしてキャッチ！<br>反応速度と予測力が試される</p>
+        <button class="start-btn" onclick="startGame()">スタート</button>
+    </div>
+
+    <div class="game-over-screen hidden" id="gameOverScreen">
+        <h2>ゲームオーバー</h2>
+        <p>最終スコア: <span id="finalScore">0</span></p>
+        <p>最大コンボ: <span id="maxCombo">0</span></p>
+        <button class="start-btn" onclick="startGame()">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let gameRunning = false;
+        let particles = [];
+        let animationId;
+
+        // スマホ対応
+        function setupCanvas() {
+            const maxWidth = Math.min(600, window.innerWidth - 40);
+            const maxHeight = Math.min(500, window.innerHeight - 250);
+
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+        }
+
+        setupCanvas();
+        window.addEventListener('resize', setupCanvas);
+
+        // 粒子クラス
+        class TargetParticle {
+            constructor() {
+                this.radius = 30 + Math.random() * 20;
+                this.x = Math.random() * (canvas.width - this.radius * 2) + this.radius;
+                this.y = Math.random() * (canvas.height - this.radius * 2) + this.radius;
+                this.dx = (Math.random() - 0.5) * 4;
+                this.dy = (Math.random() - 0.5) * 4;
+                this.hue = Math.random() * 360;
+                this.pulse = 0;
+                this.life = 300; // 5秒（60fps）
+                this.maxLife = 300;
+            }
+
+            update() {
+                // 移動
+                this.x += this.dx;
+                this.y += this.dy;
+
+                // 壁で反射
+                if (this.x - this.radius < 0 || this.x + this.radius > canvas.width) {
+                    this.dx *= -1;
+                    this.x = Math.max(this.radius, Math.min(canvas.width - this.radius, this.x));
+                }
+                if (this.y - this.radius < 0 || this.y + this.radius > canvas.height) {
+                    this.dy *= -1;
+                    this.y = Math.max(this.radius, Math.min(canvas.height - this.radius, this.y));
+                }
+
+                // 色とパルス
+                this.hue = (this.hue + 1) % 360;
+                this.pulse += 0.1;
+                this.life--;
+            }
+
+            draw() {
+                // 寿命に応じた透明度
+                const alpha = Math.min(1, this.life / 50);
+
+                // 光る効果
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius * 1.5
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 80%, 60%, ${alpha})`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 80%, 50%, ${alpha * 0.5})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 80%, 40%, 0)`);
+
+                ctx.beginPath();
+                ctx.fillStyle = gradient;
+                ctx.arc(this.x, this.y, this.radius * (1 + Math.sin(this.pulse) * 0.1), 0, Math.PI * 2);
+                ctx.fill();
+
+                // 中心
+                ctx.beginPath();
+                ctx.fillStyle = `hsla(${this.hue}, 90%, 70%, ${alpha})`;
+                ctx.arc(this.x, this.y, this.radius * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            isClicked(x, y) {
+                const dist = Math.sqrt((this.x - x) ** 2 + (this.y - y) ** 2);
+                return dist < this.radius;
+            }
+
+            isExpired() {
+                return this.life <= 0;
+            }
+        }
+
+        // ゲーム開始
+        function startGame() {
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            particles = [];
+            gameRunning = true;
+
+            updateScore();
+            gameLoop();
+        }
+
+        // ゲームループ
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            // キャンバスクリア
+            ctx.fillStyle = 'rgba(15, 12, 41, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 新しい粒子を追加
+            if (Math.random() < 0.02 && particles.length < 8) {
+                particles.push(new TargetParticle());
+            }
+
+            // 粒子を更新
+            particles = particles.filter(p => !p.isExpired());
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // 全ての粒子が消えたらゲームオーバー
+            if (particles.length === 0 && score > 0) {
+                gameOver();
+                return;
+            }
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // ゲームオーバー
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('maxCombo').textContent = maxCombo;
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        // スコア更新
+        function updateScore() {
+            document.getElementById('score').textContent = score;
+
+            const comboEl = document.getElementById('combo');
+            if (combo > 1) {
+                comboEl.textContent = `🔥 ${combo} コンボ!`;
+                comboEl.style.color = `hsl(${Math.min(0, 120 - combo * 10)}, 100%, 50%)`;
+            } else {
+                comboEl.textContent = '';
+            }
+        }
+
+        // クリック/タップ処理
+        function handleClick(e) {
+            if (!gameRunning) return;
+
+            e.preventDefault();
+
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+            if (!clientX || !clientY) return;
+
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+
+            let hit = false;
+            particles = particles.filter(p => {
+                if (p.isClicked(x, y)) {
+                    hit = true;
+                    const points = Math.floor(10 * (1 + combo * 0.1));
+                    score += points;
+                    combo++;
+                    maxCombo = Math.max(maxCombo, combo);
+                    updateScore();
+                    return false;
+                }
+                return true;
+            });
+
+            if (!hit) {
+                combo = 0;
+                updateScore();
+            }
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', handleClick);
+        canvas.addEventListener('touchstart', handleClick);
+
+        // 全画面表示
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
