@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rhythm Reflex - リズム反応ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+        
+        .game-container {
+            text-align: center;
+            position: relative;
+            z-index: 10;
+        }
+        
+        h1 {
+            color: #fff;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(239, 68, 68, 0.8);
+        }
+        
+        .subtitle {
+            color: #f472b6;
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+        }
+        
+        #gameCanvas {
+            border: 3px solid rgba(239, 68, 68, 0.6);
+            border-radius: 15px;
+            box-shadow: 0 0 40px rgba(239, 68, 68, 0.4);
+            cursor: pointer;
+            touch-action: none;
+            background: rgba(0, 0, 0, 0.3);
+        }
+        
+        .stats {
+            display: flex;
+            gap: 30px;
+            margin-top: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .stat {
+            color: #fff;
+            font-size: 1.2rem;
+        }
+        
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #f472b6;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .fullscreen-btn {
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+        }
+        
+        .info {
+            color: #f472b6;
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+        
+        .start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 15px;
+            z-index: 100;
+        }
+        
+        .start-screen h2 {
+            color: #fff;
+            font-size: 2rem;
+            margin-bottom: 20px;
+        }
+        
+        .start-screen p {
+            color: #f472b6;
+            margin-bottom: 30px;
+            max-width: 80%;
+        }
+        
+        .game-over {
+            display: none;
+        }
+        
+        .game-over.active {
+            display: flex;
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+            
+            #gameCanvas {
+                max-width: 95vw;
+                max-height: 50vh;
+            }
+            
+            .stat {
+                font-size: 1rem;
+            }
+            
+            .stat-value {
+                font-size: 1.4rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>🎵 Rhythm Reflex</h1>
+        <p class="subtitle">リズム反応ゲーム</p>
+        
+        <canvas id="gameCanvas"></canvas>
+        
+        <div class="stats">
+            <div class="stat">スコア: <span id="score" class="stat-value">0</span></div>
+            <div class="stat">コンボ: <span id="combo" class="stat-value">0</span></div>
+            <div class="stat">ベスト: <span id="best" class="stat-value">0</span></div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" onclick="resetGame()">リセット</button>
+            <button class="btn fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+        </div>
+        
+        <p class="info">💡 円が縮小したらクリック！タイミングが大事</p>
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Canvasサイズ設定
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 700);
+            const maxHeight = Math.min(window.innerHeight - 280, 500);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // ゲーム状態
+        let score = 0;
+        let combo = 0;
+        let bestScore = parseInt(localStorage.getItem('rhythmReflexBest')) || 0;
+        let gameRunning = false;
+        let circles = [];
+        let lastClickTime = 0;
+        let missCount = 0;
+        
+        document.getElementById('best').textContent = bestScore;
+        
+        // 円クラス
+        class Circle {
+            constructor() {
+                this.x = Math.random() * (canvas.width - 100) + 50;
+                this.y = Math.random() * (canvas.height - 100) + 50;
+                this.maxRadius = 40 + Math.random() * 30;
+                this.radius = this.maxRadius;
+                this.hue = Math.random() * 360;
+                this.shrinkSpeed = 0.5 + Math.random() * 0.5;
+                this.clicked = false;
+                this.perfect = false;
+            }
+            
+            update() {
+                if (this.radius > 0) {
+                    this.radius -= this.shrinkSpeed;
+                }
+                return this.radius > 0;
+            }
+            
+            draw() {
+                // 外側の円
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.maxRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, 0.3)`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // 縮小する円
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                
+                if (this.clicked) {
+                    if (this.perfect) {
+                        ctx.fillStyle = `hsla(120, 80%, 60%, 0.8)`;
+                    } else {
+                        ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, 0.8)`;
+                    }
+                } else {
+                    ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, 0.5)`;
+                }
+                ctx.fill();
+                
+                ctx.strokeStyle = `hsla(${this.hue}, 90%, 70%, 1)`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+            
+            isInside(x, y) {
+                const dx = x - this.x;
+                const dy = y - this.y;
+                return Math.sqrt(dx * dx + dy * dy) < this.radius;
+            }
+            
+            getAccuracy() {
+                const ratio = this.radius / this.maxRadius;
+                if (ratio > 0.8) return 'perfect';
+                if (ratio > 0.5) return 'great';
+                if (ratio > 0.2) return 'good';
+                return 'bad';
+            }
+        }
+        
+        // 円を追加
+        function addCircle() {
+            if (!gameRunning) return;
+            circles.push(new Circle());
+            
+            // 次の円を追加（徐々に速く）
+            const delay = Math.max(800, 2000 - score * 20);
+            setTimeout(addCircle, delay);
+        }
+        
+        // クリックイベント
+        canvas.addEventListener('click', (e) => {
+            if (!gameRunning) {
+                startGame();
+                return;
+            }
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            let hit = false;
+            for (let circle of circles) {
+                if (!circle.clicked && circle.isInside(x, y)) {
+                    circle.clicked = true;
+                    hit = true;
+                    
+                    const accuracy = circle.getAccuracy();
+                    if (accuracy === 'perfect') {
+                        circle.perfect = true;
+                        score += 100 * (combo + 1);
+                        combo++;
+                    } else if (accuracy === 'great') {
+                        score += 50 * (combo + 1);
+                        combo++;
+                    } else if (accuracy === 'good') {
+                        score += 20;
+                        combo = Math.max(0, combo - 1);
+                    } else {
+                        score += 5;
+                        combo = 0;
+                    }
+                    
+                    if (score > bestScore) {
+                        bestScore = score;
+                        localStorage.setItem('rhythmReflexBest', bestScore);
+                        document.getElementById('best').textContent = bestScore;
+                    }
+                    
+                    updateStats();
+                    break;
+                }
+            }
+            
+            if (!hit) {
+                combo = 0;
+                missCount++;
+                if (missCount >= 3) {
+                    endGame();
+                }
+                updateStats();
+            }
+        });
+        
+        // タッチイベント
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!gameRunning) {
+                startGame();
+                return;
+            }
+            
+            const rect = canvas.getBoundingClientRect();
+            for (let touch of e.touches) {
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                
+                for (let circle of circles) {
+                    if (!circle.clicked && circle.isInside(x, y)) {
+                        circle.clicked = true;
+                        
+                        const accuracy = circle.getAccuracy();
+                        if (accuracy === 'perfect') {
+                            circle.perfect = true;
+                            score += 100 * (combo + 1);
+                            combo++;
+                        } else if (accuracy === 'great') {
+                            score += 50 * (combo + 1);
+                            combo++;
+                        } else if (accuracy === 'good') {
+                            score += 20;
+                            combo = Math.max(0, combo - 1);
+                        } else {
+                            score += 5;
+                            combo = 0;
+                        }
+                        
+                        if (score > bestScore) {
+                            bestScore = score;
+                            localStorage.setItem('rhythmReflexBest', bestScore);
+                            document.getElementById('best').textContent = bestScore;
+                        }
+                        
+                        updateStats();
+                        break;
+                    }
+                }
+            }
+        });
+        
+        // スタッツ更新
+        function updateStats() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('combo').textContent = combo;
+        }
+        
+        // ゲーム開始
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            combo = 0;
+            missCount = 0;
+            circles = [];
+            updateStats();
+            addCircle();
+        }
+        
+        // ゲーム終了
+        function endGame() {
+            gameRunning = false;
+            alert(`ゲームオーバー！\nスコア: ${score}\nベスト: ${bestScore}`);
+        }
+        
+        // リセット
+        function resetGame() {
+            gameRunning = false;
+            score = 0;
+            combo = 0;
+            missCount = 0;
+            circles = [];
+            updateStats();
+        }
+        
+        // 全画面
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // アニメーション
+        function animate() {
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 円を更新
+            circles = circles.filter(circle => {
+                circle.draw();
+                const alive = circle.update();
+                
+                // 円が消える前にクリックされなかったらミス
+                if (!alive && !circle.clicked) {
+                    combo = 0;
+                    missCount++;
+                    updateStats();
+                    if (missCount >= 3) {
+                        endGame();
+                    }
+                }
+                
+                return alive || circle.clicked;
+            });
+            
+            // クリックされた円を消去
+            circles = circles.filter(c => {
+                if (c.clicked) {
+                    c.radius *= 0.9;
+                    return c.radius > 5;
+                }
+                return true;
+            });
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // 開始
+        animate();
+        
+        // スタート画面
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('タップしてスタート！', canvas.width / 2, canvas.height / 2);
+    </script>
+</body>
+</html>
