@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbit Jump | 軌道ジャンプ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            text-align: center;
+            z-index: 100;
+        }
+
+        .score {
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(0, 200, 255, 0.5);
+        }
+
+        .high-score {
+            font-size: 14px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .game-over, .start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            color: white;
+        }
+
+        .game-over h2, .start-screen h2 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px rgba(255, 100, 100, 0.8);
+        }
+
+        .game-over p, .start-screen p {
+            font-size: 24px;
+            margin-bottom: 30px;
+        }
+
+        .game-over button, .start-screen button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .game-over button:hover, .start-screen button:hover {
+            transform: scale(1.1);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .hint {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            z-index: 100;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="score" id="score">0</div>
+        <div class="high-score">BEST: <span id="highScore">0</span></div>
+    </div>
+
+    <div class="start-screen" id="startScreen">
+        <h2>🌌 Orbit Jump</h2>
+        <p>クリック/タップでジャンプ！</p>
+        <button id="startBtn">スタート</button>
+    </div>
+
+    <div class="game-over hidden" id="gameOver">
+        <h2>GAME OVER</h2>
+        <p>スコア: <span id="finalScore">0</span></p>
+        <button id="restartBtn">もう一度</button>
+    </div>
+
+    <div class="hint">クリック/タップでタイミングよくジャンプ</div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // ゲーム状態
+        let gameState = 'start'; // start, playing, gameOver
+        let score = 0;
+        let highScore = localStorage.getItem('orbitJumpHighScore') || 0;
+
+        document.getElementById('highScore').textContent = highScore;
+
+        // 円の中心
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        // プラットフォーム
+        class Platform {
+            constructor(angle, distance) {
+                this.angle = angle;
+                this.distance = distance;
+                this.width = 80 + Math.random() * 40;
+                this.height = 20;
+                this.speed = 0.015 + Math.random() * 0.01;
+                this.direction = Math.random() > 0.5 ? 1 : -1;
+                this.color = `hsl(${Math.random() * 60 + 200}, 70%, 50%)`;
+            }
+
+            update() {
+                this.angle += this.speed * this.direction;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(this.angle);
+
+                // プラットフォームの影
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.fillRect(-this.width / 2 + 5, -this.distance - this.height / 2 + 5, this.width, this.height);
+
+                // プラットフォーム本体
+                const gradient = ctx.createLinearGradient(-this.width / 2, 0, this.width / 2, 0);
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(0.5, this.lightenColor(this.color, 30));
+                gradient.addColorStop(1, this.color);
+                ctx.fillStyle = gradient;
+                ctx.fillRect(-this.width / 2, -this.distance - this.height / 2, this.width, this.height);
+
+                // グロー効果
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 15;
+                ctx.fillRect(-this.width / 2, -this.distance - this.height / 2, this.width, this.height);
+
+                ctx.restore();
+            }
+
+            lightenColor(color, percent) {
+                const num = parseInt(color.replace('#', ''), 16);
+                const amt = Math.round(2.55 * percent);
+                const R = (num >> 16) + amt;
+                const G = (num >> 8 & 0x00FF) + amt;
+                const B = (num & 0x0000FF) + amt;
+                return '#' + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
+                    (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
+                    (B < 255 ? B < 1 ? 0 : B : 255)).toString(16).slice(1);
+            }
+
+            getEndPoints() {
+                const cos = Math.cos(this.angle);
+                const sin = Math.sin(this.angle);
+
+                return {
+                    left: {
+                        x: centerX + cos * (-this.width / 2) - sin * this.distance,
+                        y: centerY + sin * (-this.width / 2) + cos * this.distance
+                    },
+                    right: {
+                        x: centerX + cos * (this.width / 2) - sin * this.distance,
+                        y: centerY + sin * (this.width / 2) + cos * this.distance
+                    }
+                };
+            }
+        }
+
+        // プレイヤー
+        class Player {
+            constructor() {
+                this.x = centerX;
+                this.y = centerY - 150;
+                this.radius = 15;
+                this.velocity = { x: 0, y: 0 };
+                this.onPlatform = null;
+                this.jumping = false;
+                this.jumpVelocity = 12;
+                this.gravity = 0.4;
+                this.trail = [];
+            }
+
+            update() {
+                if (this.jumping) {
+                    this.velocity.y += this.gravity;
+                    this.x += this.velocity.x;
+                    this.y += this.velocity.y;
+
+                    // トレイル追加
+                    this.trail.push({ x: this.x, y: this.y });
+                    if (this.trail.length > 10) {
+                        this.trail.shift();
+                    }
+                } else if (this.onPlatform) {
+                    // プラットフォームに乗っている時の位置計算
+                    const platform = this.onPlatform;
+                    const cos = Math.cos(platform.angle);
+                    const sin = Math.sin(platform.angle);
+                    this.x = centerX - sin * platform.distance;
+                    this.y = centerY + cos * platform.distance;
+
+                    // プラットフォームの速度を適用
+                    const tangentSpeed = platform.speed * platform.direction * platform.distance;
+                    this.velocity.x = -cos * tangentSpeed;
+                    this.velocity.y = -sin * tangentSpeed;
+                }
+
+                // 画面外チェック
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    gameOver();
+                }
+            }
+
+            draw() {
+                // トレイル描画
+                for (let i = 0; i < this.trail.length; i++) {
+                    const alpha = i / this.trail.length;
+                    ctx.beginPath();
+                    ctx.arc(this.trail[i].x, this.trail[i].y, this.radius * 0.5 * alpha, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(100, 200, 255, ${alpha * 0.5})`;
+                    ctx.fill();
+                }
+
+                // プレイヤーの本体
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
+                gradient.addColorStop(0, '#ffffff');
+                gradient.addColorStop(0.3, '#64c8ff');
+                gradient.addColorStop(1, '#4a90d9');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // グロー効果
+                ctx.shadowColor = '#64c8ff';
+                ctx.shadowBlur = 20;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+
+            jump() {
+                if (!this.jumping && this.onPlatform) {
+                    this.jumping = true;
+                    this.onPlatform = null;
+                }
+            }
+
+            checkCollision(platforms) {
+                if (this.jumping) {
+                    for (const platform of platforms) {
+                        const distance = Math.sqrt(
+                            Math.pow(this.x - (centerX - Math.sin(platform.angle) * platform.distance), 2) +
+                            Math.pow(this.y - (centerY + Math.cos(platform.angle) * platform.distance), 2)
+                        );
+
+                        if (distance < platform.width / 2 + this.radius) {
+                            // 着地判定
+                            if (this.velocity.y > 0) {
+                                this.jumping = false;
+                                this.onPlatform = platform;
+                                this.trail = [];
+                                score++;
+                                updateScore();
+
+                                // 新しいプラットフォームを追加
+                                if (platforms.length < 10) {
+                                    const lastPlatform = platforms[platforms.length - 1];
+                                    const newAngle = lastPlatform.angle + (Math.PI / 3) + Math.random() * (Math.PI / 6);
+                                    const newDistance = lastPlatform.distance + 20 + Math.random() * 30;
+                                    platforms.push(new Platform(newAngle, Math.min(newDistance, Math.min(width, height) / 2 - 50)));
+                                }
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            }
+        }
+
+        let player = null;
+        let platforms = [];
+
+        function initGame() {
+            score = 0;
+            updateScore();
+
+            player = new Player();
+            platforms = [];
+
+            // 最初のプラットフォーム
+            platforms.push(new Platform(0, 150));
+            platforms[0].speed = 0.02;
+            platforms[0].direction = 1;
+
+            // 2番目のプラットフォーム
+            platforms.push(new Platform(Math.PI / 2, 200));
+            platforms[1].speed = 0.018;
+            platforms[1].direction = -1;
+
+            player.onPlatform = platforms[0];
+            player.jumping = false;
+        }
+
+        function updateScore() {
+            document.getElementById('score').textContent = score;
+        }
+
+        function gameOver() {
+            gameState = 'gameOver';
+            document.getElementById('gameOver').classList.remove('hidden');
+            document.getElementById('finalScore').textContent = score;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('orbitJumpHighScore', highScore);
+                document.getElementById('highScore').textContent = highScore;
+            }
+        }
+
+        function drawBackground() {
+            // 背景のグラデーション
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, Math.max(width, height) / 2);
+            gradient.addColorStop(0, '#1a1a2e');
+            gradient.addColorStop(1, '#0f0f1a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // 中心の光
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 100, 0, Math.PI * 2);
+            const centerGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 100);
+            centerGlow.addColorStop(0, 'rgba(100, 200, 255, 0.1)');
+            centerGlow.addColorStop(1, 'transparent');
+            ctx.fillStyle = centerGlow;
+            ctx.fill();
+        }
+
+        function animate() {
+            if (gameState !== 'playing') {
+                requestAnimationFrame(animate);
+                return;
+            }
+
+            // クリア
+            drawBackground();
+
+            // プラットフォームを更新・描画
+            platforms.forEach(platform => {
+                platform.update();
+                platform.draw();
+            });
+
+            // プレイヤーを更新・描画
+            player.update();
+            player.draw();
+
+            // 衝突判定
+            player.checkCollision(platforms);
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', () => {
+            if (gameState === 'playing') {
+                player.jump();
+            }
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameState === 'playing') {
+                player.jump();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && gameState === 'playing') {
+                player.jump();
+            }
+        });
+
+        document.getElementById('startBtn').addEventListener('click', () => {
+            document.getElementById('startScreen').classList.add('hidden');
+            gameState = 'playing';
+            initGame();
+        });
+
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            document.getElementById('gameOver').classList.add('hidden');
+            gameState = 'playing';
+            initGame();
+        });
+
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // 開始
+        animate();
+    </script>
+</body>
+</html>
