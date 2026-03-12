@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Kaleidoscope Canvas</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaleidoscope Canvas - Mira</title>
     <style>
         * {
             margin: 0;
@@ -14,131 +14,179 @@
         body {
             background: #000;
             overflow: hidden;
-            font-family: 'Courier New', monospace;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
 
-        canvas {
+        #canvas {
             display: block;
-            position: absolute;
-            top: 0;
-            left: 0;
+            cursor: crosshair;
         }
 
         .controls {
             position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
+            top: 20px;
+            left: 20px;
+            z-index: 100;
             display: flex;
             gap: 10px;
-            z-index: 100;
+            flex-wrap: wrap;
         }
 
-        button {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: #fff;
-            padding: 10px 20px;
-            font-size: 12px;
-            cursor: pointer;
+        .control-btn {
+            background: rgba(255, 255, 255, 0.15);
             backdrop-filter: blur(10px);
-            border-radius: 5px;
-            transition: all 0.3s;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
         }
 
-        button:hover {
-            background: rgba(255, 255, 255, 0.2);
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.05);
+        }
+
+        .control-btn:active {
+            transform: scale(0.95);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            z-index: 100;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
         }
 
         .fullscreen-btn {
             position: fixed;
             top: 20px;
             right: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: #fff;
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            cursor: pointer;
-            font-size: 20px;
             z-index: 100;
-            backdrop-filter: blur(10px);
         }
 
-        .info {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            color: rgba(255, 255, 255, 0.5);
-            font-size: 10px;
-            z-index: 100;
+        @media (max-width: 768px) {
+            .controls {
+                top: 10px;
+                left: 10px;
+                gap: 8px;
+            }
+
+            .control-btn {
+                padding: 10px 16px;
+                font-size: 12px;
+            }
+
+            .info {
+                bottom: 10px;
+                left: 10px;
+                font-size: 12px;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+            }
         }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
-    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
-    <div class="info">🎨 Kaleidoscope Canvas - Click & Drag</div>
+
     <div class="controls">
-        <button onclick="clearCanvas()">Clear</button>
-        <button onclick="randomize()">Randomize</button>
+        <button class="control-btn" id="clearBtn">クリア</button>
+        <button class="control-btn" id="segmentsBtn">セグメント: 6</button>
+        <button class="control-btn" id="colorBtn">色: レインボー</button>
+        <button class="control-btn" id="saveBtn">保存</button>
+    </div>
+
+    <button class="control-btn fullscreen-btn" id="fullscreenBtn">全画面</button>
+
+    <div class="info">
+        画面をドラッグして描画 | ダブルタップでクリア
     </div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
-        let width, height;
-        let centerX, centerY;
+        let width, height, centerX, centerY;
         let isDrawing = false;
-        let lastX, lastY;
+        let segments = 6;
         let hue = 0;
-        let segments = 12;
-        let rotationSpeed = 0.001;
-        let rotation = 0;
+        let colorMode = 'rainbow';
+        let lastX, lastY;
 
         function resize() {
             width = canvas.width = window.innerWidth;
             height = canvas.height = window.innerHeight;
             centerX = width / 2;
             centerY = height / 2;
+
+            // 黒い背景
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
         }
 
-        resize();
-        window.addEventListener('resize', resize);
+        function getSymmetryPoint(x, y, segmentIndex, totalSegments) {
+            const dx = x - centerX;
+            const dy = y - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            let angle = Math.atan2(dy, dx);
 
-        function drawSegmentLine(x1, y1, x2, y2, hue, lineWidth = 2) {
-            const anglePerSegment = (Math.PI * 2) / segments;
+            // 対称的な角度を計算
+            const segmentAngle = (2 * Math.PI) / totalSegments;
+            angle = angle + (segmentIndex * segmentAngle);
+
+            return {
+                x: centerX + Math.cos(angle) * distance,
+                y: centerY + Math.sin(angle) * distance
+            };
+        }
+
+        function drawLine(x1, y1, x2, y2, color) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+
+        function drawKaleidoscope(x1, y1, x2, y2) {
+            let color;
+
+            if (colorMode === 'rainbow') {
+                color = `hsl(${hue}, 100%, 60%)`;
+                hue = (hue + 1) % 360;
+            } else if (colorMode === 'blue') {
+                color = `hsl(${200 + Math.random() * 60}, 100%, 60%)`;
+            } else if (colorMode === 'pink') {
+                color = `hsl(${320 + Math.random() * 40}, 100%, 60%)`;
+            } else if (colorMode === 'gold') {
+                color = `hsl(${40 + Math.random() * 20}, 100%, 60%)`;
+            }
 
             for (let i = 0; i < segments; i++) {
-                ctx.save();
-                ctx.translate(centerX, centerY);
-                ctx.rotate(rotation + anglePerSegment * i);
+                const p1 = getSymmetryPoint(x1, y1, i, segments);
+                const p2 = getSymmetryPoint(x2, y2, i, segments);
+                drawLine(p1.x, p1.y, p2.x, p2.y, color);
 
-                ctx.strokeStyle = `hsl(${hue + i * 10}, 80%, 60%)`;
-                ctx.lineWidth = lineWidth;
-                ctx.lineCap = 'round';
-
-                ctx.beginPath();
-                ctx.moveTo(x1 - centerX, y1 - centerY);
-                ctx.lineTo(x2 - centerX, y2 - centerY);
-                ctx.stroke();
-
-                // Mirror effect
-                ctx.save();
-                ctx.scale(1, -1);
-                ctx.strokeStyle = `hsl(${hue + i * 10 + 180}, 80%, 60%)`;
-                ctx.beginPath();
-                ctx.moveTo(x1 - centerX, y1 - centerY);
-                ctx.lineTo(x2 - centerX, y2 - centerY);
-                ctx.stroke();
-                ctx.restore();
-
-                ctx.restore();
+                // ミラー対称
+                const p1m = getSymmetryPoint(x1, y1, i, segments);
+                const p2m = getSymmetryPoint(x2, y2, i, segments);
+                drawLine(p1m.x, p1m.y, p2m.x, p2m.y, color);
             }
         }
 
+        // マウスイベント
         canvas.addEventListener('mousedown', (e) => {
             isDrawing = true;
             lastX = e.clientX;
@@ -147,29 +195,15 @@
 
         canvas.addEventListener('mousemove', (e) => {
             if (!isDrawing) return;
-
-            const x = e.clientX;
-            const y = e.clientY;
-
-            const distance = Math.sqrt((x - lastX) ** 2 + (y - lastY) ** 2);
-            const lineWidth = Math.min(distance / 2, 20);
-
-            drawSegmentLine(lastX, lastY, x, y, hue, lineWidth);
-
-            hue = (hue + 0.5) % 360;
-            lastX = x;
-            lastY = y;
+            drawKaleidoscope(lastX, lastY, e.clientX, e.clientY);
+            lastX = e.clientX;
+            lastY = e.clientY;
         });
 
-        canvas.addEventListener('mouseup', () => {
-            isDrawing = false;
-        });
+        canvas.addEventListener('mouseup', () => isDrawing = false);
+        canvas.addEventListener('mouseout', () => isDrawing = false);
 
-        canvas.addEventListener('mouseleave', () => {
-            isDrawing = false;
-        });
-
-        // Touch support
+        // タッチイベント
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
@@ -181,55 +215,73 @@
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
             if (!isDrawing) return;
-
             const touch = e.touches[0];
-            const x = touch.clientX;
-            const y = touch.clientY;
-
-            const distance = Math.sqrt((x - lastX) ** 2 + (y - lastY) ** 2);
-            const lineWidth = Math.min(distance / 2, 20);
-
-            drawSegmentLine(lastX, lastY, x, y, hue, lineWidth);
-
-            hue = (hue + 0.5) % 360;
-            lastX = x;
-            lastY = y;
+            drawKaleidoscope(lastX, lastY, touch.clientX, touch.clientY);
+            lastX = touch.clientX;
+            lastY = touch.clientY;
         });
 
-        canvas.addEventListener('touchend', () => {
-            isDrawing = false;
+        canvas.addEventListener('touchend', () => isDrawing = false);
+
+        // ダブルタップでクリア
+        let lastTap = 0;
+        canvas.addEventListener('touchend', (e) => {
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTap;
+            if (tapLength < 300 && tapLength > 0) {
+                clearCanvas();
+                e.preventDefault();
+            }
+            lastTap = currentTime;
         });
+
+        // ダブルクリックでクリア
+        canvas.addEventListener('dblclick', clearCanvas);
 
         function clearCanvas() {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, width, height);
-            hue = 0;
         }
 
-        function randomize() {
-            segments = Math.floor(Math.random() * 8) + 6;
-            rotationSpeed = (Math.random() - 0.5) * 0.002;
-        }
+        // ボタンイベント
+        document.getElementById('clearBtn').addEventListener('click', clearCanvas);
 
-        function toggleFullscreen() {
+        document.getElementById('segmentsBtn').addEventListener('click', () => {
+            segments = segments === 6 ? 8 : segments === 8 ? 12 : segments === 12 ? 4 : 6;
+            document.getElementById('segmentsBtn').textContent = `セグメント: ${segments}`;
+        });
+
+        document.getElementById('colorBtn').addEventListener('click', () => {
+            const modes = ['rainbow', 'blue', 'pink', 'gold'];
+            const currentIndex = modes.indexOf(colorMode);
+            colorMode = modes[(currentIndex + 1) % modes.length];
+            const labels = {
+                rainbow: 'レインボー',
+                blue: 'ブルー',
+                pink: 'ピンク',
+                gold: 'ゴールド'
+            };
+            document.getElementById('colorBtn').textContent = `色: ${labels[colorMode]}`;
+        });
+
+        document.getElementById('saveBtn').addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = 'kaleidoscope.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
             } else {
                 document.exitFullscreen();
             }
-        }
+        });
 
-        function animate() {
-            rotation += rotationSpeed;
-
-            // Subtle fade effect
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.001)';
-            ctx.fillRect(0, 0, width, height);
-
-            requestAnimationFrame(animate);
-        }
-
-        animate();
+        // 初期化
+        resize();
+        window.addEventListener('resize', resize);
     </script>
 </body>
 </html>
