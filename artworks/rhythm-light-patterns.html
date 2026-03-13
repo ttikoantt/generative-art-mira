@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Rhythm Light Patterns</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 100;
+            transition: all 0.3s;
+            backdrop-filter: blur(5px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <p>タップまたはクリックでリズムを生成</p>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let width, height, centerX, centerY;
+        let ripples = [];
+        let hue = 0;
+
+        // リサイズ処理
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+
+        // 光の波紋クラス
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = Math.max(width, height) * 0.8;
+                this.hue = hue;
+                this.alpha = 1;
+                this.speed = 3;
+                this.thickness = 3;
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.alpha = 1 - (this.radius / this.maxRadius);
+                this.thickness = 3 * this.alpha + 1;
+            }
+
+            draw(ctx) {
+                if (this.alpha <= 0) return;
+
+                ctx.save();
+
+                // グロー効果
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = `hsla(${this.hue}, 100%, 50%, ${this.alpha})`;
+
+                // 主円
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, 60%, ${this.alpha})`;
+                ctx.lineWidth = this.thickness;
+                ctx.stroke();
+
+                // 内側の円（二重リング効果）
+                if (this.radius > 30) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius - 20, 0, Math.PI * 2);
+                    ctx.strokeStyle = `hsla(${this.hue + 30}, 100%, 60%, ${this.alpha * 0.5})`;
+                    ctx.lineWidth = this.thickness * 0.5;
+                    ctx.stroke();
+                }
+
+                // 外側の光晕
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, this.radius * 0.8,
+                    this.x, this.y, this.radius * 1.2
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 60%, 0)`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 100%, 60%, ${this.alpha * 0.3})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 60%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 1.2, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.alpha <= 0;
+            }
+        }
+
+        // タップ/クリックで波紋生成
+        function createRipple(x, y) {
+            ripples.push(new Ripple(x, y));
+
+            // 2重、3重の波紋も生成（リズム感）
+            setTimeout(() => {
+                ripples.push(new Ripple(x, y));
+            }, 150);
+
+            setTimeout(() => {
+                ripples.push(new Ripple(x, y));
+            }, 300);
+        }
+
+        canvas.addEventListener('click', (e) => {
+            createRipple(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            createRipple(touch.clientX, touch.clientY);
+        });
+
+        // 全画面ボタン
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // アニメーション
+        function animate() {
+            // 背景をフェード（トレイル効果）
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 色相を変化
+            hue = (hue + 0.5) % 360;
+
+            // 波紋を更新・描画
+            for (let i = ripples.length - 1; i >= 0; i--) {
+                const ripple = ripples[i];
+                ripple.update();
+                ripple.draw(ctx);
+
+                if (ripple.isDead()) {
+                    ripples.splice(i, 1);
+                }
+            }
+
+            // 中心から自動的に波紋を生成（バックグラウンドリズム）
+            if (Math.random() < 0.01) {
+                createRipple(centerX + (Math.random() - 0.5) * 200, centerY + (Math.random() - 0.5) * 200);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // 初期波紋
+        setTimeout(() => {
+            createRipple(centerX, centerY);
+        }, 500);
+
+        animate();
+    </script>
+</body>
+</html>

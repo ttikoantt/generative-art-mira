@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Maze Generator | Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            text-align: center;
+            z-index: 10;
+        }
+
+        h1 {
+            color: #00ff88;
+            font-size: clamp(1.5rem, 4vw, 3rem);
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px #00ff88;
+            letter-spacing: 3px;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            display: inline-block;
+            border: 2px solid #00ff88;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
+        }
+
+        #mazeCanvas {
+            display: block;
+            background: #0a0a0f;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #00ff88, #00cc6a);
+            border: none;
+            color: #0a0a0f;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .info {
+            color: #00ff88;
+            margin-top: 15px;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌀 Dynamic Maze Generator</h1>
+        <div class="canvas-wrapper">
+            <canvas id="mazeCanvas"></canvas>
+        </div>
+        <div class="controls">
+            <button onclick="generateNewMaze()">New Maze</button>
+            <button onclick="solveMaze()">Solve</button>
+            <button onclick="toggleAnimation()">Animate</button>
+        </div>
+        <div class="info">
+            Algorithm: Recursive Backtracker | Click buttons to generate and solve mazes
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mazeCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Responsive canvas size
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 600);
+            const maxHeight = Math.min(window.innerHeight - 200, 600);
+            const size = Math.min(maxWidth, maxHeight);
+            canvas.width = size;
+            canvas.height = size;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            generateNewMaze();
+        });
+
+        // Maze parameters
+        let cellSize;
+        let cols, rows;
+        let maze = [];
+        let current;
+        let stack = [];
+        let solution = [];
+        let animating = false;
+        let animationFrame;
+        let hue = 0;
+
+        class Cell {
+            constructor(i, j) {
+                this.i = i;
+                this.j = j;
+                this.walls = [true, true, true, true]; // top, right, bottom, left
+                this.visited = false;
+            }
+
+            show() {
+                const x = this.i * cellSize;
+                const y = this.j * cellSize;
+
+                // Cell background
+                if (this.visited) {
+                    const h = (this.i + this.j) * 5 + hue;
+                    ctx.fillStyle = `hsla(${h}, 70%, 15%, 0.3)`;
+                    ctx.fillRect(x, y, cellSize, cellSize);
+                }
+
+                // Walls
+                ctx.strokeStyle = `hsl(${hue + (this.i + this.j) * 3}, 80%, 60%)`;
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+
+                if (this.walls[0]) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(x + cellSize, y);
+                    ctx.stroke();
+                }
+                if (this.walls[1]) {
+                    ctx.beginPath();
+                    ctx.moveTo(x + cellSize, y);
+                    ctx.lineTo(x + cellSize, y + cellSize);
+                    ctx.stroke();
+                }
+                if (this.walls[2]) {
+                    ctx.beginPath();
+                    ctx.moveTo(x + cellSize, y + cellSize);
+                    ctx.lineTo(x, y + cellSize);
+                    ctx.stroke();
+                }
+                if (this.walls[3]) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, y + cellSize);
+                    ctx.lineTo(x, y);
+                    ctx.stroke();
+                }
+            }
+
+            checkNeighbors() {
+                let neighbors = [];
+                const i = this.i;
+                const j = this.j;
+
+                const top = maze[index(i, j - 1)];
+                const right = maze[index(i + 1, j)];
+                const bottom = maze[index(i, j + 1)];
+                const left = maze[index(i - 1, j)];
+
+                if (top && !top.visited) neighbors.push(top);
+                if (right && !right.visited) neighbors.push(right);
+                if (bottom && !bottom.visited) neighbors.push(bottom);
+                if (left && !left.visited) neighbors.push(left);
+
+                if (neighbors.length > 0) {
+                    const r = Math.floor(Math.random() * neighbors.length);
+                    return neighbors[r];
+                }
+                return undefined;
+            }
+        }
+
+        function index(i, j) {
+            if (i < 0 || j < 0 || i > cols - 1 || j > rows - 1) return -1;
+            return i + j * cols;
+        }
+
+        function removeWalls(a, b) {
+            const x = a.i - b.i;
+            if (x === 1) {
+                a.walls[3] = false;
+                b.walls[1] = false;
+            } else if (x === -1) {
+                a.walls[1] = false;
+                b.walls[3] = false;
+            }
+            const y = a.j - b.j;
+            if (y === 1) {
+                a.walls[0] = false;
+                b.walls[2] = false;
+            } else if (y === -1) {
+                a.walls[2] = false;
+                b.walls[0] = false;
+            }
+        }
+
+        function generateNewMaze() {
+            cellSize = Math.floor(canvas.width / 20);
+            cols = Math.floor(canvas.width / cellSize);
+            rows = Math.floor(canvas.height / cellSize);
+
+            maze = [];
+            stack = [];
+            solution = [];
+
+            for (let j = 0; j < rows; j++) {
+                for (let i = 0; i < cols; i++) {
+                    maze.push(new Cell(i, j));
+                }
+            }
+
+            current = maze[0];
+            hue = Math.random() * 360;
+
+            if (!animating) {
+                // Generate instantly
+                while (true) {
+                    current.visited = true;
+                    const next = current.checkNeighbors();
+                    if (next) {
+                        next.visited = true;
+                        stack.push(current);
+                        removeWalls(current, next);
+                        current = next;
+                    } else if (stack.length > 0) {
+                        current = stack.pop();
+                    } else {
+                        break;
+                    }
+                }
+                drawMaze();
+            } else {
+                animateGeneration();
+            }
+        }
+
+        function drawMaze() {
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < maze.length; i++) {
+                maze[i].show();
+            }
+
+            // Draw start and end
+            ctx.fillStyle = '#00ff88';
+            ctx.beginPath();
+            ctx.arc(cellSize / 2, cellSize / 2, cellSize / 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ff0088';
+            ctx.beginPath();
+            ctx.arc((cols - 0.5) * cellSize, (rows - 0.5) * cellSize, cellSize / 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw solution
+            if (solution.length > 0) {
+                ctx.strokeStyle = '#ffff00';
+                ctx.lineWidth = cellSize / 4;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(cellSize / 2, cellSize / 2);
+                for (let cell of solution) {
+                    ctx.lineTo((cell.i + 0.5) * cellSize, (cell.j + 0.5) * cellSize);
+                }
+                ctx.stroke();
+            }
+        }
+
+        function animateGeneration() {
+            function step() {
+                if (!animating) return;
+
+                for (let i = 0; i < 5; i++) {
+                    current.visited = true;
+                    const next = current.checkNeighbors();
+                    if (next) {
+                        next.visited = true;
+                        stack.push(current);
+                        removeWalls(current, next);
+                        current = next;
+                    } else if (stack.length > 0) {
+                        current = stack.pop();
+                    } else {
+                        drawMaze();
+                        animating = false;
+                        return;
+                    }
+                }
+
+                drawMaze();
+                animationFrame = requestAnimationFrame(step);
+            }
+            step();
+        }
+
+        function solveMaze() {
+            solution = [];
+            const visited = new Set();
+            const queue = [{ cell: maze[0], path: [maze[0]] }];
+
+            while (queue.length > 0) {
+                const { cell, path } = queue.shift();
+                const key = `${cell.i},${cell.j}`;
+
+                if (visited.has(key)) continue;
+                visited.add(key);
+
+                if (cell === maze[maze.length - 1]) {
+                    solution = path;
+                    drawMaze();
+                    return;
+                }
+
+                const neighbors = getConnectedNeighbors(cell);
+                for (let neighbor of neighbors) {
+                    if (!visited.has(`${neighbor.i},${neighbor.j}`)) {
+                        queue.push({ cell: neighbor, path: [...path, neighbor] });
+                    }
+                }
+            }
+        }
+
+        function getConnectedNeighbors(cell) {
+            const neighbors = [];
+            const { i, j } = cell;
+
+            // Top
+            if (!cell.walls[0]) {
+                const top = maze[index(i, j - 1)];
+                if (top) neighbors.push(top);
+            }
+            // Right
+            if (!cell.walls[1]) {
+                const right = maze[index(i + 1, j)];
+                if (right) neighbors.push(right);
+            }
+            // Bottom
+            if (!cell.walls[2]) {
+                const bottom = maze[index(i, j + 1)];
+                if (bottom) neighbors.push(bottom);
+            }
+            // Left
+            if (!cell.walls[3]) {
+                const left = maze[index(i - 1, j)];
+                if (left) neighbors.push(left);
+            }
+
+            return neighbors;
+        }
+
+        function toggleAnimation() {
+            animating = !animating;
+            if (animating) {
+                generateNewMaze();
+            }
+        }
+
+        // Auto-generate on load
+        generateNewMaze();
+    </script>
+</body>
+</html>
