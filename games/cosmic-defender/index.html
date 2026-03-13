@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Defender | 宇宙防衛ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #00ffff;
+            font-size: 16px;
+            z-index: 10;
+            text-shadow: 0 0 10px #00ffff;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid #00ffff;
+            color: #00ffff;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 12px;
+            border-radius: 5px;
+            z-index: 10;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.4);
+        }
+
+        .game-over {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #00ffff;
+            padding: 30px;
+            text-align: center;
+            color: #00ffff;
+            z-index: 100;
+            border-radius: 10px;
+        }
+
+        .game-over h2 {
+            font-size: 32px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px #00ffff;
+        }
+
+        .game-over p {
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+
+        .game-over button {
+            background: #00ffff;
+            color: #000;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+
+        .game-over button:hover {
+            background: #00cccc;
+        }
+
+        .start-screen {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #00ffff;
+            padding: 30px;
+            text-align: center;
+            color: #00ffff;
+            z-index: 100;
+            border-radius: 10px;
+        }
+
+        .start-screen h2 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px #00ffff;
+        }
+
+        .start-screen p {
+            font-size: 14px;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .start-screen button {
+            background: #00ffff;
+            color: #000;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            .ui {
+                top: 10px;
+                left: 10px;
+                font-size: 14px;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 6px 12px;
+                font-size: 10px;
+            }
+
+            .game-over, .start-screen {
+                padding: 20px;
+                width: 90%;
+                max-width: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="ui">
+        <div>スコア: <span id="score">0</span></div>
+        <div>ライフ: <span id="lives">5</span></div>
+        <div>ウェーブ: <span id="wave">1</span></div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="start-screen" id="startScreen">
+        <h2>🌌 Cosmic Defender</h2>
+        <p>
+            中央の惑星を守れ！<br>
+            衛星を回転させて敵を迎撃<br><br>
+            💻 マウス/矢印キーで操作<br>
+            📱 タップで位置移動<br>
+            ⚡ 自動発射
+        </p>
+        <button onclick="startGame()">スタート</button>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <h2>GAME OVER</h2>
+        <p>最終スコア: <span id="finalScore">0</span></p>
+        <button onclick="startGame()">リプレイ</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height, centerX, centerY;
+        let gameStarted = false;
+        let gameOver = false;
+        let score = 0;
+        let lives = 5;
+        let wave = 1;
+
+        // 衛星
+        const satellite = {
+            angle: 0,
+            distance: 80,
+            size: 15,
+            speed: 0.05,
+            lastShot: 0,
+            shootDelay: 200
+        };
+
+        // 弾
+        let bullets = [];
+
+        // 敵
+        let enemies = [];
+
+        // 爆発エフェクト
+        let explosions = [];
+
+        // 星
+        let stars = [];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+            satellite.distance = Math.min(width, height) * 0.15;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 初期化
+        function init() {
+            stars = [];
+            for (let i = 0; i < 100; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    size: Math.random() * 2,
+                    speed: Math.random() * 0.5 + 0.1
+                });
+            }
+        }
+
+        // 敵スポーン
+        function spawnEnemy() {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = Math.max(width, height) / 2 + 50;
+
+            const types = ['normal', 'fast', 'tank'];
+            const type = wave < 3 ? 'normal' : types[Math.floor(Math.random() * types.length)];
+
+            let enemy = {
+                x: centerX + Math.cos(angle) * distance,
+                y: centerY + Math.sin(angle) * distance,
+                angle: angle,
+                speed: 1,
+                size: 15,
+                type: type,
+                health: 1
+            };
+
+            switch (type) {
+                case 'fast':
+                    enemy.speed = 2.5;
+                    enemy.size = 10;
+                    enemy.color = '#ffff00';
+                    break;
+                case 'tank':
+                    enemy.speed = 0.5;
+                    enemy.size = 25;
+                    enemy.health = 3;
+                    enemy.color = '#ff6600';
+                    break;
+                default:
+                    enemy.color = '#ff0000';
+            }
+
+            enemies.push(enemy);
+        }
+
+        // 発射
+        function shoot() {
+            const now = Date.now();
+            if (now - satellite.lastShot < satellite.shootDelay) return;
+
+            bullets.push({
+                x: centerX + Math.cos(satellite.angle) * satellite.distance,
+                y: centerY + Math.sin(satellite.angle) * satellite.distance,
+                angle: satellite.angle,
+                speed: 8
+            });
+
+            satellite.lastShot = now;
+        }
+
+        // 爆発
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                explosions.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    size: Math.random() * 5 + 2,
+                    color: color,
+                    life: 1
+                });
+            }
+        }
+
+        // 更新
+        function update() {
+            if (!gameStarted || gameOver) return;
+
+            // 衛星移動
+            satellite.angle += satellite.speed;
+
+            // 自動発射
+            if (enemies.length > 0) {
+                // 最も近い敵を探す
+                let closestEnemy = null;
+                let closestDist = Infinity;
+
+                enemies.forEach(enemy => {
+                    const dx = enemy.x - centerX;
+                    const dy = enemy.y - centerY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closestEnemy = enemy;
+                    }
+                });
+
+                // 最も近い敵に向ける
+                if (closestEnemy) {
+                    const targetAngle = Math.atan2(
+                        closestEnemy.y - centerY,
+                        closestEnemy.x - centerX
+                    );
+
+                    // 角度差を計算
+                    let angleDiff = targetAngle - satellite.angle;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+                    // 少しずつ向ける
+                    satellite.angle += angleDiff * 0.1;
+                }
+
+                shoot();
+            }
+
+            // 弾更新
+            bullets.forEach((bullet, index) => {
+                bullet.x += Math.cos(bullet.angle) * bullet.speed;
+                bullet.y += Math.sin(bullet.angle) * bullet.speed;
+
+                // 画面外なら削除
+                const dist = Math.sqrt(
+                    Math.pow(bullet.x - centerX, 2) +
+                    Math.pow(bullet.y - centerY, 2)
+                );
+
+                if (dist > Math.max(width, height)) {
+                    bullets.splice(index, 1);
+                }
+            });
+
+            // 敵更新
+            enemies.forEach((enemy, eIndex) => {
+                const dx = centerX - enemy.x;
+                const dy = centerY - enemy.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist > 40) {
+                    // 惑星に向かって移動
+                    enemy.x += Math.cos(enemy.angle) * enemy.speed;
+                    enemy.y += Math.sin(enemy.angle) * enemy.speed;
+                } else {
+                    // 惑星に到達
+                    lives--;
+                    updateUI();
+                    createExplosion(enemy.x, enemy.y, '#ff0000');
+                    enemies.splice(eIndex, 1);
+
+                    if (lives <= 0) {
+                        endGame();
+                    }
+                }
+
+                // 弾との衝突判定
+                bullets.forEach((bullet, bIndex) => {
+                    const bDist = Math.sqrt(
+                        Math.pow(bullet.x - enemy.x, 2) +
+                        Math.pow(bullet.y - enemy.y, 2)
+                    );
+
+                    if (bDist < enemy.size + 5) {
+                        enemy.health--;
+                        bullets.splice(bIndex, 1);
+
+                        if (enemy.health <= 0) {
+                            createExplosion(enemy.x, enemy.y, enemy.color);
+                            enemies.splice(eIndex, 1);
+                            score += enemy.type === 'tank' ? 30 : enemy.type === 'fast' ? 20 : 10;
+                            updateUI();
+                        }
+                    }
+                });
+            });
+
+            // 爆発更新
+            explosions.forEach((exp, index) => {
+                exp.x += exp.vx;
+                exp.y += exp.vy;
+                exp.life -= 0.05;
+                exp.size *= 0.95;
+
+                if (exp.life <= 0) {
+                    explosions.splice(index, 1);
+                }
+            });
+
+            // ウェーブ管理
+            if (enemies.length === 0) {
+                wave++;
+                updateUI();
+                const enemyCount = 5 + wave * 2;
+                for (let i = 0; i < enemyCount; i++) {
+                    setTimeout(() => {
+                        if (!gameOver) spawnEnemy();
+                    }, i * 500);
+                }
+            }
+
+            // 星更新
+            stars.forEach(star => {
+                star.y += star.speed;
+                if (star.y > height) {
+                    star.y = 0;
+                    star.x = Math.random() * width;
+                }
+            });
+        }
+
+        // 描画
+        function draw() {
+            // 背景
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 星
+            stars.forEach(star => {
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${star.size / 2})`;
+                ctx.fill();
+            });
+
+            if (gameStarted) {
+                // 惑星
+                const planetGradient = ctx.createRadialGradient(
+                    centerX, centerY, 0,
+                    centerX, centerY, 40
+                );
+                planetGradient.addColorStop(0, '#00ffff');
+                planetGradient.addColorStop(0.5, '#0088ff');
+                planetGradient.addColorStop(1, '#004488');
+
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 40, 0, Math.PI * 2);
+                ctx.fillStyle = planetGradient;
+                ctx.fill();
+
+                // 惑星のグロー
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 45, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(0, 255, 255, 0.5)';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // 衛星
+                const satX = centerX + Math.cos(satellite.angle) * satellite.distance;
+                const satY = centerY + Math.sin(satellite.angle) * satellite.distance;
+
+                ctx.beginPath();
+                ctx.arc(satX, satY, satellite.size, 0, Math.PI * 2);
+                ctx.fillStyle = '#00ff88';
+                ctx.fill();
+                ctx.strokeStyle = '#00ffaa';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // 衛星の軌道
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, satellite.distance, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(0, 255, 136, 0.2)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // 弾
+                bullets.forEach(bullet => {
+                    ctx.beginPath();
+                    ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
+                    ctx.fillStyle = '#00ffff';
+                    ctx.fill();
+
+                    // 弾のグロー
+                    ctx.beginPath();
+                    ctx.arc(bullet.x, bullet.y, 8, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(0, 255, 255, 0.5)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                });
+
+                // 敵
+                enemies.forEach(enemy => {
+                    ctx.beginPath();
+                    ctx.arc(enemy.x, enemy.y, enemy.size, 0, Math.PI * 2);
+                    ctx.fillStyle = enemy.color;
+                    ctx.fill();
+
+                    // 敵のグロー
+                    ctx.beginPath();
+                    ctx.arc(enemy.x, enemy.y, enemy.size + 5, 0, Math.PI * 2);
+                    ctx.strokeStyle = enemy.color;
+                    ctx.globalAlpha = 0.3;
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.globalAlpha = 1;
+                });
+
+                // 爆発
+                explosions.forEach(exp => {
+                    ctx.beginPath();
+                    ctx.arc(exp.x, exp.y, exp.size, 0, Math.PI * 2);
+                    ctx.fillStyle = exp.color;
+                    ctx.globalAlpha = exp.life;
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                });
+            }
+        }
+
+        // メインループ
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // UI更新
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('lives').textContent = lives;
+            document.getElementById('wave').textContent = wave;
+        }
+
+        // ゲーム開始
+        function startGame() {
+            gameStarted = true;
+            gameOver = false;
+            score = 0;
+            lives = 5;
+            wave = 1;
+            bullets = [];
+            enemies = [];
+            explosions = [];
+
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('gameOver').style.display = 'none';
+
+            updateUI();
+
+            // 初期敵スポーン
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => spawnEnemy(), i * 500);
+            }
+        }
+
+        // ゲーム終了
+        function endGame() {
+            gameOver = true;
+            gameStarted = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // キーボード操作
+        document.addEventListener('keydown', (e) => {
+            if (!gameStarted) return;
+
+            switch (e.key) {
+                case 'ArrowLeft':
+                    satellite.angle -= 0.2;
+                    break;
+                case 'ArrowRight':
+                    satellite.angle += 0.2;
+                    break;
+            }
+        });
+
+        // マウス操作
+        canvas.addEventListener('mousemove', (e) => {
+            if (!gameStarted) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left - centerX;
+            const y = e.clientY - rect.top - centerY;
+            satellite.angle = Math.atan2(y, x);
+        });
+
+        // タッチ操作
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!gameStarted) return;
+
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left - centerX;
+            const y = touch.clientY - rect.top - centerY;
+            satellite.angle = Math.atan2(y, x);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!gameStarted) return;
+
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left - centerX;
+            const y = touch.clientY - rect.top - centerY;
+            satellite.angle = Math.atan2(y, x);
+        });
+
+        // 初期化
+        init();
+        gameLoop();
+    </script>
+</body>
+</html>
