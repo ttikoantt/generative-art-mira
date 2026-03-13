@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Snow Globe - Mira's Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0a0a2a 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            z-index: 100;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .control-group label {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .control-group input[type="range"] {
+            width: 100px;
+            height: 4px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            outline: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            text-align: center;
+            z-index: 100;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-wrap: wrap;
+                justify-content: center;
+                padding: 10px 15px;
+            }
+
+            .control-group input[type="range"] {
+                width: 80px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <p>🖱️ マウスを動かして風を吹かせる / クリックで雪を撒く</p>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>風の強さ</label>
+            <input type="range" id="windStrength" min="0" max="100" value="30">
+        </div>
+        <div class="control-group">
+            <label>雪の量</label>
+            <input type="range" id="snowCount" min="50" max="500" value="200">
+        </div>
+        <div class="control-group">
+            <label>重力</label>
+            <input type="range" id="gravity" min="1" max="100" value="30">
+        </div>
+        <button class="btn" onclick="shakeGlobe()">🔔 シェイク</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let particles = [];
+        let mouseX = 0;
+        let mouseY = 0;
+        let windX = 0;
+        let windY = 0;
+
+        // 設定
+        const config = {
+            windStrength: 0.3,
+            snowCount: 200,
+            gravity: 0.3,
+            particleSize: { min: 1, max: 4 },
+            glowIntensity: 15
+        };
+
+        // UIイベント
+        document.getElementById('windStrength').addEventListener('input', (e) => {
+            config.windStrength = e.target.value / 100;
+        });
+
+        document.getElementById('snowCount').addEventListener('input', (e) => {
+            config.snowCount = parseInt(e.target.value);
+            initParticles();
+        });
+
+        document.getElementById('gravity').addEventListener('input', (e) => {
+            config.gravity = e.target.value / 100;
+        });
+
+        // キャンバスサイズ
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y, burst = false) {
+                this.x = x || Math.random() * canvas.width;
+                this.y = y || Math.random() * canvas.height - canvas.height;
+                this.size = Math.random() * (config.particleSize.max - config.particleSize.min) + config.particleSize.min;
+                this.speedX = 0;
+                this.speedY = Math.random() * 0.5 + 0.3;
+                this.opacity = Math.random() * 0.5 + 0.3;
+
+                if (burst) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const force = Math.random() * 8 + 4;
+                    this.speedX = Math.cos(angle) * force;
+                    this.speedY = Math.sin(angle) * force;
+                    this.size = Math.random() * 3 + 2;
+                }
+            }
+
+            update() {
+                // 重力
+                this.speedY += config.gravity * 0.1;
+
+                // 風の影響（マウス位置に基づく）
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 300) {
+                    windX = (dx / dist) * config.windStrength * 2;
+                    windY = (dy / dist) * config.windStrength * 0.5;
+                } else {
+                    windX *= 0.98;
+                    windY *= 0.98;
+                }
+
+                this.speedX += windX * 0.1;
+                this.speedY += windY * 0.1;
+
+                // 空気抵抗
+                this.speedX *= 0.99;
+                this.speedY *= 0.99;
+
+                // 最小落下速度
+                if (this.speedY < 0.3) this.speedY = 0.3;
+
+                // 位置更新
+                this.x += this.speedX;
+                this.y += this.speedY;
+
+                // 境界チェック
+                if (this.y > canvas.height + 10) {
+                    this.y = -10;
+                    this.x = Math.random() * canvas.width;
+                    this.speedY = Math.random() * 0.5 + 0.3;
+                    this.speedX = 0;
+                }
+
+                if (this.x > canvas.width + 10) {
+                    this.x = -10;
+                } else if (this.x < -10) {
+                    this.x = canvas.width + 10;
+                }
+
+                // ゆらぎ
+                this.x += Math.sin(Date.now() * 0.001 + this.y * 0.01) * 0.5;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+
+                // グロー効果
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size * 3
+                );
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+                gradient.addColorStop(0.2, 'rgba(200, 220, 255, 0.5)');
+                gradient.addColorStop(1, 'rgba(200, 220, 255, 0)');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 中心の白い点
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // パーティクル初期化
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < config.snowCount; i++) {
+                particles.push(new Particle(
+                    Math.random() * canvas.width,
+                    Math.random() * canvas.height
+                ));
+            }
+        }
+
+        // グローブをシェイク
+        function shakeGlobe() {
+            for (let i = 0; i < 50; i++) {
+                particles.push(new Particle(
+                    canvas.width / 2,
+                    canvas.height / 2,
+                    true
+                ));
+            }
+
+            // パーティクル数が多すぎる場合、古いものを削除
+            if (particles.length > config.snowCount * 1.5) {
+                particles = particles.slice(-config.snowCount);
+            }
+        }
+
+        // アニメーションループ
+        function animate() {
+            // 背景をクリア（少し残してトレイル効果）
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // パーティクル更新と描画
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            // 風の可視化（微細なパーティクル）
+            if (Math.abs(windX) > 0.1 || Math.abs(windY) > 0.1) {
+                ctx.save();
+                ctx.globalAlpha = 0.1;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 1;
+                for (let i = 0; i < 10; i++) {
+                    const x = Math.random() * canvas.width;
+                    const y = Math.random() * canvas.height;
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(x + windX * 20, y + windY * 20);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            for (let i = 0; i < 20; i++) {
+                particles.push(new Particle(mouseX, mouseY, true));
+            }
+        });
+
+        // タッチ対応
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            for (let i = 0; i < 15; i++) {
+                particles.push(new Particle(mouseX, mouseY, true));
+            }
+        }, { passive: false });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        resize();
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>
