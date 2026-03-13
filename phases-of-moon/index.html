@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phases of the Moon - 月の満ち欠け</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(to bottom, #0a0a1a 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            color: #fff;
+        }
+
+        .container {
+            text-align: center;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 300;
+            margin-bottom: 10px;
+            letter-spacing: 3px;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+        }
+
+        .subtitle {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 40px;
+            letter-spacing: 2px;
+        }
+
+        .moon-container {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            margin: 0 auto 30px;
+        }
+
+        #moonCanvas {
+            border-radius: 50%;
+            box-shadow: 0 0 60px rgba(255, 255, 240, 0.2);
+        }
+
+        .stars {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .info {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 30px;
+            max-width: 400px;
+        }
+
+        .phase-name {
+            font-size: 1.5rem;
+            font-weight: 300;
+            margin-bottom: 15px;
+            letter-spacing: 2px;
+        }
+
+        .moon-age {
+            font-size: 3rem;
+            font-weight: 100;
+            margin-bottom: 10px;
+            color: rgba(255, 255, 240, 0.9);
+        }
+
+        .illumination {
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            backdrop-filter: blur(5px);
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: all 0.3s;
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .moon-container {
+                width: 250px;
+                height: 250px;
+            }
+
+            .moon-age {
+                font-size: 2.5rem;
+            }
+
+            .info {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas class="stars" id="starsCanvas"></canvas>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <div class="container">
+        <h1>PHASES OF THE MOON</h1>
+        <p class="subtitle">月の満ち欠け</p>
+
+        <div class="moon-container">
+            <canvas id="moonCanvas" width="300" height="300"></canvas>
+        </div>
+
+        <div class="info">
+            <div class="phase-name" id="phaseName"></div>
+            <div class="moon-age"><span id="moonAge">0</span> 日</div>
+            <div class="illumination"><span id="illumination">0</span>% 照明</div>
+
+            <div class="controls">
+                <button onclick="previousPhase()">◀ 前の月相</button>
+                <button onclick="toggleAnimation()" id="playBtn">停止</button>
+                <button onclick="nextPhase()">次の月相 ▶</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('moonCanvas');
+        const ctx = canvas.getContext('2d');
+        const starsCanvas = document.getElementById('starsCanvas');
+        const starsCtx = starsCanvas.getContext('2d');
+
+        let animationId;
+        let isAnimating = true;
+        let currentOffset = 0;
+
+        // 月齢計算（基準日: 2000年1月6日 新月）
+        function getMoonAge(date = new Date()) {
+            const baseDate = new Date('2000-01-06T18:14:00Z');
+            const diff = date.getTime() - baseDate.getTime();
+            const days = diff / (1000 * 60 * 60 * 24);
+            const synodicMonth = 29.53058867;
+            const age = ((days % synodicMonth) + synodicMonth) % synodicMonth;
+            return age;
+        }
+
+        // 月相の名前を取得
+        function getPhaseName(age) {
+            if (age < 1) return '新月 (New Moon)';
+            if (age < 7) return '三日月 (Waxing Crescent)';
+            if (age < 8) return '上弦の月 (First Quarter)';
+            if (age < 14) return '十三夜月 (Waxing Gibbous)';
+            if (age < 16) return '満月 (Full Moon)';
+            if (age < 22) return '十六夜月 (Waning Gibbous)';
+            if (age < 23) return '下弦の月 (Last Quarter)';
+            return '有明の月 (Waning Crescent)';
+        }
+
+        // 照明度を計算
+        function getIllumination(age) {
+            const synodicMonth = 29.53058867;
+            const phase = (age / synodicMonth) * 2 * Math.PI;
+            return (1 - Math.cos(phase)) / 2 * 100;
+        }
+
+        // 月を描画
+        function drawMoon(offset = 0) {
+            const age = getMoonAge();
+            const displayAge = (age + offset + 29.53058867) % 29.53058867;
+            const illumination = getIllumination(displayAge);
+            const phase = (displayAge / 29.53058867) * 2 * Math.PI;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 120;
+
+            // 月のベース（背景）
+            const gradient = ctx.createRadialGradient(
+                centerX - 30, centerY - 30, 0,
+                centerX, centerY, radius
+            );
+            gradient.addColorStop(0, 'rgba(255, 255, 240, 0.1)');
+            gradient.addColorStop(1, 'rgba(20, 20, 40, 0.8)');
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // 照明された部分
+            ctx.save();
+
+            if (displayAge <= 14.765) {
+                // 新月から満月へ
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, -Math.PI / 2, Math.PI / 2);
+
+                const ellipseWidth = radius * Math.cos(phase);
+                ctx.ellipse(centerX, centerY, Math.abs(ellipseWidth), radius, 0,
+                    phase > Math.PI / 2 ? Math.PI / 2 : -Math.PI / 2,
+                    phase > Math.PI / 2 ? -Math.PI / 2 : Math.PI / 2,
+                    phase > Math.PI / 2);
+
+                const moonGradient = ctx.createRadialGradient(
+                    centerX - 30, centerY - 30, 0,
+                    centerX, centerY, radius
+                );
+                moonGradient.addColorStop(0, 'rgba(255, 255, 240, 0.95)');
+                moonGradient.addColorStop(0.7, 'rgba(255, 255, 240, 0.6)');
+                moonGradient.addColorStop(1, 'rgba(200, 200, 220, 0.3)');
+
+                ctx.fillStyle = moonGradient;
+                ctx.fill();
+            } else {
+                // 満月から新月へ
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, Math.PI / 2, -Math.PI / 2);
+
+                const ellipseWidth = radius * Math.cos(phase);
+                ctx.ellipse(centerX, centerY, Math.abs(ellipseWidth), radius, 0,
+                    phase > Math.PI * 1.5 ? -Math.PI / 2 : Math.PI / 2,
+                    phase > Math.PI * 1.5 ? Math.PI / 2 : -Math.PI / 2,
+                    phase > Math.PI * 1.5);
+
+                const moonGradient = ctx.createRadialGradient(
+                    centerX - 30, centerY - 30, 0,
+                    centerX, centerY, radius
+                );
+                moonGradient.addColorStop(0, 'rgba(255, 255, 240, 0.95)');
+                moonGradient.addColorStop(0.7, 'rgba(255, 255, 240, 0.6)');
+                moonGradient.addColorStop(1, 'rgba(200, 200, 220, 0.3)');
+
+                ctx.fillStyle = moonGradient;
+                ctx.fill();
+            }
+
+            ctx.restore();
+
+            // テクスチャ（クレーター効果）
+            ctx.save();
+            ctx.globalCompositeOperation = 'multiply';
+            for (let i = 0; i < 50; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * radius * 0.8;
+                const x = centerX + Math.cos(angle) * dist;
+                const y = centerY + Math.sin(angle) * dist;
+                const size = Math.random() * 15 + 5;
+
+                const craterGradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+                craterGradient.addColorStop(0, 'rgba(150, 150, 170, 0.15)');
+                craterGradient.addColorStop(1, 'rgba(150, 150, 170, 0)');
+
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = craterGradient;
+                ctx.fill();
+            }
+            ctx.restore();
+
+            // グロー効果
+            ctx.save();
+            const glowGradient = ctx.createRadialGradient(
+                centerX, centerY, radius * 0.8,
+                centerX, centerY, radius * 1.3
+            );
+            glowGradient.addColorStop(0, 'rgba(255, 255, 240, 0.2)');
+            glowGradient.addColorStop(1, 'rgba(255, 255, 240, 0)');
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius * 1.3, 0, Math.PI * 2);
+            ctx.fillStyle = glowGradient;
+            ctx.fill();
+            ctx.restore();
+
+            // 情報更新
+            document.getElementById('moonAge').textContent = displayAge.toFixed(1);
+            document.getElementById('phaseName').textContent = getPhaseName(displayAge);
+            document.getElementById('illumination').textContent = illumination.toFixed(1);
+        }
+
+        // 星を描画
+        function drawStars() {
+            starsCanvas.width = window.innerWidth;
+            starsCanvas.height = window.innerHeight;
+
+            starsCtx.clearRect(0, 0, starsCanvas.width, starsCanvas.height);
+
+            for (let i = 0; i < 200; i++) {
+                const x = Math.random() * starsCanvas.width;
+                const y = Math.random() * starsCanvas.height;
+                const radius = Math.random() * 1.5;
+                const opacity = Math.random() * 0.8 + 0.2;
+
+                starsCtx.beginPath();
+                starsCtx.arc(x, y, radius, 0, Math.PI * 2);
+                starsCtx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+                starsCtx.fill();
+            }
+        }
+
+        // アニメーション
+        function animate() {
+            if (isAnimating) {
+                currentOffset += 0.05;
+                drawMoon(currentOffset);
+            }
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // コントロール
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+            document.getElementById('playBtn').textContent = isAnimating ? '停止' : '再生';
+            if (!isAnimating) {
+                currentOffset = 0;
+                drawMoon();
+            }
+        }
+
+        function nextPhase() {
+            currentOffset = 0;
+            isAnimating = false;
+            document.getElementById('playBtn').textContent = '再生';
+            const currentAge = getMoonAge();
+            drawMoon(3.69); // 約1/8月齢進める
+        }
+
+        function previousPhase() {
+            currentOffset = 0;
+            isAnimating = false;
+            document.getElementById('playBtn').textContent = '再生';
+            const currentAge = getMoonAge();
+            drawMoon(-3.69); // 約1/8月齢戻す
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        window.addEventListener('resize', drawStars);
+        drawStars();
+        drawMoon();
+        animate();
+    </script>
+</body>
+</html>
