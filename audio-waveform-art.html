@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Waveform Art - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        button.active {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+        }
+
+        .prompt {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 18px;
+            text-align: center;
+            z-index: 50;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <button id="startBtn">🎤 マイクを開始</button>
+        <button id="styleBtn">🎨 スタイル変更</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">📺 全画面</button>
+
+    <div class="info">Audio Waveform Art by Mira</div>
+    <div class="prompt" id="prompt">マイクをクリックして開始</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const styleBtn = document.getElementById('styleBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const prompt = document.getElementById('prompt');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let dataArray;
+        let isRunning = false;
+        let styleIndex = 0;
+        let time = 0;
+
+        // Resize canvas
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Styles
+        const styles = [
+            { name: 'Waveform', draw: drawWaveform },
+            { name: 'Bars', draw: drawBars },
+            { name: 'Circle', draw: drawCircle },
+            { name: 'Particles', draw: drawParticles },
+            { name: 'Matrix', draw: drawMatrix }
+        ];
+
+        // Initialize audio
+        async function initAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 512;
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                isRunning = true;
+                prompt.style.display = 'none';
+                startBtn.textContent = '🎤 実行中';
+                startBtn.classList.add('active');
+
+                animate();
+            } catch (err) {
+                console.error('Error accessing microphone:', err);
+                prompt.textContent = 'マイクへのアクセスができませんでした';
+            }
+        }
+
+        // Drawing styles
+        function drawWaveform(centerX, centerY) {
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = `hsl(${(time * 50) % 360}, 70%, 60%)`;
+            ctx.beginPath();
+
+            for (let i = 0; i < dataArray.length; i++) {
+                const x = (i / dataArray.length) * canvas.width;
+                const amplitude = dataArray[i] / 255;
+                const y = centerY + Math.sin(i * 0.02 + time * 0.01) * amplitude * canvas.height * 0.3;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+
+            ctx.stroke();
+
+            // Mirror
+            ctx.strokeStyle = `hsl(${(time * 50 + 180) % 360}, 70%, 60%)`;
+            ctx.beginPath();
+
+            for (let i = 0; i < dataArray.length; i++) {
+                const x = (i / dataArray.length) * canvas.width;
+                const amplitude = dataArray[i] / 255;
+                const y = centerY - Math.sin(i * 0.02 + time * 0.01) * amplitude * canvas.height * 0.3;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+
+            ctx.stroke();
+        }
+
+        function drawBars(centerX, centerY) {
+            const barWidth = canvas.width / dataArray.length;
+
+            for (let i = 0; i < dataArray.length; i++) {
+                const amplitude = dataArray[i] / 255;
+                const barHeight = amplitude * canvas.height * 0.8;
+                const x = i * barWidth;
+                const hue = (i / dataArray.length * 360 + time * 50) % 360;
+
+                ctx.fillStyle = `hsla(${hue}, 70%, 60%, 0.8)`;
+                ctx.fillRect(x, centerY - barHeight / 2, barWidth - 1, barHeight);
+            }
+        }
+
+        function drawCircle(centerX, centerY) {
+            const radius = Math.min(canvas.width, canvas.height) * 0.3;
+
+            for (let i = 0; i < dataArray.length; i++) {
+                const amplitude = dataArray[i] / 255;
+                const angle = (i / dataArray.length) * Math.PI * 2;
+                const x = centerX + Math.cos(angle) * (radius + amplitude * 100);
+                const y = centerY + Math.sin(angle) * (radius + amplitude * 100);
+
+                const hue = (i / dataArray.length * 360 + time * 30) % 360;
+                const size = 3 + amplitude * 10;
+
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${hue}, 70%, 60%, 0.8)`;
+                ctx.fill();
+            }
+        }
+
+        let particles = [];
+        function drawParticles(centerX, centerY) {
+            // Add new particles based on audio
+            const avgAmplitude = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+
+            if (avgAmplitude > 50) {
+                for (let i = 0; i < 3; i++) {
+                    particles.push({
+                        x: centerX,
+                        y: centerY,
+                        vx: (Math.random() - 0.5) * (avgAmplitude / 20),
+                        vy: (Math.random() - 0.5) * (avgAmplitude / 20),
+                        life: 1,
+                        hue: Math.random() * 360,
+                        size: 2 + Math.random() * 5
+                    });
+                }
+            }
+
+            // Update and draw particles
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.01;
+
+                if (p.life > 0) {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${p.hue}, 70%, 60%, ${p.life * 0.8})`;
+                    ctx.fill();
+                    return true;
+                }
+                return false;
+            });
+
+            // Limit particles
+            if (particles.length > 500) {
+                particles = particles.slice(-500);
+            }
+        }
+
+        function drawMatrix(centerX, centerY) {
+            const gridSize = 30;
+            const cols = Math.ceil(canvas.width / gridSize);
+            const rows = Math.ceil(canvas.height / gridSize);
+
+            for (let i = 0; i < dataArray.length; i++) {
+                const amplitude = dataArray[i] / 255;
+                const x = (i % cols) * gridSize;
+                const y = Math.floor(i / cols) * gridSize;
+
+                if (y < canvas.height) {
+                    const hue = (amplitude * 360 + time * 30) % 360;
+                    const size = amplitude * gridSize * 0.8;
+
+                    ctx.save();
+                    ctx.translate(x + gridSize / 2, y + gridSize / 2);
+                    ctx.rotate(time * 0.01 + i * 0.01);
+
+                    ctx.fillStyle = `hsla(${hue}, 70%, 60%, ${0.3 + amplitude * 0.7})`;
+                    ctx.fillRect(-size / 2, -size / 2, size, size);
+
+                    ctx.restore();
+                }
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            if (!isRunning) return;
+
+            // Clear with fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Get audio data
+            analyser.getByteFrequencyData(dataArray);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Draw current style
+            styles[styleIndex].draw(centerX, centerY);
+
+            time++;
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', () => {
+            if (!isRunning) {
+                initAudio();
+            }
+        });
+
+        styleBtn.addEventListener('click', () => {
+            styleIndex = (styleIndex + 1) % styles.length;
+            styleBtn.textContent = `🎨 ${styles[styleIndex].name}`;
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!isRunning) {
+                initAudio();
+            }
+        });
+    </script>
+</body>
+</html>
