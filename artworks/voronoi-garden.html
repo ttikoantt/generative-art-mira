@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voronoi Garden - ジェネレーティブ・ボロノイ・ガーデン</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            z-index: 10;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: clamp(1.5rem, 4vw, 3rem);
+            margin-bottom: 1rem;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: clamp(0.8rem, 2vw, 1rem);
+            margin-top: 1rem;
+        }
+
+        .controls {
+            margin-top: 1rem;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 12px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        @media (max-width: 600px) {
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 10px;
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全画面表示">⛶</button>
+
+    <div class="container">
+        <h1>🌸 Voronoi Garden</h1>
+        <div class="canvas-wrapper">
+            <canvas id="canvas"></canvas>
+        </div>
+        <p class="info">クリックして新しい花を咲かせましょう ✨</p>
+        <div class="controls">
+            <button onclick="regenerate()">🔄 再生成</button>
+            <button onclick="toggleAnimation()">⏯️ アニメーション</button>
+            <button onclick="changePalette()">🎨 パレット変更</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let points = [];
+        let animationId = null;
+        let isAnimating = true;
+        let time = 0;
+        let hueOffset = 0;
+
+        const palettes = [
+            { name: '桜', colors: ['#FFB7C5', '#FF69B4', '#FF1493', '#FFB6C1', '#FFC0CB'] },
+            { name: '夕暮れ', colors: ['#FF6B6B', '#FF8E53', '#FFA502', '#FF6348', '#FF4757'] },
+            { name: 'オーロラ', colors: ['#00CED1', '#20B2AA', '#48D1CC', '#40E0D0', '#7FFFD4'] },
+            { name: '紫陽花', colors: ['#9370DB', '#8A2BE2', '#9932CC', '#BA55D3', '#DA70D6'] },
+            { name: 'ひまわり', colors: ['#FFD700', '#FFA500', '#FF8C00', '#FFB347', '#F0E68C'] }
+        ];
+
+        let currentPalette = 0;
+
+        function resize() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 200, 800);
+            canvas.width = size;
+            canvas.height = size;
+            generatePoints();
+        }
+
+        function generatePoints() {
+            points = [];
+            const numPoints = 15 + Math.floor(Math.random() * 10);
+
+            for (let i = 0; i < numPoints; i++) {
+                points.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    vx: (Math.random() - 0.5) * 0.5,
+                    vy: (Math.random() - 0.5) * 0.5,
+                    colorIndex: Math.floor(Math.random() * 5)
+                });
+            }
+        }
+
+        function addPoint(x, y) {
+            points.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 0.3,
+                vy: (Math.random() - 0.5) * 0.3,
+                colorIndex: Math.floor(Math.random() * 5)
+            });
+
+            if (points.length > 30) {
+                points.shift();
+            }
+        }
+
+        function distance(p1, p2) {
+            return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
+        }
+
+        function getColor(index, brightness) {
+            const palette = palettes[currentPalette];
+            const baseColor = palette.colors[index % palette.colors.length];
+
+            // 明度に応じて色を調整
+            const r = parseInt(baseColor.slice(1, 3), 16);
+            const g = parseInt(baseColor.slice(3, 5), 16);
+            const b = parseInt(baseColor.slice(5, 7), 16);
+
+            const factor = 0.5 + brightness * 0.5;
+            return `rgb(${Math.floor(r * factor)}, ${Math.floor(g * factor)}, ${Math.floor(b * factor)})`;
+        }
+
+        function draw() {
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // ボロノイ図を描画
+            const imageData = ctx.createImageData(canvas.width, canvas.height);
+            const data = imageData.data;
+
+            for (let y = 0; y < canvas.height; y += 2) {
+                for (let x = 0; x < canvas.width; x += 2) {
+                    let minDist = Infinity;
+                    let closestPoint = null;
+                    let secondMinDist = Infinity;
+
+                    for (const point of points) {
+                        const d = distance({ x, y }, point);
+                        if (d < minDist) {
+                            secondMinDist = minDist;
+                            minDist = d;
+                            closestPoint = point;
+                        } else if (d < secondMinDist) {
+                            secondMinDist = d;
+                        }
+                    }
+
+                    // エッジを強調
+                    const edgeStrength = Math.min(1, (secondMinDist - minDist) / 10);
+
+                    if (closestPoint) {
+                        const color = getColor(closestPoint.colorIndex, edgeStrength);
+                        const r = parseInt(color.match(/\d+/g)[0]);
+                        const g = parseInt(color.match(/\d+/g)[1]);
+                        const b = parseInt(color.match(/\d+/g)[2]);
+
+                        for (let dy = 0; dy < 2; dy++) {
+                            for (let dx = 0; dx < 2; dx++) {
+                                const idx = ((y + dy) * canvas.width + (x + dx)) * 4;
+                                data[idx] = r;
+                                data[idx + 1] = g;
+                                data[idx + 2] = b;
+                                data[idx + 3] = 255;
+                            }
+                        }
+                    }
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+
+            // 点を描画
+            for (const point of points) {
+                const gradient = ctx.createRadialGradient(
+                    point.x, point.y, 0,
+                    point.x, point.y, 8
+                );
+                gradient.addColorStop(0, getColor(point.colorIndex, 1));
+                gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function update() {
+            if (!isAnimating) return;
+
+            for (const point of points) {
+                point.x += point.vx;
+                point.y += point.vy;
+
+                // 境界で反転
+                if (point.x < 0 || point.x > canvas.width) point.vx *= -1;
+                if (point.y < 0 || point.y > canvas.height) point.vy *= -1;
+            }
+
+            time += 0.01;
+        }
+
+        function animate() {
+            update();
+            draw();
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function regenerate() {
+            generatePoints();
+            if (!isAnimating) {
+                draw();
+            }
+        }
+
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+        }
+
+        function changePalette() {
+            currentPalette = (currentPalette + 1) % palettes.length;
+            if (!isAnimating) {
+                draw();
+            }
+        }
+
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            addPoint(x, y);
+        });
+
+        window.addEventListener('resize', resize);
+
+        // 初期化
+        resize();
+        animate();
+    </script>
+</body>
+</html>
