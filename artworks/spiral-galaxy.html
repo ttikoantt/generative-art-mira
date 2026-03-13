@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spiral Galaxy - Interactive Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: radial-gradient(ellipse at center, #0a0a1a 0%, #000005 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            text-align: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 15px;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 100;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                padding: 0 10px;
+            }
+
+            .fullscreen-btn {
+                padding: 8px 12px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        Move mouse to rotate the galaxy • Scroll to zoom
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let mouseX = window.innerWidth / 2;
+        let mouseY = window.innerHeight / 2;
+        let rotation = 0;
+        let zoom = 1;
+        let targetRotation = 0;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            targetRotation = (e.clientX / window.innerWidth - 0.5) * Math.PI * 2;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            targetRotation = (touch.clientX / window.innerWidth - 0.5) * Math.PI * 2;
+        }, { passive: false });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            zoom += e.deltaY * -0.001;
+            zoom = Math.max(0.5, Math.min(2, zoom));
+        }, { passive: false });
+
+        // Star particle
+        class Star {
+            constructor(orbitRadius, angle, size, brightness, color) {
+                this.orbitRadius = orbitRadius;
+                this.angle = angle;
+                this.size = size;
+                this.brightness = brightness;
+                this.baseBrightness = brightness;
+                this.color = color;
+                this.twinkleSpeed = 0.02 + Math.random() * 0.03;
+                this.twinkleOffset = Math.random() * Math.PI * 2;
+            }
+
+            update(time, globalRotation) {
+                // Twinkle effect
+                this.brightness = this.baseBrightness *
+                    (0.5 + 0.5 * Math.sin(time * this.twinkleSpeed + this.twinkleOffset));
+            }
+
+            draw(ctx, centerX, centerY, globalRotation, currentZoom) {
+                const orbitAngle = this.angle + globalRotation;
+                const x = centerX + Math.cos(orbitAngle) * this.orbitRadius * currentZoom;
+                const y = centerY + Math.sin(orbitAngle) * this.orbitRadius * currentZoom * 0.3;
+
+                ctx.beginPath();
+                ctx.arc(x, y, this.size * currentZoom, 0, Math.PI * 2);
+                ctx.fillStyle = this.color.replace('ALPHA', this.brightness.toFixed(2));
+                ctx.fill();
+
+                // Glow effect
+                if (this.brightness > 0.5) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, this.size * currentZoom * 2, 0, Math.PI * 2);
+                    const gradient = ctx.createRadialGradient(x, y, 0, x, y, this.size * currentZoom * 2);
+                    gradient.addColorStop(0, this.color.replace('ALPHA', (this.brightness * 0.3).toFixed(2)));
+                    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+                }
+            }
+        }
+
+        // Create galaxy stars
+        const stars = [];
+        const numArms = 5;
+        const starsPerArm = 150;
+
+        for (let arm = 0; arm < numArms; arm++) {
+            const armAngle = (arm / numArms) * Math.PI * 2;
+
+            for (let i = 0; i < starsPerArm; i++) {
+                const distanceFromCenter = (i / starsPerArm) * Math.min(canvas.width, canvas.height) * 0.35;
+                const angleOffset = (i / starsPerArm) * Math.PI * 2;
+                const spread = (Math.random() - 0.5) * 0.5;
+
+                const angle = armAngle + angleOffset + spread;
+                const size = 0.5 + Math.random() * 1.5;
+                const brightness = 0.3 + Math.random() * 0.7;
+
+                // Color gradient from center to edge
+                let color;
+                const t = i / starsPerArm;
+                if (t < 0.3) {
+                    // Center: warm colors (yellow, orange)
+                    color = `rgba(255, ${Math.floor(200 + t * 100)}, ${Math.floor(150 + t * 50)}, ALPHA)`;
+                } else if (t < 0.6) {
+                    // Middle: blue and white
+                    color = `rgba(${Math.floor(200 - (t - 0.3) * 100)}, ${Math.floor(220 - (t - 0.3) * 50)}, 255, ALPHA)`;
+                } else {
+                    // Edge: deep blue and purple
+                    color = `rgba(${Math.floor(150 - (t - 0.6) * 100)}, ${Math.floor(100 + (t - 0.6) * 100)}, ${Math.floor(200 + (t - 0.6) * 55)}, ALPHA)`;
+                }
+
+                stars.push(new Star(distanceFromCenter, angle, size, brightness, color));
+            }
+        }
+
+        // Add background stars
+        for (let i = 0; i < 300; i++) {
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            const angle = Math.atan2(y - canvas.height / 2, x - canvas.width / 2);
+            const distance = Math.sqrt(Math.pow(x - canvas.width / 2, 2) + Math.pow(y - canvas.height / 2, 2));
+            const size = 0.2 + Math.random() * 0.5;
+            const brightness = 0.2 + Math.random() * 0.4;
+            const color = `rgba(255, 255, 255, ALPHA)`;
+
+            stars.push(new Star(distance, angle, size, brightness, color));
+        }
+
+        // Central bright core
+        const coreGlow = {
+            size: 30,
+            color: 'rgba(255, 240, 200, ALPHA)'
+        };
+
+        function drawCore(ctx, centerX, centerY, currentZoom, time) {
+            const pulseSize = coreGlow.size * currentZoom * (1 + 0.1 * Math.sin(time * 0.002));
+
+            // Outer glow
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, pulseSize * 3);
+            gradient.addColorStop(0, coreGlow.color.replace('ALPHA', '0.3'));
+            gradient.addColorStop(0.3, coreGlow.color.replace('ALPHA', '0.1'));
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, pulseSize * 3, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Inner core
+            const innerGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, pulseSize);
+            innerGradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+            innerGradient.addColorStop(0.5, coreGlow.color.replace('ALPHA', '0.4'));
+            innerGradient.addColorStop(1, 'rgba(255, 200, 150, 0)');
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, pulseSize, 0, Math.PI * 2);
+            ctx.fillStyle = innerGradient;
+            ctx.fill();
+        }
+
+        let time = 0;
+
+        function animate() {
+            time++;
+
+            // Smooth rotation
+            rotation += (targetRotation - rotation) * 0.02;
+            rotation += 0.0005; // Slow constant rotation
+
+            ctx.fillStyle = 'rgba(0, 0, 5, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Draw stars (background first)
+            stars.filter(s => s.orbitRadius > Math.min(canvas.width, canvas.height) * 0.35).forEach(star => {
+                star.update(time);
+                star.draw(ctx, centerX, centerY, rotation, zoom);
+            });
+
+            // Draw core
+            drawCore(ctx, centerX, centerY, zoom, time);
+
+            // Draw galaxy stars
+            stars.filter(s => s.orbitRadius <= Math.min(canvas.width, canvas.height) * 0.35).forEach(star => {
+                star.update(time);
+                star.draw(ctx, centerX, centerY, rotation, zoom);
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
