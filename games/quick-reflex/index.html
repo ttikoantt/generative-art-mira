@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Reflex</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            touch-action: manipulation;
+        }
+
+        .game-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 10px;
+        }
+
+        .stat {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .target-area {
+            width: 200px;
+            height: 200px;
+            margin: 20px auto;
+            border-radius: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 48px;
+            cursor: pointer;
+            transition: all 0.1s;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .target-area.waiting {
+            background: #f0f0f0;
+            color: #999;
+        }
+
+        .target-area.ready {
+            background: #ff6b6b;
+            color: white;
+            animation: pulse 0.5s infinite;
+        }
+
+        .target-area.clicked {
+            background: #51cf66;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .instructions {
+            color: #666;
+            font-size: 14px;
+            margin-top: 15px;
+            line-height: 1.6;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+            transform: scale(1.05);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .result {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+        }
+
+        .result h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .result-time {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="game-container">
+        <h1>⚡ Quick Reflex</h1>
+
+        <div class="stats">
+            <div class="stat">
+                <span class="stat-label">ラウンド</span>
+                <span class="stat-value" id="round">1</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">ベスト</span>
+                <span class="stat-value" id="best">-</span>
+            </div>
+        </div>
+
+        <div class="target-area waiting" id="target">
+            <span id="targetText">準備中...</span>
+        </div>
+
+        <div class="instructions" id="instructions">
+            画面が赤くなったらタップ！<br>
+            5ラウンドの平均を計測します
+        </div>
+
+        <button class="btn" id="startBtn" onclick="startGame()">スタート</button>
+
+        <div class="result" id="result">
+            <h3>🎯 結果</h3>
+            <div class="result-time" id="finalTime">-</div>
+            <p id="finalMessage"></p>
+            <button class="btn" onclick="resetGame()">もう一度</button>
+        </div>
+    </div>
+
+    <script>
+        let round = 1;
+        let bestTime = null;
+        let reactionTimes = [];
+        let startTime = null;
+        let waitingForClick = false;
+        let timeoutId = null;
+
+        const target = document.getElementById('target');
+        const targetText = document.getElementById('targetText');
+        const roundDisplay = document.getElementById('round');
+        const bestDisplay = document.getElementById('best');
+        const startBtn = document.getElementById('startBtn');
+        const instructions = document.getElementById('instructions');
+        const result = document.getElementById('result');
+        const finalTime = document.getElementById('finalTime');
+        const finalMessage = document.getElementById('finalMessage');
+
+        function startGame() {
+            round = 1;
+            bestTime = null;
+            reactionTimes = [];
+            roundDisplay.textContent = round;
+            bestDisplay.textContent = '-';
+            startBtn.style.display = 'none';
+            result.style.display = 'none';
+            instructions.style.display = 'block';
+            startRound();
+        }
+
+        function startRound() {
+            waitingForClick = false;
+            target.className = 'target-area waiting';
+            targetText.textContent = '待機中...';
+
+            const delay = Math.random() * 3000 + 1000;
+
+            timeoutId = setTimeout(() => {
+                waitingForClick = true;
+                target.className = 'target-area ready';
+                targetText.textContent = 'タップ！';
+                startTime = Date.now();
+            }, delay);
+        }
+
+        function handleClick() {
+            if (!waitingForClick) {
+                if (target.classList.contains('waiting')) {
+                    // 早すぎる
+                    clearTimeout(timeoutId);
+                    targetText.textContent = '早すぎ！';
+                    setTimeout(startRound, 1000);
+                }
+                return;
+            }
+
+            const reactionTime = Date.now() - startTime;
+            reactionTimes.push(reactionTime);
+
+            if (bestTime === null || reactionTime < bestTime) {
+                bestTime = reactionTime;
+                bestDisplay.textContent = bestTime + 'ms';
+            }
+
+            target.className = 'target-area clicked';
+            targetText.textContent = reactionTime + 'ms';
+
+            if (round < 5) {
+                round++;
+                roundDisplay.textContent = round;
+                setTimeout(startRound, 1500);
+            } else {
+                setTimeout(showResults, 1500);
+            }
+        }
+
+        function showResults() {
+            const average = Math.round(reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length);
+
+            result.style.display = 'block';
+            instructions.style.display = 'none';
+            finalTime.textContent = average + 'ms';
+
+            if (average < 200) {
+                finalMessage.textContent = '🚀 神業！';
+            } else if (average < 250) {
+                finalMessage.textContent = '⚡ 非常に速い！';
+            } else if (average < 300) {
+                finalMessage.textContent = '👍 良い反応速度！';
+            } else {
+                finalMessage.textContent = '💪 練習すればもっと速く！';
+            }
+        }
+
+        function resetGame() {
+            startBtn.style.display = 'block';
+            result.style.display = 'none';
+            target.className = 'target-area waiting';
+            targetText.textContent = '準備中...';
+        }
+
+        target.addEventListener('click', handleClick);
+        target.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleClick();
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
