@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sakura Catch - 桜キャッチ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Hiragino Kaku Gothic ProN', 'ヒラギノ角ゴ ProN', sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffb6c1;
+            text-align: center;
+            z-index: 100;
+        }
+
+        .score {
+            font-size: 48px;
+            font-weight: 300;
+            text-shadow: 0 0 20px rgba(255, 182, 193, 0.5);
+            margin-bottom: 10px;
+        }
+
+        .label {
+            font-size: 14px;
+            opacity: 0.7;
+            letter-spacing: 4px;
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(26, 26, 46, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 40px 60px;
+            border-radius: 20px;
+            border: 2px solid rgba(255, 182, 193, 0.3);
+            text-align: center;
+            color: #ffb6c1;
+            z-index: 200;
+            display: none;
+        }
+
+        .game-over.show {
+            display: block;
+        }
+
+        .game-over h2 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            letter-spacing: 4px;
+        }
+
+        .game-over p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            opacity: 0.8;
+        }
+
+        .restart-btn {
+            background: linear-gradient(135deg, rgba(255, 182, 193, 0.3), rgba(255, 192, 203, 0.3));
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 182, 193, 0.5);
+            color: #ffb6c1;
+            padding: 15px 40px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        .restart-btn:hover {
+            background: linear-gradient(135deg, rgba(255, 182, 193, 0.5), rgba(255, 192, 203, 0.5));
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 182, 193, 0.3);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 182, 193, 0.5);
+            color: #ffb6c1;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 182, 193, 0.5);
+            transform: translateX(-50%) scale(1.05);
+        }
+
+        .lives {
+            margin-top: 15px;
+            font-size: 24px;
+            opacity: 0.8;
+        }
+
+        .combo {
+            position: fixed;
+            top: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            color: #ffd700;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 100;
+        }
+
+        .combo.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="score" id="score">0</div>
+        <div class="label">SCORE</div>
+        <div class="lives" id="lives">❤️❤️❤️</div>
+    </div>
+    <div class="combo" id="combo"></div>
+    <canvas id="canvas"></canvas>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+
+    <div class="game-over" id="gameOver">
+        <h2>GAME OVER</h2>
+        <p>最終スコア: <span id="finalScore">0</span></p>
+        <button class="restart-btn" onclick="restart()">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let petals = [];
+        let basket = { x: 0, width: 80, height: 20 };
+        let score = 0;
+        let lives = 3;
+        let combo = 0;
+        let gameRunning = true;
+        let spawnRate = 60;
+        let frameCount = 0;
+        let mouseX = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            basket.y = height - 100;
+        }
+
+        class Petal {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * (width - 60) + 30;
+                this.y = -30;
+                this.size = Math.random() * 15 + 10;
+                this.speed = Math.random() * 2 + 2;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.05;
+                this.sway = Math.random() * Math.PI * 2;
+                this.swaySpeed = Math.random() * 0.02 + 0.01;
+                this.collected = false;
+
+                // 通常の桜
+                this.isSpecial = false;
+                this.points = 10;
+
+                const colors = [
+                    'rgba(255, 183, 197, 0.9)',
+                    'rgba(255, 192, 203, 0.9)',
+                    'rgba(255, 228, 225, 0.9)'
+                ];
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update() {
+                this.sway += this.swaySpeed;
+                this.x += Math.sin(this.sway) * 1;
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // 花びら
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 10;
+
+                for (let i = 0; i < 5; i++) {
+                    ctx.save();
+                    ctx.rotate((Math.PI * 2 / 5) * i);
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.quadraticCurveTo(this.size * 0.3, -this.size * 0.5, 0, -this.size);
+                    ctx.quadraticCurveTo(-this.size * 0.3, -this.size * 0.5, 0, 0);
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                ctx.restore();
+            }
+
+            checkCollision() {
+                const basketLeft = basket.x - basket.width / 2;
+                const basketRight = basket.x + basket.width / 2;
+                const basketTop = basket.y;
+                const basketBottom = basket.y + basket.height;
+
+                if (this.x > basketLeft && this.x < basketRight &&
+                    this.y > basketTop && this.y < basketBottom) {
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        function drawBasket() {
+            ctx.save();
+            ctx.translate(basket.x, basket.y);
+
+            // バスケット
+            const gradient = ctx.createLinearGradient(-basket.width / 2, 0, basket.width / 2, 0);
+            gradient.addColorStop(0, 'rgba(255, 182, 193, 0.6)');
+            gradient.addColorStop(0.5, 'rgba(255, 192, 203, 0.8)');
+            gradient.addColorStop(1, 'rgba(255, 182, 193, 0.6)');
+
+            ctx.fillStyle = gradient;
+            ctx.shadowColor = 'rgba(255, 182, 193, 0.5)';
+            ctx.shadowBlur = 20;
+
+            // バスケットの形（半円）
+            ctx.beginPath();
+            ctx.arc(0, 0, basket.width / 2, 0, Math.PI);
+            ctx.fill();
+
+            // バスケットの縁
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, 0, basket.width / 2, 0, Math.PI);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('lives').textContent = '❤️'.repeat(lives);
+
+            if (combo >= 3) {
+                document.getElementById('combo').textContent = `${combo} COMBO!`;
+                document.getElementById('combo').classList.add('show');
+            } else {
+                document.getElementById('combo').classList.remove('show');
+            }
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').classList.add('show');
+        }
+
+        function restart() {
+            score = 0;
+            lives = 3;
+            combo = 0;
+            petals = [];
+            gameRunning = true;
+            spawnRate = 60;
+            frameCount = 0;
+            document.getElementById('gameOver').classList.remove('show');
+            updateUI();
+            animate();
+        }
+
+        function animate() {
+            if (!gameRunning) return;
+
+            ctx.clearRect(0, 0, width, height);
+
+            frameCount++;
+
+            // 難易度アップ
+            if (frameCount % 600 === 0 && spawnRate > 20) {
+                spawnRate -= 5;
+            }
+
+            // 花びらをスポーン
+            if (frameCount % spawnRate === 0) {
+                petals.push(new Petal());
+            }
+
+            // 花びらを更新・描画
+            petals = petals.filter(petal => {
+                petal.update();
+                petal.draw();
+
+                // 衝突判定
+                if (petal.checkCollision()) {
+                    combo++;
+                    score += petal.points * (1 + Math.floor(combo / 3) * 0.5);
+                    updateUI();
+                    return false;
+                }
+
+                // 画面外
+                if (petal.y > height + 30) {
+                    if (!petal.collected) {
+                        combo = 0;
+                        lives--;
+                        updateUI();
+                        if (lives <= 0) {
+                            gameOver();
+                        }
+                    }
+                    return false;
+                }
+
+                return true;
+            });
+
+            drawBasket();
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // マウス/タッチ操作
+        function handleMove(e) {
+            const rect = canvas.getBoundingClientRect();
+            let clientX;
+
+            if (e.touches) {
+                clientX = e.touches[0].clientX;
+            } else {
+                clientX = e.clientX;
+            }
+
+            basket.x = clientX - rect.left;
+        }
+
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            handleMove(e);
+        }, { passive: false });
+
+        window.addEventListener('resize', () => {
+            resize();
+        });
+
+        resize();
+        updateUI();
+        animate();
+    </script>
+</body>
+</html>
