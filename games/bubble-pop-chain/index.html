@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Bubble Pop Chain | by Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            z-index: 1000;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        #score {
+            font-size: clamp(24px, 5vw, 36px);
+            font-weight: bold;
+        }
+
+        #level {
+            font-size: clamp(14px, 3vw, 18px);
+            margin-top: 5px;
+            opacity: 0.9;
+        }
+
+        #combo {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            font-size: clamp(18px, 4vw, 28px);
+            font-weight: bold;
+            color: #FFD700;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            transition: transform 0.2s;
+        }
+
+        #combo.pop {
+            transform: scale(1.3);
+        }
+
+        #fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 1000;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        #fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        #instructions {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.8);
+            font-size: clamp(12px, 3vw, 16px);
+            text-align: center;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        #game-over {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        #game-over.show {
+            display: flex;
+        }
+
+        #game-over h1 {
+            color: white;
+            font-size: clamp(30px, 8vw, 50px);
+            margin-bottom: 20px;
+        }
+
+        #game-over p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: clamp(16px, 4vw, 24px);
+            margin: 10px 0;
+        }
+
+        #restart-btn {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: clamp(16px, 4vw, 20px);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 30px;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+
+        #restart-btn:hover {
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div id="ui">
+        <div id="score">Score: 0</div>
+        <div id="level">Level: 1</div>
+    </div>
+    
+    <div id="combo"></div>
+    <div id="instructions">Tap bubbles to pop • Chain for bonus!</div>
+    <button id="fullscreen-btn">全画面</button>
+    
+    <div id="game-over">
+        <h1>Game Over!</h1>
+        <p id="final-score">Final Score: 0</p>
+        <p id="final-level">Level Reached: 1</p>
+        <button id="restart-btn">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const levelDisplay = document.getElementById('level');
+        const comboDisplay = document.getElementById('combo');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const gameOverScreen = document.getElementById('game-over');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const finalLevelDisplay = document.getElementById('final-level');
+        const restartBtn = document.getElementById('restart-btn');
+
+        let width, height;
+        let bubbles = [];
+        let particles = [];
+        let score = 0;
+        let level = 1;
+        let combo = 0;
+        let comboTimeout = null;
+        let gameOver = false;
+
+        // Resize canvas
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Fullscreen
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Colors for bubbles
+        const colors = [
+            { r: 255, g: 107, b: 107 },  // Red
+            { r: 78, g: 205, b: 196 },   // Cyan
+            { r: 255, g: 230, b: 109 },  // Yellow
+            { r: 26, g: 83, b: 92 },     // Dark
+            { r: 247, g: 255, b: 247 },  // White
+            { r: 255, g: 159, b: 67 }    // Orange
+        ];
+
+        // Bubble class
+        class Bubble {
+            constructor(x, y, radius, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.targetRadius = radius;
+                this.color = color;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.popped = false;
+                this.popProgress = 0;
+                this.wobble = Math.random() * Math.PI * 2;
+                this.wobbleSpeed = 2 + Math.random() * 2;
+            }
+
+            update() {
+                if (this.popped) {
+                    this.popProgress += 0.1;
+                    if (this.popProgress >= 1) {
+                        return false;
+                    }
+                } else {
+                    // Wobble animation
+                    this.wobble += 0.05 * this.wobbleSpeed;
+
+                    // Bounce off walls
+                    this.x += this.vx;
+                    this.y += this.vy;
+
+                    if (this.x - this.radius < 0 || this.x + this.radius > width) {
+                        this.vx *= -1;
+                        this.x = Math.max(this.radius, Math.min(width - this.radius, this.x));
+                    }
+                    if (this.y - this.radius < 0 || this.y + this.radius > height) {
+                        this.vy *= -1;
+                        this.y = Math.max(this.radius, Math.min(height - this.radius, this.y));
+                    }
+                }
+                return true;
+            }
+
+            draw() {
+                const currentRadius = this.popped 
+                    ? this.radius * (1 - this.popProgress)
+                    : this.radius + Math.sin(this.wobble) * 2;
+
+                const alpha = this.popped ? 1 - this.popProgress : 0.8;
+
+                // Outer glow
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, currentRadius * 1.5
+                );
+                gradient.addColorStop(0, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${alpha * 0.3})`);
+                gradient.addColorStop(1, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentRadius * 1.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Main bubble
+                const mainGradient = ctx.createRadialGradient(
+                    this.x - currentRadius * 0.3, this.y - currentRadius * 0.3, 0,
+                    this.x, this.y, currentRadius
+                );
+                mainGradient.addColorStop(0, `rgba(255, 255, 255, ${alpha * 0.9})`);
+                mainGradient.addColorStop(0.3, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${alpha * 0.8})`);
+                mainGradient.addColorStop(1, `rgba(${this.color.r * 0.7}, ${this.color.g * 0.7}, ${this.color.b * 0.7}, ${alpha * 0.6})`);
+
+                ctx.fillStyle = mainGradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentRadius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Shine
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.6})`;
+                ctx.beginPath();
+                ctx.arc(this.x - currentRadius * 0.3, this.y - currentRadius * 0.3, currentRadius * 0.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            pop() {
+                if (!this.popped) {
+                    this.popped = true;
+                    this.createParticles();
+                    return true;
+                }
+                return false;
+            }
+
+            createParticles() {
+                const particleCount = 10;
+                for (let i = 0; i < particleCount; i++) {
+                    const angle = (Math.PI * 2 * i) / particleCount;
+                    const speed = 3 + Math.random() * 3;
+                    particles.push(new Particle(
+                        this.x,
+                        this.y,
+                        Math.cos(angle) * speed,
+                        Math.sin(angle) * speed,
+                        this.color
+                    ));
+                }
+            }
+
+            contains(x, y) {
+                const dx = x - this.x;
+                const dy = y - this.y;
+                return dx * dx + dy * dy < this.radius * this.radius;
+            }
+        }
+
+        // Particle class
+        class Particle {
+            constructor(x, y, vx, vy, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.color = color;
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+                this.size = 3 + Math.random() * 3;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.1;
+                this.life -= this.decay;
+                return this.life > 0;
+            }
+
+            draw() {
+                ctx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${this.life})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Create bubbles for level
+        function createBubbles() {
+            bubbles = [];
+            const bubbleCount = 5 + level * 3;
+            const minRadius = Math.max(30, 50 - level * 2);
+            const maxRadius = Math.max(40, 70 - level * 2);
+
+            for (let i = 0; i < bubbleCount; i++) {
+                let x, y, radius;
+                let attempts = 0;
+                let valid = false;
+
+                while (!valid && attempts < 100) {
+                    radius = minRadius + Math.random() * (maxRadius - minRadius);
+                    x = radius + Math.random() * (width - radius * 2);
+                    y = radius + Math.random() * (height - radius * 2);
+
+                    valid = true;
+                    for (const bubble of bubbles) {
+                        const dx = x - bubble.x;
+                        const dy = y - bubble.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < radius + bubble.radius + 10) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                    attempts++;
+                }
+
+                if (valid) {
+                    const color = colors[Math.floor(Math.random() * colors.length)];
+                    bubbles.push(new Bubble(x, y, radius, color));
+                }
+            }
+        }
+
+        // Pop bubble and chain reaction
+        function popBubble(bubble, chainDepth = 0) {
+            if (bubble.pop()) {
+                const basePoints = 100 * (1 + chainDepth * 0.5);
+                const multiplier = 1 + combo * 0.2;
+                const points = Math.floor(basePoints * multiplier);
+                score += points;
+                combo++;
+
+                updateUI();
+
+                // Chain reaction
+                const chainRadius = 150 + level * 10;
+                for (const other of bubbles) {
+                    if (!other.popped) {
+                        const dx = other.x - bubble.x;
+                        const dy = other.y - bubble.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < chainRadius) {
+                            setTimeout(() => popBubble(other, chainDepth + 1), 100);
+                        }
+                    }
+                }
+
+                // Reset combo after delay
+                if (comboTimeout) clearTimeout(comboTimeout);
+                comboTimeout = setTimeout(() => {
+                    combo = 0;
+                    updateUI();
+                }, 2000);
+
+                // Check if all popped
+                checkLevelComplete();
+            }
+        }
+
+        // Update UI
+        function updateUI() {
+            scoreDisplay.textContent = `Score: ${score}`;
+            levelDisplay.textContent = `Level: ${level}`;
+
+            if (combo > 1) {
+                comboDisplay.textContent = `${combo}x Combo!`;
+                comboDisplay.classList.add('pop');
+                setTimeout(() => comboDisplay.classList.remove('pop'), 200);
+            } else {
+                comboDisplay.textContent = '';
+            }
+        }
+
+        // Check level complete
+        function checkLevelComplete() {
+            const allPopped = bubbles.every(b => b.popped);
+            if (allPopped && !gameOver) {
+                setTimeout(() => {
+                    level++;
+                    updateUI();
+                    createBubbles();
+                }, 1500);
+            }
+        }
+
+        // Check game over
+        function checkGameOver() {
+            const activeBubbles = bubbles.filter(b => !b.popped);
+            if (activeBubbles.length === 0) {
+                return; // Level complete
+            }
+
+            // Check if any bubbles can still pop each other
+            let canChain = false;
+            for (let i = 0; i < activeBubbles.length && !canChain; i++) {
+                for (let j = i + 1; j < activeBubbles.length && !canChain; j++) {
+                    const dx = activeBubbles[i].x - activeBubbles[j].x;
+                    const dy = activeBubbles[i].y - activeBubbles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 150 + level * 10) {
+                        canChain = true;
+                    }
+                }
+            }
+
+            if (!canChain && activeBubbles.length > 0) {
+                gameOver = true;
+                finalScoreDisplay.textContent = `Final Score: ${score}`;
+                finalLevelDisplay.textContent = `Level Reached: ${level}`;
+                gameOverScreen.classList.add('show');
+            }
+        }
+
+        // Handle click/tap
+        function handleInput(x, y) {
+            if (gameOver) return;
+
+            for (const bubble of bubbles) {
+                if (!bubble.popped && bubble.contains(x, y)) {
+                    popBubble(bubble);
+                    setTimeout(checkGameOver, 500);
+                    break;
+                }
+            }
+        }
+
+        canvas.addEventListener('click', (e) => {
+            handleInput(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleInput(touch.clientX, touch.clientY);
+        });
+
+        // Restart game
+        restartBtn.addEventListener('click', () => {
+            gameOver = false;
+            score = 0;
+            level = 1;
+            combo = 0;
+            particles = [];
+            gameOverScreen.classList.remove('show');
+            updateUI();
+            createBubbles();
+        });
+
+        // Animation loop
+        function animate() {
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw background gradient
+            const bgGradient = ctx.createLinearGradient(0, 0, width, height);
+            bgGradient.addColorStop(0, '#667eea');
+            bgGradient.addColorStop(1, '#764ba2');
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // Update and draw bubbles
+            bubbles = bubbles.filter(b => b.update());
+            bubbles.forEach(b => b.draw());
+
+            // Update and draw particles
+            particles = particles.filter(p => p.update());
+            particles.forEach(p => p.draw());
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize game
+        createBubbles();
+        updateUI();
+        animate();
+    </script>
+</body>
+</html>
