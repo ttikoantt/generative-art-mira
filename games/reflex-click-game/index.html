@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>クリック反射ゲーム | Click Reflex Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .game-container {
+            text-align: center;
+            padding: 20px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            color: white;
+            margin-bottom: 30px;
+            font-size: 28px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .click-area {
+            width: 280px;
+            height: 280px;
+            margin: 0 auto 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        .click-area.waiting {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+        }
+
+        .click-area.ready {
+            background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%);
+        }
+
+        .click-area.clicked {
+            background: linear-gradient(135deg, #a8e6cf 0%, #88d8b0 100%);
+        }
+
+        .click-area:active {
+            transform: scale(0.95);
+        }
+
+        .click-text {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .stats {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+            color: white;
+        }
+
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .stats-label {
+            opacity: 0.8;
+        }
+
+        .stats-value {
+            font-weight: bold;
+        }
+
+        .stats-value.excellent {
+            color: #4ecdc4;
+        }
+
+        .stats-value.good {
+            color: #a8e6cf;
+        }
+
+        .stats-value.average {
+            color: #ffd93d;
+        }
+
+        .stats-value.slow {
+            color: #ff6b6b;
+        }
+
+        .result-time {
+            font-size: 48px;
+            font-weight: bold;
+            color: #4ecdc4;
+            margin: 20px 0;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .message {
+            color: white;
+            font-size: 18px;
+            margin-bottom: 20px;
+            min-height: 27px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" id="fullscreenBtn">🔲 全画面</button>
+
+    <div class="game-container">
+        <h1>⚡ クリック反射ゲーム</h1>
+
+        <div class="stats">
+            <div class="stats-row">
+                <span class="stats-label">ラウンド:</span>
+                <span class="stats-value" id="round">1 / 5</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">平均時間:</span>
+                <span class="stats-value" id="average">-</span>
+            </div>
+        </div>
+
+        <div class="click-area waiting" id="clickArea">
+            <span class="click-text" id="clickText">タップして<br>開始</span>
+        </div>
+
+        <div class="result-time" id="resultTime"></div>
+        <div class="message" id="message"></div>
+    </div>
+
+    <script>
+        const clickArea = document.getElementById('clickArea');
+        const clickText = document.getElementById('clickText');
+        const roundDisplay = document.getElementById('round');
+        const averageDisplay = document.getElementById('average');
+        const resultTimeDisplay = document.getElementById('resultTime');
+        const messageDisplay = document.getElementById('message');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let gameState = 'start'; // start, waiting, ready, finished
+        let startTime = 0;
+        let round = 1;
+        const maxRounds = 5;
+        const times = [];
+
+        function updateState(state) {
+            gameState = state;
+            clickArea.className = `click-area ${state}`;
+        }
+
+        function showMessage(text) {
+            messageDisplay.textContent = text;
+        }
+
+        function showResult(time) {
+            resultTimeDisplay.textContent = `${time}ms`;
+            
+            let grade = '';
+            if (time < 200) {
+                grade = 'excellent';
+                showMessage('🚀 超人的な反射神経！');
+            } else if (time < 250) {
+                grade = 'excellent';
+                showMessage('⚡ 素晴らしい反応！');
+            } else if (time < 300) {
+                grade = 'good';
+                showMessage('👍 いい感じ！');
+            } else if (time < 400) {
+                grade = 'average';
+                showMessage('😊 普通くらいかな');
+            } else {
+                grade = 'slow';
+                showMessage('😴 少し遅いかも...');
+            }
+            resultTimeDisplay.className = `result-time ${grade}`;
+        }
+
+        function calculateAverage() {
+            if (times.length === 0) return '-';
+            const avg = times.reduce((a, b) => a + b, 0) / times.length;
+            return Math.round(avg);
+        }
+
+        function startGame() {
+            updateState('waiting');
+            clickText.textContent = '待機中...';
+            showMessage('色が変わったらタップ！');
+            resultTimeDisplay.textContent = '';
+
+            const delay = 1000 + Math.random() * 3000; // 1-4秒
+
+            setTimeout(() => {
+                if (gameState === 'waiting') {
+                    updateState('ready');
+                    clickText.textContent = 'タップ！';
+                    startTime = Date.now();
+                }
+            }, delay);
+        }
+
+        function handleClick() {
+            if (gameState === 'start' || gameState === 'finished') {
+                round = 1;
+                times.length = 0;
+                roundDisplay.textContent = `${round} / ${maxRounds}`;
+                averageDisplay.textContent = '-';
+                startGame();
+                return;
+            }
+
+            if (gameState === 'waiting') {
+                updateState('waiting');
+                clickText.textContent = '早すぎ！';
+                showMessage('まだですよ！もう一度');
+                setTimeout(startGame, 1000);
+                return;
+            }
+
+            if (gameState === 'ready') {
+                const reactionTime = Date.now() - startTime;
+                times.push(reactionTime);
+                showResult(reactionTime);
+
+                if (round >= maxRounds) {
+                    updateState('finished');
+                    clickText.textContent = 'もう一度';
+                    showMessage(`平均: ${calculateAverage()}ms`);
+                    round = 1;
+                    times.length = 0;
+                    roundDisplay.textContent = `1 / ${maxRounds}`;
+                } else {
+                    round++;
+                    roundDisplay.textContent = `${round} / ${maxRounds}`;
+                    averageDisplay.textContent = `${calculateAverage()}ms`;
+                    updateState('waiting');
+                    clickText.textContent = '待機中...';
+                    showMessage('次のラウンドへ...');
+                    setTimeout(startGame, 1500);
+                }
+            }
+        }
+
+        clickArea.addEventListener('click', handleClick);
+        clickArea.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleClick();
+        });
+
+        // 全画面ボタン
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                fullscreenBtn.textContent = '🔳 元に戻す';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = '🔲 全画面';
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                fullscreenBtn.textContent = '🔲 全画面';
+            }
+        });
+    </script>
+</body>
+</html>
