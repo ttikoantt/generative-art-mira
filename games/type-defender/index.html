@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Type Defender</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .game-canvas {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .enemy {
+            position: absolute;
+            background: linear-gradient(135deg, #ff4757 0%, #ff6b81 100%);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 25px;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(255, 71, 87, 0.5);
+            transition: transform 0.1s ease;
+            user-select: none;
+            white-space: nowrap;
+        }
+
+        .enemy.hit {
+            transform: scale(1.5);
+            opacity: 0;
+        }
+
+        .enemy.targeted {
+            background: linear-gradient(135deg, #ffa502 0%, #ff7f50 100%);
+            box-shadow: 0 4px 15px rgba(255, 165, 2, 0.5);
+        }
+
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .hud-item {
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .hud-label {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .hud-value {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .score-value { color: #00ff88; }
+        .lives-value { color: #ff4757; }
+        .level-value { color: #4ecdc4; }
+
+        .input-display {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            border-radius: 30px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            letter-spacing: 3px;
+        }
+
+        .start-screen, .game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 100;
+        }
+
+        .game-over-screen {
+            display: none;
+        }
+
+        .title {
+            font-size: 48px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+
+        .subtitle {
+            font-size: 18px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 40px;
+        }
+
+        .start-btn {
+            background: linear-gradient(135deg, #00ff88 0%, #00d4aa 100%);
+            color: #1a1a2e;
+            border: none;
+            padding: 15px 50px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(0, 255, 136, 0.3);
+        }
+
+        .start-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 30px rgba(0, 255, 136, 0.5);
+        }
+
+        .final-score {
+            font-size: 36px;
+            color: #00ff88;
+            margin: 20px 0;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 50;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 600px) {
+            .enemy {
+                font-size: 18px;
+                padding: 12px 20px;
+            }
+
+            .hud {
+                padding: 15px;
+            }
+
+            .hud-value {
+                font-size: 24px;
+            }
+
+            .title {
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="hud">
+            <div class="hud-item">
+                <div class="hud-label">SCORE</div>
+                <div class="hud-value score-value" id="score">0</div>
+            </div>
+            <div class="hud-item">
+                <div class="hud-label">LEVEL</div>
+                <div class="hud-value level-value" id="level">1</div>
+            </div>
+            <div class="hud-item">
+                <div class="hud-label">LIVES</div>
+                <div class="hud-value lives-value" id="lives">5</div>
+            </div>
+        </div>
+
+        <div class="game-canvas" id="gameCanvas"></div>
+        <div class="input-display" id="inputDisplay"></div>
+
+        <div class="start-screen" id="startScreen">
+            <div class="title">🎯 Type Defender</div>
+            <div class="subtitle">落ちてくる単語をタイピングして撃ち落とせ！</div>
+            <button class="start-btn" onclick="startGame()">START</button>
+        </div>
+
+        <div class="game-over-screen" id="gameOverScreen">
+            <div class="title">GAME OVER</div>
+            <div class="final-score">Score: <span id="finalScore">0</span></div>
+            <button class="start-btn" onclick="startGame()">RESTART</button>
+        </div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        // ゲーム設定
+        const WORDS = [
+            'JUMP', 'RUN', 'FLY', 'SWIM', 'DANCE',
+            'CODE', 'GAME', 'PLAY', 'WORK', 'LOVE',
+            'HOPE', 'DREAM', 'STAR', 'MOON', 'SUN',
+            'FIRE', 'WATER', 'EARTH', 'WIND', 'LIGHT',
+            'SHADOW', 'POWER', 'SPEED', 'MAGIC', 'TIME',
+            'SPACE', 'GALAXY', 'UNIVERSE', 'COSMOS', 'ENERGY',
+            'CREATIVE', 'FREEDOM', 'HARMONY', 'BALANCE', 'SPIRIT',
+            'ADVENTURE', 'JOURNEY', 'DESTINY', 'LEGEND', 'HERO',
+            'VICTORY', 'TRIUMPH', 'GLORY', 'HONOR', 'BRAVE',
+            'DEFENDER', 'GUARDIAN', 'WARRIOR', 'CHAMPION', 'MASTER'
+        ];
+
+        let gameState = {
+            isRunning: false,
+            score: 0,
+            lives: 5,
+            level: 1,
+            enemies: [],
+            currentInput: '',
+            spawnInterval: null,
+            gameLoop: null
+        };
+
+        const canvas = document.getElementById('gameCanvas');
+        const inputDisplay = document.getElementById('inputDisplay');
+        const scoreDisplay = document.getElementById('score');
+        const levelDisplay = document.getElementById('level');
+        const livesDisplay = document.getElementById('lives');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+
+        function spawnEnemy() {
+            const word = WORDS[Math.floor(Math.random() * Math.min(WORDS.length, 5 + gameState.level * 2))];
+            const x = Math.random() * (canvas.offsetWidth - 150) + 75;
+            const speed = 0.5 + gameState.level * 0.2;
+
+            const enemy = {
+                id: Date.now() + Math.random(),
+                word: word,
+                x: x,
+                y: -50,
+                speed: speed
+            };
+
+            gameState.enemies.push(enemy);
+            renderEnemy(enemy);
+        }
+
+        function renderEnemy(enemy) {
+            const element = document.createElement('div');
+            element.className = 'enemy';
+            element.id = `enemy-${enemy.id}`;
+            element.textContent = enemy.word;
+            element.style.left = `${enemy.x}px`;
+            element.style.top = `${enemy.y}px`;
+            canvas.appendChild(element);
+        }
+
+        function updateEnemies() {
+            gameState.enemies.forEach((enemy, index) => {
+                enemy.y += enemy.speed;
+                const element = document.getElementById(`enemy-${enemy.id}`);
+
+                if (element) {
+                    element.style.top = `${enemy.y}px`;
+                }
+
+                // 画面外に出たらライフ減
+                if (enemy.y > canvas.offsetHeight) {
+                    if (element) element.remove();
+                    gameState.enemies.splice(index, 1);
+                    gameState.lives--;
+                    updateHUD();
+
+                    if (gameState.lives <= 0) {
+                        endGame();
+                    }
+                }
+            });
+        }
+
+        function checkInput() {
+            const input = gameState.currentInput.toUpperCase();
+
+            gameState.enemies.forEach((enemy, index) => {
+                if (enemy.word.startsWith(input) && input.length > 0) {
+                    const element = document.getElementById(`enemy-${enemy.id}`);
+                    if (element) {
+                        element.classList.add('targeted');
+                    }
+
+                    // 完全一致
+                    if (enemy.word === input) {
+                        if (element) {
+                            element.classList.add('hit');
+                            setTimeout(() => element.remove(), 200);
+                        }
+                        gameState.enemies.splice(index, 1);
+                        gameState.score += enemy.word.length * 10 * gameState.level;
+
+                        // レベルアップ
+                        if (gameState.score >= gameState.level * 200) {
+                            gameState.level++;
+                        }
+
+                        gameState.currentInput = '';
+                        inputDisplay.textContent = '';
+                        updateHUD();
+                    }
+                } else {
+                    const element = document.getElementById(`enemy-${enemy.id}`);
+                    if (element) {
+                        element.classList.remove('targeted');
+                    }
+                }
+            });
+        }
+
+        function updateHUD() {
+            scoreDisplay.textContent = gameState.score;
+            levelDisplay.textContent = gameState.level;
+            livesDisplay.textContent = gameState.lives;
+        }
+
+        function startGame() {
+            gameState = {
+                isRunning: true,
+                score: 0,
+                lives: 5,
+                level: 1,
+                enemies: [],
+                currentInput: '',
+                spawnInterval: null,
+                gameLoop: null
+            };
+
+            // 既存の敵をクリア
+            canvas.innerHTML = '';
+
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            updateHUD();
+
+            // 敵をスポーン
+            spawnEnemy();
+
+            // ゲームループ
+            gameState.spawnInterval = setInterval(() => {
+                if (gameState.enemies.length < 3 + gameState.level) {
+                    spawnEnemy();
+                }
+            }, Math.max(1000, 2500 - gameState.level * 200));
+
+            gameState.gameLoop = setInterval(() => {
+                updateEnemies();
+            }, 16);
+        }
+
+        function endGame() {
+            gameState.isRunning = false;
+            clearInterval(gameState.spawnInterval);
+            clearInterval(gameState.gameLoop);
+
+            finalScoreDisplay.textContent = gameState.score;
+            gameOverScreen.style.display = 'flex';
+        }
+
+        // キーボード入力
+        document.addEventListener('keydown', (e) => {
+            if (!gameState.isRunning) return;
+
+            if (e.key === 'Backspace') {
+                gameState.currentInput = gameState.currentInput.slice(0, -1);
+            } else if (e.key.length === 1 && /[a-zA-Z]/.test(e.key)) {
+                gameState.currentInput += e.key.toUpperCase();
+            }
+
+            inputDisplay.textContent = gameState.currentInput;
+            checkInput();
+        });
+
+        // タッチ入力
+        let touchStartTime = 0;
+        document.addEventListener('touchstart', () => {
+            touchStartTime = Date.now();
+        });
+
+        document.addEventListener('touchend', (e) => {
+            if (!gameState.isRunning) return;
+
+            const touchDuration = Date.now() - touchStartTime;
+            if (touchDuration < 200) {
+                // タップ：バックスペース
+                gameState.currentInput = gameState.currentInput.slice(0, -1);
+            } else if (touchDuration > 500) {
+                // ロングタップ：クリア
+                gameState.currentInput = '';
+            }
+
+            inputDisplay.textContent = gameState.currentInput;
+            checkInput();
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
