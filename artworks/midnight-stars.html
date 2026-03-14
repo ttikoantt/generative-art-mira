@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Midnight Stars</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: linear-gradient(to bottom, #0a0a1a, #1a1a3a, #0a0a1a);
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+        #canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+        @media (max-width: 768px) {
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="info">Move your mouse to disturb the stars</div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let stars = [];
+        let shootingStars = [];
+        let mouseX = -1000, mouseY = -1000;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initStars();
+        }
+
+        function initStars() {
+            stars = [];
+            const numStars = Math.floor((width * height) / 3000);
+            for (let i = 0; i < numStars; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    baseX: Math.random() * width,
+                    baseY: Math.random() * height,
+                    size: Math.random() * 2 + 0.5,
+                    brightness: Math.random(),
+                    twinkleSpeed: Math.random() * 0.02 + 0.01,
+                    color: getRandomStarColor()
+                });
+            }
+        }
+
+        function getRandomStarColor() {
+            const colors = [
+                { r: 255, g: 255, b: 255 }, // White
+                { r: 200, g: 220, b: 255 }, // Blue-ish
+                { r: 255, g: 230, b: 200 }, // Warm
+                { r: 180, g: 200, b: 255 }, // Cool blue
+            ];
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        function createShootingStar() {
+            const side = Math.floor(Math.random() * 4);
+            let x, y, vx, vy;
+            const speed = Math.random() * 8 + 6;
+
+            switch(side) {
+                case 0: // Top
+                    x = Math.random() * width;
+                    y = -50;
+                    vx = (Math.random() - 0.5) * 2;
+                    vy = speed;
+                    break;
+                case 1: // Right
+                    x = width + 50;
+                    y = Math.random() * height * 0.7;
+                    vx = -speed;
+                    vy = (Math.random() - 0.5) * 2;
+                    break;
+                case 2: // Bottom
+                    x = Math.random() * width;
+                    y = height + 50;
+                    vx = (Math.random() - 0.5) * 2;
+                    vy = -speed;
+                    break;
+                case 3: // Left
+                    x = -50;
+                    y = Math.random() * height * 0.7;
+                    vx = speed;
+                    vy = (Math.random() - 0.5) * 2;
+                    break;
+            }
+
+            shootingStars.push({
+                x, y, vx, vy,
+                trail: [],
+                life: 1,
+                size: Math.random() * 2 + 1
+            });
+        }
+
+        function update() {
+            // Update stars
+            stars.forEach(star => {
+                // Twinkle
+                star.brightness += star.twinkleSpeed;
+                if (star.brightness > 1 || star.brightness < 0.3) {
+                    star.twinkleSpeed *= -1;
+                }
+
+                // Mouse interaction
+                const dx = mouseX - star.x;
+                const dy = mouseY - star.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const maxDist = 150;
+
+                if (dist < maxDist) {
+                    const force = (maxDist - dist) / maxDist;
+                    const angle = Math.atan2(dy, dx);
+                    star.x -= Math.cos(angle) * force * 3;
+                    star.y -= Math.sin(angle) * force * 3;
+                }
+
+                // Return to base position
+                const returnDx = star.baseX - star.x;
+                const returnDy = star.baseY - star.y;
+                star.x += returnDx * 0.05;
+                star.y += returnDy * 0.05;
+            });
+
+            // Update shooting stars
+            shootingStars = shootingStars.filter(ss => {
+                ss.trail.unshift({ x: ss.x, y: ss.y });
+                if (ss.trail.length > 20) ss.trail.pop();
+
+                ss.x += ss.vx;
+                ss.y += ss.vy;
+                ss.life -= 0.008;
+
+                return ss.life > 0 && ss.x > -100 && ss.x < width + 100 && ss.y > -100 && ss.y < height + 100;
+            });
+
+            // Randomly create shooting stars
+            if (Math.random() < 0.003) {
+                createShootingStar();
+            }
+        }
+
+        function draw() {
+            // Clear with gradient background
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#0a0a1a');
+            gradient.addColorStop(0.5, '#1a1a3a');
+            gradient.addColorStop(1, '#0a0a1a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw stars
+            stars.forEach(star => {
+                const brightness = Math.max(0, Math.min(1, star.brightness));
+                const alpha = brightness * 0.9 + 0.1;
+
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${star.color.r}, ${star.color.g}, ${star.color.b}, ${alpha})`;
+                ctx.fill();
+
+                // Glow effect for brighter stars
+                if (brightness > 0.7 && star.size > 1.2) {
+                    const glowGradient = ctx.createRadialGradient(
+                        star.x, star.y, 0,
+                        star.x, star.y, star.size * 4
+                    );
+                    glowGradient.addColorStop(0, `rgba(${star.color.r}, ${star.color.g}, ${star.color.b}, ${alpha * 0.3})`);
+                    glowGradient.addColorStop(1, 'transparent');
+                    ctx.beginPath();
+                    ctx.arc(star.x, star.y, star.size * 4, 0, Math.PI * 2);
+                    ctx.fillStyle = glowGradient;
+                    ctx.fill();
+                }
+            });
+
+            // Draw shooting stars
+            shootingStars.forEach(ss => {
+                // Trail
+                for (let i = 0; i < ss.trail.length; i++) {
+                    const t = ss.trail[i];
+                    const trailAlpha = (1 - i / ss.trail.length) * ss.life * 0.8;
+                    const trailSize = ss.size * (1 - i / ss.trail.length);
+
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, trailSize, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 255, 255, ${trailAlpha})`;
+                    ctx.fill();
+                }
+
+                // Head
+                ctx.beginPath();
+                ctx.arc(ss.x, ss.y, ss.size * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${ss.life})`;
+                ctx.fill();
+
+                // Glow
+                const glowGradient = ctx.createRadialGradient(
+                    ss.x, ss.y, 0,
+                    ss.x, ss.y, 15
+                );
+                glowGradient.addColorStop(0, `rgba(255, 255, 255, ${ss.life * 0.5})`);
+                glowGradient.addColorStop(1, 'transparent');
+                ctx.beginPath();
+                ctx.arc(ss.x, ss.y, 15, 0, Math.PI * 2);
+                ctx.fillStyle = glowGradient;
+                ctx.fill();
+            });
+        }
+
+        function animate() {
+            update();
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Mouse move
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        // Touch support
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        // Initialize
+        window.addEventListener('resize', resize);
+        resize();
+        animate();
+    </script>
+</body>
+</html>
