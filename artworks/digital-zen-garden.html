@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Digital Zen Garden - デジタル禅庭園</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #f5f0e6 0%, #e8e0d0 100%);
+            font-family: 'Courier New', monospace;
+            touch-action: none;
+        }
+
+        #canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.8);
+            padding: 15px 25px;
+            border-radius: 10px;
+            font-size: 14px;
+            color: #5a5a5a;
+            pointer-events: none;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .info h1 {
+            font-size: 18px;
+            margin-bottom: 5px;
+            color: #3a3a3a;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .controls button {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid #ddd;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls button:hover {
+            background: #f8f8f8;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                top: 10px;
+                padding: 10px 15px;
+                font-size: 12px;
+            }
+
+            .info h1 {
+                font-size: 14px;
+            }
+
+            .controls {
+                bottom: 10px;
+                right: 10px;
+            }
+
+            .controls button {
+                padding: 8px 12px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <h1>🧘 Digital Zen Garden</h1>
+        <p>砂に指を置くように、静かに波紋を描いてください</p>
+    </div>
+
+    <div class="controls">
+        <button onclick="clearCanvas()">✨ 新しい庭</button>
+        <button onclick="toggleFullscreen()">📺 全画面</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let ripples = [];
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let lastRippleTime = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = Math.random() * 50 + 30;
+                this.speed = Math.random() * 1.5 + 0.5;
+                this.opacity = 1;
+                this.lineWidth = Math.random() * 1.5 + 0.5;
+                this.hue = Math.random() * 20 + 30; // 30-50 (gold/brown)
+                this.decay = Math.random() * 0.008 + 0.005;
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.opacity -= this.decay;
+                this.speed *= 0.99;
+
+                return this.opacity > 0;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue}, 60%, 40%, ${this.opacity * 0.6})`;
+                ctx.lineWidth = this.lineWidth;
+                ctx.stroke();
+
+                // Glow effect
+                if (this.opacity > 0.5) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.strokeStyle = `hsla(${this.hue}, 70%, 60%, ${this.opacity * 0.2})`;
+                    ctx.lineWidth = this.lineWidth * 2;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function addRipple(x, y) {
+            const now = Date.now();
+            if (now - lastRippleTime > 50) { // Limit ripple creation
+                ripples.push(new Ripple(x, y));
+                lastRippleTime = now;
+            }
+        }
+
+        function handleStart(x, y) {
+            isDrawing = true;
+            lastX = x;
+            lastY = y;
+            addRipple(x, y);
+        }
+
+        function handleMove(x, y) {
+            if (!isDrawing) return;
+
+            const distance = Math.sqrt((x - lastX) ** 2 + (y - lastY) ** 2);
+            if (distance > 15) {
+                addRipple(x, y);
+                lastX = x;
+                lastY = y;
+            }
+        }
+
+        function handleEnd() {
+            isDrawing = false;
+        }
+
+        // Mouse events
+        canvas.addEventListener('mousedown', (e) => handleStart(e.clientX, e.clientY));
+        canvas.addEventListener('mousemove', (e) => handleMove(e.clientX, e.clientY));
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('mouseleave', handleEnd);
+
+        // Touch events
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleStart(touch.clientX, touch.clientY);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleMove(touch.clientX, touch.clientY);
+        });
+
+        canvas.addEventListener('touchend', handleEnd);
+
+        // Sand grain background
+        function drawBackground() {
+            const gradient = ctx.createRadialGradient(
+                width / 2, height / 2, 0,
+                width / 2, height / 2, Math.max(width, height) / 2
+            );
+            gradient.addColorStop(0, '#f5f0e6');
+            gradient.addColorStop(1, '#e8e0d0');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw sand grains
+            ctx.fillStyle = 'rgba(160, 140, 120, 0.3)';
+            for (let i = 0; i < 500; i++) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                const size = Math.random() * 1.5 + 0.5;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function animate() {
+            // Semi-transparent background for trail effect
+            ctx.fillStyle = 'rgba(245, 240, 230, 0.03)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Update and draw ripples
+            ripples = ripples.filter(ripple => {
+                const alive = ripple.update();
+                if (alive) {
+                    ripple.draw();
+                }
+                return alive;
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        function clearCanvas() {
+            ripples = [];
+            drawBackground();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Initialize
+        drawBackground();
+        animate();
+    </script>
+</body>
+</html>
