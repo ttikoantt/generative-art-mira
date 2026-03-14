@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Particle Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #startButton {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px 40px;
+            font-size: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+        #startButton:hover {
+            transform: translate(-50%, -50%) scale(1.05);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        #startButton.hidden {
+            display: none;
+        }
+        #fullscreenBtn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 50;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        #fullscreenBtn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            z-index: 50;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <button id="startButton">🎤 マイクを開始</button>
+    <button id="fullscreenBtn">⛶ 全画面</button>
+    <canvas id="canvas"></canvas>
+    <div id="info">音に反応してパーティクルが踊ります</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startButton');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let microphone;
+        let particles = [];
+        let isRunning = false;
+
+        // Canvas size
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Particle class
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 3 + 1;
+                this.baseRadius = this.radius;
+                this.hue = Math.random() * 360;
+                this.life = 1;
+                this.decay = Math.random() * 0.005 + 0.002;
+            }
+
+            update(audioData) {
+                // Get audio level at particle's x position
+                const index = Math.floor(this.x / canvas.width * audioData.length);
+                const audioLevel = audioData[index] / 255;
+
+                // Apply audio to velocity
+                this.vx += (Math.random() - 0.5) * audioLevel * 2;
+                this.vy += (Math.random() - 0.5) * audioLevel * 2;
+
+                // Limit velocity
+                const maxSpeed = 3 + audioLevel * 5;
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > maxSpeed) {
+                    this.vx = (this.vx / speed) * maxSpeed;
+                    this.vy = (this.vy / speed) * maxSpeed;
+                }
+
+                // Move
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Wrap around edges
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y < 0) this.y = canvas.height;
+                if (this.y > canvas.height) this.y = 0;
+
+                // Update radius based on audio
+                this.radius = this.baseRadius * (1 + audioLevel * 5);
+
+                // Update color
+                this.hue += audioLevel * 10;
+
+                // Decay
+                this.life -= this.decay;
+                if (this.life <= 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                const alpha = this.life * 0.7;
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha})`;
+                ctx.fill();
+
+                // Glow effect
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsla(${this.hue}, 80%, 60%, 0.5)`;
+            }
+        }
+
+        // Initialize particles
+        function initParticles() {
+            particles = [];
+            const numParticles = Math.min(200, Math.floor(canvas.width * canvas.height / 10000));
+            for (let i = 0; i < numParticles; i++) {
+                particles.push(new Particle());
+            }
+        }
+        initParticles();
+
+        // Audio setup
+        async function startAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+
+                isRunning = true;
+                startButton.classList.add('hidden');
+                animate();
+            } catch (err) {
+                console.error('マイクアクセスエラー:', err);
+                alert('マイクへのアクセスを許可してください');
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            if (!isRunning) return;
+
+            // Get audio data
+            analyser.getByteFrequencyData(dataArray);
+
+            // Clear with fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw particles
+            particles.forEach(p => {
+                p.update(dataArray);
+                p.draw();
+            });
+
+            // Draw audio waveform in center
+            drawWaveform();
+
+            requestAnimationFrame(animate);
+        }
+
+        function drawWaveform() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) * 0.3;
+
+            ctx.beginPath();
+            for (let i = 0; i < dataArray.length; i++) {
+                const angle = (i / dataArray.length) * Math.PI * 2;
+                const audioLevel = dataArray[i] / 255;
+                const r = radius + audioLevel * radius * 0.5;
+
+                const x = centerX + Math.cos(angle) * r;
+                const y = centerY + Math.sin(angle) * r;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.closePath();
+
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius * 1.5);
+            gradient.addColorStop(0, `hsla(${Date.now() / 50 % 360}, 80%, 60%, 0.3)`);
+            gradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            ctx.strokeStyle = `hsla(${Date.now() / 50 % 360}, 80%, 60%, 0.5)`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // Start button
+        startButton.addEventListener('click', startAudio);
+
+        // Fullscreen
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Handle fullscreen change
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) {
+                fullscreenBtn.textContent = '✕ 全画面解除';
+            } else {
+                fullscreenBtn.textContent = '⛶ 全画面';
+            }
+        });
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            resize();
+            initParticles();
+        });
+    </script>
+</body>
+</html>
