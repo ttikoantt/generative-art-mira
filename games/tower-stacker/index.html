@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Tower Stacker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            touch-action: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            text-align: center;
+            color: white;
+        }
+
+        .score {
+            font-size: 48px;
+            font-weight: 700;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            margin-bottom: 10px;
+        }
+
+        .level {
+            font-size: 18px;
+            opacity: 0.8;
+        }
+
+        .message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 200;
+            text-align: center;
+            color: white;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 40px 60px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            display: none;
+        }
+
+        .message h2 {
+            font-size: 36px;
+            margin-bottom: 20px;
+        }
+
+        .message p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            opacity: 0.8;
+        }
+
+        .message button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .message button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .message.show {
+            display: block;
+        }
+
+        .instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 15px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .perfect {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 150;
+            font-size: 36px;
+            font-weight: 700;
+            color: #ffd700;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .perfect.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="score" id="score">0</div>
+        <div class="level" id="level">Level 1</div>
+    </div>
+
+    <div class="message" id="startMessage">
+        <h2>🏗️ Tower Stacker</h2>
+        <p>ブロックを積み上げて高さを目指そう！<br>タップでブロックを止めてください</p>
+        <button id="startBtn">スタート</button>
+    </div>
+
+    <div class="message" id="gameOverMessage">
+        <h2>Game Over</h2>
+        <p>スコア: <span id="finalScore">0</span><br>レベル: <span id="finalLevel">1</span></p>
+        <button id="restartBtn">もう一度</button>
+    </div>
+
+    <div class="perfect" id="perfectText">PERFECT!</div>
+
+    <div class="instructions">タップ/クリックでブロックを止める</div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">全画面</button>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let blocks = [];
+        let currentBlock = null;
+        let score = 0;
+        let level = 1;
+        let gameRunning = false;
+        let blockSpeed = 3;
+        let blockDirection = 1;
+
+        const BLOCK_HEIGHT = 30;
+        const INITIAL_BLOCK_WIDTH = 200;
+        const MIN_BLOCK_WIDTH = 20;
+
+        const colorSets = [
+            ['#667eea', '#764ba2'],
+            ['#f093fb', '#f5576c'],
+            ['#4facfe', '#00f2fe'],
+            ['#43e97b', '#38f9d7'],
+            ['#fa709a', '#fee140'],
+            ['#a8edea', '#fed6e3'],
+            ['#ff0844', '#ffb199']
+        ];
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        function createBlock(y, width) {
+            const colorIndex = level % colorSets.length;
+            return {
+                x: Math.random() * (width - INITIAL_BLOCK_WIDTH),
+                y: y,
+                width: width,
+                height: BLOCK_HEIGHT,
+                speed: blockSpeed,
+                color1: colorSets[colorIndex][0],
+                color2: colorSets[colorIndex][1]
+            };
+        }
+
+        function startGame() {
+            blocks = [];
+            score = 0;
+            level = 1;
+            blockSpeed = 3;
+            blockDirection = 1;
+
+            const baseBlock = {
+                x: (width - INITIAL_BLOCK_WIDTH) / 2,
+                y: height - 100,
+                width: INITIAL_BLOCK_WIDTH,
+                height: BLOCK_HEIGHT,
+                color1: colorSets[0][0],
+                color2: colorSets[0][1]
+            };
+            blocks.push(baseBlock);
+
+            spawnNewBlock();
+            gameRunning = true;
+
+            document.getElementById('startMessage').classList.remove('show');
+            document.getElementById('gameOverMessage').classList.remove('show');
+            updateUI();
+        }
+
+        function spawnNewBlock() {
+            const lastBlock = blocks[blocks.length - 1];
+            const newY = lastBlock.y - BLOCK_HEIGHT;
+
+            currentBlock = {
+                x: 0,
+                y: newY,
+                width: lastBlock.width,
+                height: BLOCK_HEIGHT,
+                speed: blockSpeed,
+                color1: colorSets[level % colorSets.length][0],
+                color2: colorSets[level % colorSets.length][1]
+            };
+        }
+
+        function placeBlock() {
+            if (!gameRunning || !currentBlock) return;
+
+            const lastBlock = blocks[blocks.length - 1];
+            const overlapStart = Math.max(currentBlock.x, lastBlock.x);
+            const overlapEnd = Math.min(currentBlock.x + currentBlock.width, lastBlock.x + lastBlock.width);
+            const overlapWidth = overlapEnd - overlapStart;
+
+            if (overlapWidth <= 0) {
+                gameOver();
+                return;
+            }
+
+            const newBlock = {
+                x: overlapStart,
+                y: currentBlock.y,
+                width: overlapWidth,
+                height: currentBlock.height,
+                color1: currentBlock.color1,
+                color2: currentBlock.color2
+            };
+
+            blocks.push(newBlock);
+
+            // Perfect placement
+            if (Math.abs(currentBlock.x - lastBlock.x) < 5) {
+                showPerfect();
+                score += 10;
+            } else {
+                score++;
+            }
+
+            // Level up every 5 blocks
+            if (blocks.length % 5 === 0) {
+                level++;
+                blockSpeed += 0.5;
+            }
+
+            // Check if tower is too high
+            if (blocks[blocks.length - 1].y < 50) {
+                gameOver();
+                return;
+            }
+
+            spawnNewBlock();
+            updateUI();
+        }
+
+        function showPerfect() {
+            const perfectText = document.getElementById('perfectText');
+            perfectText.classList.add('show');
+            setTimeout(() => {
+                perfectText.classList.remove('show');
+            }, 500);
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalLevel').textContent = level;
+            document.getElementById('gameOverMessage').classList.add('show');
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('level').textContent = 'Level ' + level;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw all blocks
+            blocks.forEach((block, index) => {
+                const gradient = ctx.createLinearGradient(
+                    block.x, block.y,
+                    block.x + block.width, block.y
+                );
+                gradient.addColorStop(0, block.color1);
+                gradient.addColorStop(1, block.color2);
+
+                ctx.fillStyle = gradient;
+                ctx.fillRect(block.x, block.y, block.width, block.height);
+
+                // Glow effect
+                ctx.shadowColor = block.color1;
+                ctx.shadowBlur = 10;
+                ctx.fillRect(block.x, block.y, block.width, block.height);
+                ctx.shadowBlur = 0;
+            });
+
+            // Draw current block
+            if (currentBlock && gameRunning) {
+                const gradient = ctx.createLinearGradient(
+                    currentBlock.x, currentBlock.y,
+                    currentBlock.x + currentBlock.width, currentBlock.y
+                );
+                gradient.addColorStop(0, currentBlock.color1);
+                gradient.addColorStop(1, currentBlock.color2);
+
+                ctx.fillStyle = gradient;
+                ctx.fillRect(currentBlock.x, currentBlock.y, currentBlock.width, currentBlock.height);
+
+                ctx.shadowColor = currentBlock.color1;
+                ctx.shadowBlur = 15;
+                ctx.fillRect(currentBlock.x, currentBlock.y, currentBlock.width, currentBlock.height);
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function update() {
+            if (!gameRunning || !currentBlock) return;
+
+            currentBlock.x += currentBlock.speed * blockDirection;
+
+            if (currentBlock.x + currentBlock.width >= width) {
+                blockDirection = -1;
+            } else if (currentBlock.x <= 0) {
+                blockDirection = 1;
+            }
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Event listeners
+        function handleInput() {
+            placeBlock();
+        }
+
+        canvas.addEventListener('click', handleInput);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleInput();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (gameRunning) {
+                    placeBlock();
+                }
+            }
+        });
+
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            resize();
+            if (!gameRunning && blocks.length === 0) {
+                startGame();
+            }
+        });
+
+        // Initialize
+        resize();
+        document.getElementById('startMessage').classList.add('show');
+        gameLoop();
+    </script>
+</body>
+</html>

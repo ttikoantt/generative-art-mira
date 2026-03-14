@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Double Exposure Geometry</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #0a0a1a;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #canvas1 {
+            z-index: 1;
+        }
+
+        #canvas2 {
+            z-index: 2;
+            mix-blend-mode: screen;
+        }
+
+        #canvas3 {
+            z-index: 3;
+            mix-blend-mode: overlay;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            background: rgba(10, 10, 26, 0.8);
+            padding: 15px 20px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .controls button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .controls button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .controls button:active {
+            transform: translateY(0);
+        }
+
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            color: white;
+            font-size: 24px;
+            font-weight: 700;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            letter-spacing: 2px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 15px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .blend-info {
+            position: fixed;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="title">Double Exposure Geometry</div>
+    <div class="blend-info" id="blendInfo">Pattern: Wave + Spiral</div>
+    <button class="fullscreen-btn" id="fullscreenBtn">全画面</button>
+    <canvas id="canvas1"></canvas>
+    <canvas id="canvas2"></canvas>
+    <canvas id="canvas3"></canvas>
+
+    <div class="controls">
+        <button id="changePatterns">パターン変更</button>
+        <button id="changeColors">カラー変更</button>
+        <button id="changeBlend">ブレンド変更</button>
+        <button id="toggleAnim">アニメーション</button>
+    </div>
+
+    <script>
+        const canvas1 = document.getElementById('canvas1');
+        const canvas2 = document.getElementById('canvas2');
+        const canvas3 = document.getElementById('canvas3');
+        const ctx1 = canvas1.getContext('2d');
+        const ctx2 = canvas2.getContext('2d');
+        const ctx3 = canvas3.getContext('2d');
+
+        let width, height;
+        let animationEnabled = true;
+        let time = 0;
+
+        const patternSets = [
+            { name: 'Wave + Spiral', pattern1: 'wave', pattern2: 'spiral' },
+            { name: 'Circle + Triangle', pattern1: 'circle', pattern2: 'triangle' },
+            { name: 'Grid + Radial', pattern1: 'grid', pattern2: 'radial' },
+            { name: 'Hexagon + Flower', pattern1: 'hexagon', pattern2: 'flower' },
+            { name: 'Lines + Dots', pattern1: 'lines', pattern2: 'dots' }
+        ];
+
+        const colorSets = [
+            { name: 'Ocean', colors: ['#0077b6', '#00b4d8', '#90e0ef', '#caf0f8'] },
+            { name: 'Sunset', colors: ['#ff6b6b', '#feca57', '#ff9ff3', '#f368e0'] },
+            { name: 'Forest', colors: ['#2d6a4f', '#40916c', '#52b788', '#74c69d'] },
+            { name: 'Galaxy', colors: ['#7209b7', '#b5179e', '#f72585', '#4cc9f0'] },
+            { name: 'Fire', colors: ['#f94144', '#f3722c', '#f8961e', '#f9844a'] }
+        ];
+
+        const blendModes = ['screen', 'overlay', 'multiply', 'difference', 'exclusion', 'color-dodge'];
+        let currentPatternSet = 0;
+        let currentColorSet = 0;
+        let currentBlendIndex = 1;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+
+            [canvas1, canvas2, canvas3].forEach(canvas => {
+                canvas.width = width;
+                canvas.height = height;
+            });
+        }
+
+        function drawWave(ctx, time, color, alpha = 1) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = alpha;
+
+            for (let i = 0; i < 20; i++) {
+                ctx.beginPath();
+                for (let x = 0; x < width; x += 5) {
+                    const y = height / 2 + Math.sin(x * 0.01 + time * 0.5 + i * 0.3) * 100
+                            + Math.sin(x * 0.02 + time * 0.3 + i * 0.2) * 50
+                            + (i - 10) * 20;
+                    if (x === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function drawSpiral(ctx, time, color, alpha = 1) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = alpha;
+
+            const centerX = width / 2;
+            const centerY = height / 2;
+
+            for (let s = 0; s < 5; s++) {
+                ctx.beginPath();
+                for (let i = 0; i < 1000; i++) {
+                    const angle = i * 0.1 + time * 0.5 + s * 0.5;
+                    const radius = i * 0.3;
+                    const x = centerX + Math.cos(angle) * radius;
+                    const y = centerY + Math.sin(angle) * radius;
+
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function drawCircle(ctx, time, color, alpha = 1) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.globalAlpha = alpha;
+
+            for (let i = 0; i < 15; i++) {
+                const radius = 50 + i * 30 + Math.sin(time + i * 0.5) * 20;
+                ctx.beginPath();
+                ctx.arc(width / 2, height / 2, radius, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function drawTriangle(ctx, time, color, alpha = 1) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = alpha;
+
+            const centerX = width / 2;
+            const centerY = height / 2;
+
+            for (let i = 0; i < 20; i++) {
+                const size = 50 + i * 25 + Math.sin(time * 0.7 + i * 0.3) * 30;
+                const rotation = time * 0.3 + i * 0.1;
+
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(rotation);
+
+                ctx.beginPath();
+                for (let j = 0; j < 3; j++) {
+                    const angle = (j * Math.PI * 2 / 3) - Math.PI / 2;
+                    const x = Math.cos(angle) * size;
+                    const y = Math.sin(angle) * size;
+                    if (j === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.closePath();
+                ctx.stroke();
+
+                ctx.restore();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function drawGrid(ctx, time, color, alpha = 1) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = alpha;
+
+            const spacing = 40;
+            const offset = (time * 20) % spacing;
+
+            for (let x = -spacing + offset; x < width + spacing; x += spacing) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+
+            for (let y = -spacing + offset; y < height + spacing; y += spacing) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function drawRadial(ctx, time, color, alpha = 1) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = alpha;
+
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const rays = 36;
+
+            for (let i = 0; i < rays; i++) {
+                const angle = (i / rays) * Math.PI * 2 + time * 0.2;
+
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.lineTo(
+                    centerX + Math.cos(angle) * Math.max(width, height),
+                    centerY + Math.sin(angle) * Math.max(width, height)
+                );
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function drawHexagon(ctx, time, color, alpha = 1) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = alpha;
+
+            const hexSize = 60;
+
+            for (let row = -2; row < height / hexSize + 2; row++) {
+                for (let col = -2; col < width / hexSize + 2; col++) {
+                    const x = col * hexSize * 1.732 + (row % 2) * hexSize * 0.866;
+                    const y = row * hexSize * 1.5;
+
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(time * 0.3);
+
+                    ctx.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (i * Math.PI / 3);
+                        const hx = Math.cos(angle) * hexSize;
+                        const hy = Math.sin(angle) * hexSize;
+                        if (i === 0) {
+                            ctx.moveTo(hx, hy);
+                        } else {
+                            ctx.lineTo(hx, hy);
+                        }
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+
+                    ctx.restore();
+                }
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function drawFlower(ctx, time, color, alpha = 1) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = alpha;
+
+            const centerX = width / 2;
+            const centerY = height / 2;
+
+            for (let f = 0; f < 8; f++) {
+                const petals = 6 + f;
+                const radius = 80 + f * 40;
+
+                ctx.beginPath();
+                for (let i = 0; i <= 360; i++) {
+                    const angle = (i * Math.PI / 180) + time * 0.2 + f * 0.3;
+                    const r = radius + Math.sin(angle * petals) * 30;
+                    const x = centerX + Math.cos(angle) * r;
+                    const y = centerY + Math.sin(angle) * r;
+
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.closePath();
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function drawLines(ctx, time, color, alpha = 1) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = alpha;
+
+            for (let i = 0; i < 30; i++) {
+                const y = (height / 30) * i;
+                const offset = Math.sin(time + i * 0.2) * 50;
+
+                ctx.beginPath();
+                ctx.moveTo(0, y + offset);
+                ctx.bezierCurveTo(
+                    width * 0.25, y + offset + Math.sin(time * 0.5 + i) * 50,
+                    width * 0.75, y + offset + Math.cos(time * 0.5 + i) * 50,
+                    width, y + offset
+                );
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function drawDots(ctx, time, color, alpha = 1) {
+            ctx.fillStyle = color;
+            ctx.globalAlpha = alpha;
+
+            const dotSize = 8;
+            const spacing = 50;
+
+            for (let x = spacing / 2; x < width; x += spacing) {
+                for (let y = spacing / 2; y < height; y += spacing) {
+                    const dist = Math.sqrt(
+                        Math.pow(x - width / 2, 2) + Math.pow(y - height / 2, 2)
+                    );
+                    const size = dotSize + Math.sin(time + dist * 0.01) * 5;
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function drawPattern(ctx, patternType, time, colors) {
+            const color1 = colors[0];
+            const color2 = colors[1];
+
+            switch (patternType) {
+                case 'wave':
+                    drawWave(ctx, time, color1, 0.8);
+                    break;
+                case 'spiral':
+                    drawSpiral(ctx, time, color2, 0.6);
+                    break;
+                case 'circle':
+                    drawCircle(ctx, time, color1, 0.7);
+                    break;
+                case 'triangle':
+                    drawTriangle(ctx, time, color2, 0.6);
+                    break;
+                case 'grid':
+                    drawGrid(ctx, time, color1, 0.5);
+                    break;
+                case 'radial':
+                    drawRadial(ctx, time, color2, 0.4);
+                    break;
+                case 'hexagon':
+                    drawHexagon(ctx, time, color1, 0.6);
+                    break;
+                case 'flower':
+                    drawFlower(ctx, time, color2, 0.5);
+                    break;
+                case 'lines':
+                    drawLines(ctx, time, color1, 0.7);
+                    break;
+                case 'dots':
+                    drawDots(ctx, time, color2, 0.8);
+                    break;
+            }
+        }
+
+        function draw() {
+            const patternSet = patternSets[currentPatternSet];
+            const colors = colorSets[currentColorSet].colors;
+
+            // Clear canvases
+            ctx1.fillStyle = '#0a0a1a';
+            ctx1.fillRect(0, 0, width, height);
+            ctx2.clearRect(0, 0, width, height);
+            ctx3.clearRect(0, 0, width, height);
+
+            // Draw patterns on different layers
+            drawPattern(ctx1, patternSet.pattern1, time, [colors[0], colors[1]]);
+            drawPattern(ctx2, patternSet.pattern2, time + 1, [colors[2], colors[3]]);
+
+            // Add subtle glow on third layer
+            ctx3.globalAlpha = 0.1;
+            drawPattern(ctx3, patternSet.pattern1, time + 2, [colors[1], colors[3]]);
+            ctx3.globalAlpha = 1;
+
+            // Update blend mode
+            canvas2.style.mixBlendMode = blendModes[currentBlendIndex];
+        }
+
+        function animate() {
+            if (animationEnabled) {
+                time += 0.02;
+            }
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        document.getElementById('changePatterns').addEventListener('click', () => {
+            currentPatternSet = (currentPatternSet + 1) % patternSets.length;
+            document.getElementById('blendInfo').textContent =
+                `Pattern: ${patternSets[currentPatternSet].name}`;
+        });
+
+        document.getElementById('changeColors').addEventListener('click', () => {
+            currentColorSet = (currentColorSet + 1) % colorSets.length;
+        });
+
+        document.getElementById('changeBlend').addEventListener('click', () => {
+            currentBlendIndex = (currentBlendIndex + 1) % blendModes.length;
+        });
+
+        document.getElementById('toggleAnim').addEventListener('click', () => {
+            animationEnabled = !animationEnabled;
+        });
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        window.addEventListener('resize', resize);
+
+        // Touch/mouse interaction
+        let lastX = 0;
+        ['mousedown', 'touchstart'].forEach(eventType => {
+            window.addEventListener(eventType, (e) => {
+                lastX = e.clientX || e.touches[0].clientX;
+            });
+        });
+
+        ['mousemove', 'touchmove'].forEach(eventType => {
+            window.addEventListener(eventType, (e) => {
+                const x = e.clientX || e.touches[0].clientX;
+                const dx = x - lastX;
+                time += dx * 0.01;
+                lastX = x;
+            });
+        });
+
+        // Initialize
+        resize();
+        animate();
+    </script>
+</body>
+</html>
