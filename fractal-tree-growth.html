@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fractal Tree Growth | ジェネレーティブアート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+        }
+
+        canvas {
+            display: block;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(100, 200, 255, 0.1);
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 200, 255, 0.2);
+        }
+
+        .controls button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            margin: 4px;
+            transition: all 0.3s ease;
+        }
+
+        .controls button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 11px;
+            z-index: 10;
+        }
+
+        .title {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            text-align: right;
+            z-index: 10;
+        }
+
+        .title h1 {
+            font-size: 24px;
+            background: linear-gradient(135deg, #64f4ac 0%, #64b5f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 5px;
+        }
+
+        .title p {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+        }
+
+        @media (max-width: 768px) {
+            .title {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button onclick="startGrowth()">🌱 成長開始</button>
+        <button onclick="resetTree()">🔄 リセット</button>
+        <button onclick="toggleAuto()">⚡ 自動</button>
+    </div>
+
+    <div class="title">
+        <h1>🌳 Fractal Tree Growth</h1>
+        <p>フラクタルツリーの成長アニメーション</p>
+    </div>
+
+    <div class="container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="info">
+        <span id="depthDisplay">深さ: 0</span> | 
+        <span id="branchDisplay">枝数: 0</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let growthProgress = 0;
+        let maxDepth = 12;
+        let animationId = null;
+        let autoMode = false;
+        let autoInterval = null;
+
+        function resize() {
+            width = Math.min(window.innerWidth - 40, 800);
+            height = Math.min(window.innerHeight - 100, 800);
+            canvas.width = width;
+            canvas.height = height;
+            draw();
+        }
+
+        function getBranchColor(depth, progress) {
+            const t = depth / maxDepth;
+            const hue = 140 - t * 60; // 緑から青へのグラデーション
+            const lightness = 70 - t * 30 + progress * 10;
+            return `hsl(${hue}, 80%, ${lightness}%)`;
+        }
+
+        function drawBranch(x, y, length, angle, depth, progress) {
+            if (depth === 0 || length < 2) return;
+
+            const endX = x + length * Math.cos(angle);
+            const endY = y - length * Math.sin(angle);
+
+            // 枝を描画
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+
+            const actualLength = length * Math.min(progress * 3, 1);
+            const actualEndX = x + actualLength * Math.cos(angle);
+            const actualEndY = y - actualLength * Math.sin(angle);
+
+            ctx.lineTo(actualEndX, actualEndY);
+            ctx.strokeStyle = getBranchColor(maxDepth - depth, progress);
+            ctx.lineWidth = depth * 1.2;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            // 先端に小さな光点を追加
+            if (progress > 0.5 && depth === 1) {
+                const gradient = ctx.createRadialGradient(
+                    actualEndX, actualEndY, 0,
+                    actualEndX, actualEndY, 8
+                );
+                gradient.addColorStop(0, 'rgba(100, 244, 172, 0.8)');
+                gradient.addColorStop(1, 'rgba(100, 244, 172, 0)');
+
+                ctx.beginPath();
+                ctx.arc(actualEndX, actualEndY, 8, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+
+            // 子供の枝を描画
+            if (progress > 0.3) {
+                const childProgress = (progress - 0.3) / 0.7;
+                const newLength = length * 0.75;
+                const spreadAngle = 0.5 + Math.sin(Date.now() / 3000 + depth) * 0.1;
+
+                drawBranch(endX, endY, newLength, angle + spreadAngle, depth - 1, childProgress);
+                drawBranch(endX, endY, newLength, angle - spreadAngle, depth - 1, childProgress);
+
+                // 真ん中の枝も追加（より深いレベルのみ）
+                if (depth > maxDepth / 2) {
+                    drawBranch(endX, endY, newLength * 0.8, angle, depth - 1, childProgress * 0.8);
+                }
+            }
+        }
+
+        function countBranches(depth) {
+            if (depth === 0) return 0;
+            let count = 1;
+            for (let i = 1; i <= depth; i++) {
+                count += Math.pow(3, i);
+            }
+            return Math.min(count, 100000);
+        }
+
+        function draw() {
+            // クリアしてグラデーション背景
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#0a0a0a');
+            gradient.addColorStop(1, '#1a1a2e');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // 地面を描画
+            const groundGradient = ctx.createLinearGradient(0, height - 50, 0, height);
+            groundGradient.addColorStop(0, 'rgba(100, 200, 255, 0)');
+            groundGradient.addColorStop(1, 'rgba(100, 200, 255, 0.1)');
+            ctx.fillStyle = groundGradient;
+            ctx.fillRect(0, height - 50, width, 50);
+
+            // ツリーを描画
+            const trunkLength = height * 0.25;
+            const centerX = width / 2;
+            const bottomY = height - 50;
+
+            const currentDepth = Math.floor(growthProgress * maxDepth);
+            const depthProgress = (growthProgress * maxDepth) % 1;
+
+            drawBranch(centerX, bottomY, trunkLength, Math.PI / 2, maxDepth, growthProgress);
+
+            // 情報更新
+            document.getElementById('depthDisplay').textContent = `深さ: ${currentDepth}`;
+            document.getElementById('branchDisplay').textContent = `枝数: ${countBranches(currentDepth).toLocaleString()}`;
+        }
+
+        function animate() {
+            if (growthProgress < 1) {
+                growthProgress += 0.008;
+                draw();
+                animationId = requestAnimationFrame(animate);
+            }
+        }
+
+        function startGrowth() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            growthProgress = 0;
+            animate();
+        }
+
+        function resetTree() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            growthProgress = 0;
+            draw();
+        }
+
+        function toggleAuto() {
+            autoMode = !autoMode;
+            if (autoMode) {
+                startGrowth();
+                autoInterval = setInterval(() => {
+                    if (growthProgress >= 1) {
+                        growthProgress = 0;
+                        startGrowth();
+                    }
+                }, 3000);
+            } else {
+                if (autoInterval) {
+                    clearInterval(autoInterval);
+                    autoInterval = null;
+                }
+            }
+        }
+
+        // 初期化
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 自動スタート
+        setTimeout(() => {
+            startGrowth();
+        }, 500);
+    </script>
+</body>
+</html>
