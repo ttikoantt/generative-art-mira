@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>粒子の旅 - Particles Journey</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            max-width: 100%;
+            max-height: 100vh;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 14px;
+            text-shadow: 0 0 10px rgba(100, 200, 255, 0.8);
+            z-index: 100;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(100, 200, 255, 0.2);
+            border: 2px solid rgba(100, 200, 255, 0.5);
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 5px;
+            z-index: 100;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(100, 200, 255, 0.4);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <div id="time">旅の時間: 0s</div>
+        <div id="particles">粒子数: 0</div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        const particles = [];
+        const maxParticles = 100;
+        let startTime = Date.now();
+
+        class Particle {
+            constructor() {
+                this.reset();
+                this.age = Math.random() * 1000; // 初年齢をランダムに
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.size = Math.random() * 2 + 1;
+                this.baseSize = this.size;
+                this.age = 0;
+                this.maxAge = Math.random() * 2000 + 1000;
+                this.hue = Math.random() * 60 + 180; // 青〜紫系
+                this.trail = [];
+                this.trailLength = 20;
+            }
+
+            update() {
+                this.age++;
+
+                // 年齢とともに成長
+                this.size = this.baseSize * (1 + this.age / this.maxAge);
+
+                // 軌跡を保存
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > this.trailLength) {
+                    this.trail.shift();
+                }
+
+                // 移動
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 境界で反転
+                if (this.x < 0 || this.x > width) this.vx *= -1;
+                if (this.y < 0 || this.y > height) this.vy *= -1;
+
+                // 色の変化（年齢とともに変化）
+                this.hue = (180 + this.age / 10) % 360;
+
+                // 寿命でリセット
+                if (this.age > this.maxAge) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                // 軌跡を描画
+                for (let i = 0; i < this.trail.length; i++) {
+                    const alpha = i / this.trail.length * 0.5;
+                    const size = this.size * (i / this.trail.length);
+                    ctx.beginPath();
+                    ctx.arc(this.trail[i].x, this.trail[i].y, size, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha})`;
+                    ctx.fill();
+                }
+
+                // 粒子を描画
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 80%, 80%, 1)`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 80%, 60%, 0.5)`);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+
+        // 粒子を生成
+        for (let i = 0; i < maxParticles; i++) {
+            particles.push(new Particle());
+        }
+
+        function animate() {
+            // 半透明で残像効果
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 粒子を更新・描画
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // 粒子間の線を描画（近い粒子同士）
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 100) {
+                        const alpha = (1 - dist / 100) * 0.3;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `hsla(${particles[i].hue}, 80%, 60%, ${alpha})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // 情報更新
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            document.getElementById('time').textContent = `旅の時間: ${elapsed}s`;
+            document.getElementById('particles').textContent = `粒子数: ${particles.length}`;
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        animate();
+    </script>
+</body>
+</html>
