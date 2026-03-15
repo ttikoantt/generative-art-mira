@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Dot Chase - Catch the Dot!</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            font-family: 'Segoe UI', sans-serif;
+            color: #fff;
+        }
+        
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+        
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            z-index: 10;
+        }
+        
+        .score {
+            font-size: 48px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+        
+        .combo {
+            font-size: 24px;
+            color: #ffd700;
+            margin-top: 5px;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+        
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 40px;
+            border-radius: 20px;
+            z-index: 100;
+            display: none;
+        }
+        
+        .game-over h2 {
+            font-size: 36px;
+            margin-bottom: 20px;
+        }
+        
+        .game-over p {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        
+        .restart-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            padding: 15px 40px;
+            border-radius: 25px;
+            color: #fff;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .restart-btn:hover {
+            transform: scale(1.05);
+        }
+        
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 16px;
+            border-radius: 15px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 10;
+        }
+        
+        .timer-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="score" id="score">0</div>
+        <div class="combo" id="combo"></div>
+    </div>
+    
+    <div class="game-over" id="gameOver">
+        <h2>Game Over!</h2>
+        <p>Score: <span id="finalScore">0</span></p>
+        <p>Best: <span id="bestScore">0</span></p>
+        <button class="restart-btn" onclick="restart()">Play Again</button>
+    </div>
+    
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+    <div class="timer-bar" id="timerBar"></div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let score = 0;
+        let combo = 0;
+        let bestScore = parseInt(localStorage.getItem('dotChaseBest')) || 0;
+        let dots = [];
+        let particles = [];
+        let timeLeft = 30;
+        let maxTime = 30;
+        let gameActive = true;
+        let spawnRate = 1500;
+        let lastSpawn = 0;
+        
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        resize();
+        window.addEventListener('resize', resize);
+        
+        class Dot {
+            constructor() {
+                this.radius = 30 + Math.random() * 20;
+                this.x = this.radius + Math.random() * (canvas.width - this.radius * 2);
+                this.y = this.radius + Math.random() * (canvas.height - this.radius * 2);
+                this.dx = (Math.random() - 0.5) * 3;
+                this.dy = (Math.random() - 0.5) * 3;
+                this.hue = Math.random() * 360;
+                this.life = 1;
+                this.decay = 0.005 + Math.random() * 0.01;
+            }
+            
+            update() {
+                this.x += this.dx;
+                this.y += this.dy;
+                
+                if (this.x < this.radius || this.x > canvas.width - this.radius) {
+                    this.dx *= -1;
+                }
+                if (this.y < this.radius || this.y > canvas.height - this.radius) {
+                    this.dy *= -1;
+                }
+                
+                this.life -= this.decay;
+            }
+            
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${this.life})`;
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * this.life * 0.6, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 90%, 70%, ${this.life * 0.8})`;
+                ctx.fill();
+            }
+            
+            isClicked(x, y) {
+                const dist = Math.sqrt((x - this.x) ** 2 + (y - this.y) ** 2);
+                return dist < this.radius * this.life;
+            }
+            
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+        
+        class Particle {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.dx = (Math.random() - 0.5) * 8;
+                this.dy = (Math.random() - 0.5) * 8;
+                this.radius = 3 + Math.random() * 3;
+                this.hue = hue;
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+            }
+            
+            update() {
+                this.x += this.dx;
+                this.y += this.dy;
+                this.dy += 0.2;
+                this.life -= this.decay;
+            }
+            
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${this.life})`;
+                ctx.fill();
+            }
+            
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+        
+        function spawnDot() {
+            dots.push(new Dot());
+        }
+        
+        function createParticles(x, y, hue) {
+            for (let i = 0; i < 15; i++) {
+                particles.push(new Particle(x, y, hue));
+            }
+        }
+        
+        function handleClick(x, y) {
+            if (!gameActive) return;
+            
+            for (let i = dots.length - 1; i >= 0; i--) {
+                if (dots[i].isClicked(x, y)) {
+                    const dot = dots[i];
+                    createParticles(dot.x, dot.y, dot.hue);
+                    dots.splice(i, 1);
+                    
+                    combo++;
+                    score += 10 + combo * 5;
+                    
+                    // Add time bonus
+                    timeLeft = Math.min(timeLeft + 0.5, maxTime);
+                    
+                    // Increase difficulty
+                    if (score % 50 === 0) {
+                        spawnRate = Math.max(500, spawnRate - 100);
+                    }
+                    
+                    updateUI();
+                    return;
+                }
+            }
+            
+            // Missed
+            combo = 0;
+            updateUI();
+        }
+        
+        canvas.addEventListener('click', (e) => {
+            handleClick(e.clientX, e.clientY);
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            for (let touch of e.touches) {
+                handleClick(touch.clientX, touch.clientY);
+            }
+        });
+        
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('combo').textContent = combo > 1 ? `${combo}x Combo!` : '';
+            
+            const timerPercent = (timeLeft / maxTime) * 100;
+            document.getElementById('timerBar').style.width = timerPercent + '%';
+        }
+        
+        function gameOver() {
+            gameActive = false;
+            
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('dotChaseBest', bestScore);
+            }
+            
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('bestScore').textContent = bestScore;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+        
+        function restart() {
+            score = 0;
+            combo = 0;
+            timeLeft = maxTime;
+            dots = [];
+            particles = [];
+            gameActive = true;
+            spawnRate = 1500;
+            
+            document.getElementById('gameOver').style.display = 'none';
+            updateUI();
+        }
+        
+        function animate(timestamp) {
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            if (gameActive) {
+                // Spawn dots
+                if (timestamp - lastSpawn > spawnRate) {
+                    spawnDot();
+                    lastSpawn = timestamp;
+                }
+                
+                // Update time
+                timeLeft -= 1/60;
+                if (timeLeft <= 0) {
+                    gameOver();
+                }
+                updateUI();
+            }
+            
+            // Update and draw dots
+            dots = dots.filter(dot => {
+                dot.update();
+                dot.draw();
+                return !dot.isDead();
+            });
+            
+            // Update and draw particles
+            particles = particles.filter(particle => {
+                particle.update();
+                particle.draw();
+                return !particle.isDead();
+            });
+            
+            requestAnimationFrame(animate);
+        }
+        
+        updateUI();
+        requestAnimationFrame(animate);
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
