@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Wave & Sound - 波と音声</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 1200px;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(100, 200, 255, 0.8);
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 1rem;
+            margin-bottom: 30px;
+        }
+
+        #canvas {
+            background: radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0a 100%);
+            border-radius: 20px;
+            box-shadow: 0 0 50px rgba(100, 200, 255, 0.3);
+            max-width: 100%;
+            cursor: pointer;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        #startBtn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        #startBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        #fullscreenBtn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        #fullscreenBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(245, 87, 108, 0.5);
+        }
+
+        .status {
+            color: #64c8ff;
+            font-size: 1.2rem;
+            margin-top: 20px;
+            text-shadow: 0 0 10px rgba(100, 200, 255, 0.8);
+        }
+
+        .info {
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 15px;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌊 Wave & Sound</h1>
+        <p class="subtitle">音声で波を踊らせるインタラクティブアート</p>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="controls">
+            <button id="startBtn">🎤 マイクを開始</button>
+            <button id="fullscreenBtn">📺 全画面表示</button>
+        </div>
+
+        <div class="status" id="status">マイクボタンをクリックして開始</div>
+        <div class="info">
+            音量に応じて波が揺れます。<br>
+            大きな声を出すと、波が大きく踊ります！
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const statusDiv = document.getElementById('status');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let isRunning = false;
+        let audioLevel = 0;
+        let targetLevel = 0;
+
+        // 波の設定
+        const waves = [
+            { frequency: 0.02, amplitude: 30, speed: 0.03, phase: 0, color: '#64c8ff' },
+            { frequency: 0.03, amplitude: 25, speed: 0.02, phase: 1, color: '#f093fb' },
+            { frequency: 0.015, amplitude: 35, speed: 0.04, phase: 2, color: '#667eea' },
+            { frequency: 0.025, amplitude: 20, speed: 0.025, phase: 3, color: '#f5576c' },
+            { frequency: 0.04, amplitude: 15, speed: 0.035, phase: 4, color: '#4facfe' }
+        ];
+
+        // Canvasサイズ設定
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            canvas.width = Math.min(900, container.clientWidth - 40);
+            canvas.height = Math.min(500, window.innerHeight * 0.6);
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // マイクを開始
+        async function startMicrophone() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+
+                isRunning = true;
+                startBtn.textContent = '✓ マイク実行中';
+                startBtn.disabled = true;
+                statusDiv.textContent = 'マイクが有効です。音を発してください！';
+
+                updateAudioLevel();
+                draw();
+            } catch (err) {
+                console.error('マイクエラー:', err);
+                statusDiv.textContent = 'エラー: マイクにアクセスできません';
+                alert('マイクへのアクセスを許可してください');
+            }
+        }
+
+        // 音声レベルを更新
+        function updateAudioLevel() {
+            if (!isRunning) return;
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+
+            const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+            targetLevel = average / 255;
+
+            requestAnimationFrame(updateAudioLevel);
+        }
+
+        // 波を描画
+        function draw() {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 音声レベルを滑らかに変化
+            audioLevel += (targetLevel - audioLevel) * 0.1;
+
+            // 複数の波を描画
+            waves.forEach((wave, index) => {
+                ctx.beginPath();
+                ctx.strokeStyle = wave.color;
+                ctx.lineWidth = 2;
+
+                const amplitudeMultiplier = 1 + audioLevel * 3;
+                const glow = 10 + audioLevel * 30;
+
+                ctx.shadowColor = wave.color;
+                ctx.shadowBlur = glow;
+
+                for (let x = 0; x < canvas.width; x++) {
+                    const y = canvas.height / 2 +
+                        Math.sin(x * wave.frequency + wave.phase) * wave.amplitude * amplitudeMultiplier +
+                        Math.sin(x * wave.frequency * 2 + wave.phase * 1.5) * wave.amplitude * 0.5 * amplitudeMultiplier;
+
+                    if (x === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                // 位相を更新
+                wave.phase += wave.speed;
+            });
+
+            // 音声レベルインジケーター
+            if (audioLevel > 0.1) {
+                ctx.fillStyle = `rgba(100, 200, 255, ${audioLevel})`;
+                ctx.fillRect(10, 10, audioLevel * 200, 10);
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        // 全画面表示
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                canvas.requestFullscreen().catch(err => {
+                    console.error('全画面エラー:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        startBtn.addEventListener('click', startMicrophone);
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+        // 初期描画
+        function initialDraw() {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            waves.forEach(wave => {
+                ctx.beginPath();
+                ctx.strokeStyle = wave.color;
+                ctx.lineWidth = 2;
+                ctx.shadowColor = wave.color;
+                ctx.shadowBlur = 10;
+
+                for (let x = 0; x < canvas.width; x++) {
+                    const y = canvas.height / 2 + Math.sin(x * wave.frequency + wave.phase) * wave.amplitude;
+                    if (x === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                wave.phase += wave.speed;
+            });
+
+            if (!isRunning) {
+                requestAnimationFrame(initialDraw);
+            }
+        }
+
+        initialDraw();
+    </script>
+</body>
+</html>
