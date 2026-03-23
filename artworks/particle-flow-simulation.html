@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Particle Flow Simulation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: #0ff;
+            font-size: 12px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border: 1px solid #0ff;
+            border-radius: 5px;
+            z-index: 100;
+        }
+
+        #fullscreenBtn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 10px 20px;
+            font-size: 14px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.3s;
+        }
+
+        #fullscreenBtn:hover {
+            background: rgba(0, 255, 255, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            #info {
+                font-size: 10px;
+                padding: 5px;
+            }
+
+            #fullscreenBtn {
+                padding: 8px 15px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div id="info">
+        <div>🔮 Particle Flow Simulation</div>
+        <div>パーティクル: <span id="particleCount">0</span></div>
+        <div>FPS: <span id="fps">0</span></div>
+        <div>タッチ/ドラッグで流れを変える</div>
+    </div>
+
+    <button id="fullscreenBtn">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const particleCountEl = document.getElementById('particleCount');
+        const fpsEl = document.getElementById('fps');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // パーティクル設定
+        const PARTICLE_COUNT = 1500;
+        const CONNECTION_DISTANCE = 80;
+        const MOUSE_INFLUENCE = 150;
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 2 + 1;
+                this.baseRadius = this.radius;
+                this.life = Math.random() * 100 + 100;
+                this.maxLife = this.life;
+
+                // 色相（青系〜紫系〜シアン系）
+                this.hue = Math.random() * 60 + 180; // 180-240（青〜紫）
+            }
+
+            update(mouseX, mouseY, mouseInfluence) {
+                // 基本的な移動
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // マウスの影響
+                if (mouseX !== null && mouseY !== null) {
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < mouseInfluence) {
+                        const force = (mouseInfluence - distance) / mouseInfluence;
+                        const angle = Math.atan2(dy, dx);
+
+                        this.vx += Math.cos(angle) * force * 0.5;
+                        this.vy += Math.sin(angle) * force * 0.5;
+                        this.radius = this.baseRadius * (1 + force);
+                    } else {
+                        this.radius = this.baseRadius;
+                    }
+                }
+
+                // 速度制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 3) {
+                    this.vx = (this.vx / speed) * 3;
+                    this.vy = (this.vy / speed) * 3;
+                }
+
+                // 画面端で反転
+                if (this.x < 0 || this.x > width) {
+                    this.vx *= -1;
+                    this.x = Math.max(0, Math.min(width, this.x));
+                }
+                if (this.y < 0 || this.y > height) {
+                    this.vy *= -1;
+                    this.y = Math.max(0, Math.min(height, this.y));
+                }
+
+                // ライフ減少
+                this.life--;
+
+                // リスポーン
+                if (this.life <= 0) {
+                    this.x = Math.random() * width;
+                    this.y = Math.random() * height;
+                    this.vx = (Math.random() - 0.5) * 2;
+                    this.vy = (Math.random() - 0.5) * 2;
+                    this.life = this.maxLife;
+                }
+            }
+
+            draw() {
+                const alpha = this.life / this.maxLife;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        // パーティクル配列
+        let particles = [];
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            particles.push(new Particle());
+        }
+
+        // マウス・タッチ位置
+        let mouseX = null;
+        let mouseY = null;
+        let mouseInfluence = MOUSE_INFLUENCE;
+
+        // イベントリスナー
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            mouseX = null;
+            mouseY = null;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouseX = null;
+            mouseY = null;
+        });
+
+        // 全画面ボタン
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.requestFullscreen();
+            }
+        });
+
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // FPS計測
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 0;
+
+        // パーティクル間の線を描画
+        function drawConnections() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < CONNECTION_DISTANCE) {
+                        const alpha = (1 - distance / CONNECTION_DISTANCE) * 0.3;
+                        const avgHue = (particles[i].hue + particles[j].hue) / 2;
+
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `hsla(${avgHue}, 100%, 60%, ${alpha})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // アニメーションループ
+        function animate() {
+            // 背景（少し残すことでトレイル効果）
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // パーティクル更新・描画
+            particles.forEach(particle => {
+                particle.update(mouseX, mouseY, mouseInfluence);
+                particle.draw();
+            });
+
+            // 接続線描画
+            drawConnections();
+
+            // FPS更新
+            frameCount++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+                fpsEl.textContent = fps;
+            }
+
+            particleCountEl.textContent = particles.length;
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
