@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Particle Flow - Interactive Generative Art</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Flow Art</title>
     <style>
         * {
             margin: 0;
@@ -12,232 +12,269 @@
         }
 
         body {
-            background: #0a0a0a;
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
-            font-family: 'Courier New', monospace;
         }
 
-        canvas {
-            display: block;
-            cursor: crosshair;
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 1200px;
+            padding: 20px;
         }
 
-        .info {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            color: rgba(255, 255, 255, 0.5);
-            font-size: 12px;
-            pointer-events: none;
-            user-select: none;
+        h1 {
+            color: #ffffff;
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: clamp(0.8rem, 2vw, 1rem);
+            margin-bottom: 20px;
+        }
+
+        #canvas {
+            border: 2px solid #333;
+            border-radius: 10px;
+            background: #000;
+            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+            max-width: 100%;
+            touch-action: none;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: clamp(0.8rem, 2vw, 1rem);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
         }
 
         .fullscreen-btn {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            padding: 10px 20px;
-            cursor: pointer;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            transition: all 0.3s ease;
-            z-index: 100;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
         }
 
-        .fullscreen-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-            border-color: rgba(255, 255, 255, 0.5);
-        }
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
 
-        .fullscreen-btn:active {
-            transform: scale(0.95);
+            #canvas {
+                max-height: 60vh;
+            }
+
+            .controls {
+                gap: 8px;
+            }
+
+            button {
+                padding: 10px 20px;
+            }
         }
     </style>
 </head>
 <body>
-    <canvas id="canvas"></canvas>
-    <div class="info">Move mouse or touch to create particles</div>
-    <button class="fullscreen-btn" id="fullscreenBtn">Fullscreen</button>
+    <div class="container">
+        <h1>✨ Particle Flow Art</h1>
+        <p class="subtitle">クリックでパーティクルを生成</p>
+        <canvas id="canvas" width="800" height="600"></canvas>
+        <div class="controls">
+            <button onclick="clearCanvas()">クリア</button>
+            <button onclick="randomize()">ランダム生成</button>
+            <button onclick="toggleAuto()">自動生成</button>
+            <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+        </div>
+    </div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const fullscreenBtn = document.getElementById('fullscreenBtn');
-
-        let width = canvas.width = window.innerWidth;
-        let height = canvas.height = window.innerHeight;
-
-        // Mouse/touch position
-        let mouse = { x: width / 2, y: height / 2 };
-        let isMoving = false;
-        let lastMove = Date.now();
-
-        // Particle system
         const particles = [];
-        const maxParticles = 500;
+        let autoMode = false;
+        let autoInterval = null;
+        let hue = 0;
 
-        // Color palette
-        const colors = [
-            '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4',
-            '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe',
-            '#00b894', '#e17055', '#74b9ff', '#fab1a0'
-        ];
+        // レスポンシブ対応
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const maxWidth = Math.min(800, window.innerWidth - 40);
+            const ratio = 600 / 800;
+            
+            canvas.style.width = maxWidth + 'px';
+            canvas.style.height = (maxWidth * ratio) + 'px';
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
 
         class Particle {
             constructor(x, y) {
                 this.x = x;
                 this.y = y;
-                this.size = Math.random() * 5 + 2;
-                this.speedX = (Math.random() - 0.5) * 2;
-                this.speedY = (Math.random() - 0.5) * 2;
-                this.color = colors[Math.floor(Math.random() * colors.length)];
-                this.life = 1;
-                this.decay = Math.random() * 0.01 + 0.005;
+                this.size = Math.random() * 8 + 2;
+                this.speedX = (Math.random() - 0.5) * 6;
+                this.speedY = (Math.random() - 0.5) * 6;
+                this.hue = hue;
+                this.life = 100;
+                this.decay = Math.random() * 0.5 + 0.5;
             }
 
             update() {
                 this.x += this.speedX;
                 this.y += this.speedY;
+                this.size *= 0.98;
                 this.life -= this.decay;
-                this.size *= 0.99;
+                this.hue += 0.5;
+
+                // 重力
+                this.speedY += 0.05;
+
+                // 境界で反転
+                if (this.x < 0 || this.x > canvas.width) this.speedX *= -0.8;
+                if (this.y < 0 || this.y > canvas.height) this.speedY *= -0.8;
             }
 
             draw() {
                 ctx.save();
-                ctx.globalAlpha = this.life;
-                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.life / 100;
+                
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, 1)`);
+                gradient.addColorStop(0.5, `hsla(${this.hue + 30}, 100%, 50%, 0.5)`);
+                gradient.addColorStop(1, `hsla(${this.hue + 60}, 100%, 30%, 0)`);
+                
+                ctx.fillStyle = gradient;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
                 ctx.fill();
+                
                 ctx.restore();
             }
-
-            isDead() {
-                return this.life <= 0 || this.size < 0.5;
-            }
         }
 
-        // Create particles at position
-        function createParticles(x, y, count = 5) {
+        function createParticles(x, y, count = 20) {
             for (let i = 0; i < count; i++) {
-                if (particles.length < maxParticles) {
-                    particles.push(new Particle(x, y));
-                }
+                particles.push(new Particle(x, y));
             }
         }
 
-        // Draw connecting lines between nearby particles
-        function drawConnections() {
-            for (let i = 0; i < particles.length; i++) {
-                for (let j = i + 1; j < particles.length; j++) {
-                    const dx = particles[i].x - particles[j].x;
-                    const dy = particles[i].y - particles[j].y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-
-                    if (distance < 80) {
-                        const opacity = (1 - distance / 80) * 0.2 * Math.min(particles[i].life, particles[j].life);
-                        ctx.save();
-                        ctx.globalAlpha = opacity;
-                        ctx.strokeStyle = particles[i].color;
-                        ctx.lineWidth = 0.5;
-                        ctx.beginPath();
-                        ctx.moveTo(particles[i].x, particles[i].y);
-                        ctx.lineTo(particles[j].x, particles[j].y);
-                        ctx.stroke();
-                        ctx.restore();
-                    }
-                }
-            }
-        }
-
-        // Animation loop
         function animate() {
-            // Create fade effect
-            ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
-            ctx.fillRect(0, 0, width, height);
+            // トレイル効果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Create particles when moving
-            if (isMoving && Date.now() - lastMove < 100) {
-                createParticles(mouse.x, mouse.y, 8);
-            }
-
-            // Update and draw particles
             for (let i = particles.length - 1; i >= 0; i--) {
                 particles[i].update();
                 particles[i].draw();
 
-                if (particles[i].isDead()) {
+                if (particles[i].life <= 0 || particles[i].size < 0.5) {
                     particles.splice(i, 1);
                 }
             }
 
-            // Draw connections
-            drawConnections();
-
-            // Auto-generate particles occasionally
-            if (Math.random() < 0.02) {
-                const x = Math.random() * width;
-                const y = Math.random() * height;
-                createParticles(x, y, 3);
-            }
-
+            hue = (hue + 0.5) % 360;
             requestAnimationFrame(animate);
         }
 
-        // Event listeners
-        canvas.addEventListener('mousemove', (e) => {
-            mouse.x = e.clientX;
-            mouse.y = e.clientY;
-            isMoving = true;
-            lastMove = Date.now();
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+            createParticles(x, y, 30);
         });
 
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            const touch = e.touches[0];
-            mouse.x = touch.clientX;
-            mouse.y = touch.clientY;
-            isMoving = true;
-            lastMove = Date.now();
-        }, { passive: false });
-
+        // タッチ対応
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
             const touch = e.touches[0];
-            mouse.x = touch.clientX;
-            mouse.y = touch.clientY;
-            isMoving = true;
-            lastMove = Date.now();
-        }, { passive: false });
-
-        canvas.addEventListener('touchend', () => {
-            isMoving = false;
+            const x = (touch.clientX - rect.left) * scaleX;
+            const y = (touch.clientY - rect.top) * scaleY;
+            createParticles(x, y, 30);
         });
 
-        canvas.addEventListener('mouseleave', () => {
-            isMoving = false;
-        });
+        function clearCanvas() {
+            particles.length = 0;
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
 
-        // Resize handler
-        window.addEventListener('resize', () => {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-        });
+        function randomize() {
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            createParticles(x, y, 40);
+        }
 
-        // Fullscreen
-        fullscreenBtn.addEventListener('click', () => {
+        function toggleAuto() {
+            autoMode = !autoMode;
+            if (autoMode) {
+                autoInterval = setInterval(() => {
+                    const x = Math.random() * canvas.width;
+                    const y = Math.random() * canvas.height;
+                    createParticles(x, y, 15);
+                }, 500);
+                event.target.textContent = '自動停止';
+            } else {
+                clearInterval(autoInterval);
+                event.target.textContent = '自動生成';
+            }
+        }
+
+        function toggleFullscreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
             } else {
                 document.exitFullscreen();
             }
-        });
+        }
 
-        // Start animation
+        // 初期状態
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         animate();
+
+        // 初期パーティクル
+        createParticles(canvas.width / 2, canvas.height / 2, 50);
     </script>
 </body>
 </html>
