@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Emoji Jump 2D - 絵文字ジャンプゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        .game-container {
+            text-align: center;
+            width: 100%;
+            max-width: 600px;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(255, 107, 107, 0.5);
+        }
+
+        .score-display {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #ffd93d;
+            text-shadow: 0 0 10px rgba(255, 217, 61, 0.5);
+            margin: 15px 0;
+        }
+
+        .high-score {
+            font-size: 1rem;
+            color: #6bcf7f;
+            margin-bottom: 15px;
+        }
+
+        #gameCanvas {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            display: block;
+            margin: 0 auto;
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        .instructions {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .game-over {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            z-index: 100;
+        }
+
+        .game-over h2 {
+            font-size: 2.5rem;
+            color: #ff6b6b;
+            margin-bottom: 20px;
+        }
+
+        .game-over p {
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+        }
+
+        .restart-btn {
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border: none;
+            border-radius: 25px;
+            background: linear-gradient(45deg, #ff6b6b, #ffd93d);
+            color: #1a1a2e;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 5px 20px rgba(255, 107, 107, 0.4);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            font-size: 0.9rem;
+            z-index: 1000;
+            background: linear-gradient(45deg, #00d2ff, #3a7bd5);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .score-display {
+                font-size: 2rem;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="game-container">
+        <h1>🎮 Emoji Jump 2D</h1>
+        <div class="score-display">スコア: <span id="score">0</span></div>
+        <div class="high-score">🏆 ハイスコア: <span id="highScore">0</span></div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div class="instructions">
+            <p>📱 <strong>操作方法:</strong> 画面をタップ/クリックしてジャンプ！</p>
+            <p>🎯 <strong>目標:</strong> プラットフォームに着地して高得点を目指そう！</p>
+        </div>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <h2>💀 ゲームオーバー</h2>
+        <p>スコア: <span id="finalScore">0</span></p>
+        <button class="restart-btn" onclick="restartGame()">再挑戦</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // レスポンシブキャンバス
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 600);
+            const maxHeight = Math.min(window.innerHeight - 250, 600);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ゲーム状態
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('emojiJumpHighScore')) || 0;
+        let gameRunning = true;
+        let gravity = 0.6;
+        let jumpForce = -12;
+        let cameraY = 0;
+
+        // プレイヤー（絵文字）
+        const player = {
+            x: 0,
+            y: 0,
+            width: 40,
+            height: 40,
+            velocityY: 0,
+            emoji: '🤖',
+            emojis: ['🤖', '👾', '🎮', '🚀', '⭐', '🌟', '💫', '🔥', '💎', '🎯'],
+            currentEmojiIndex: 0
+        };
+
+        // プラットフォーム
+        let platforms = [];
+
+        // 初期化
+        function init() {
+            player.x = canvas.width / 2 - player.width / 2;
+            player.y = canvas.height - 100;
+            player.velocityY = 0;
+            score = 0;
+            cameraY = 0;
+            gameRunning = true;
+
+            // 初期プラットフォーム
+            platforms = [];
+            for (let i = 0; i < 8; i++) {
+                platforms.push({
+                    x: Math.random() * (canvas.width - 80),
+                    y: canvas.height - 100 - i * 80,
+                    width: 80,
+                    height: 15,
+                    type: i === 0 ? 'normal' : (Math.random() > 0.7 ? 'moving' : 'normal'),
+                    speed: Math.random() * 2 + 1,
+                    direction: Math.random() > 0.5 ? 1 : -1
+                });
+            }
+
+            document.getElementById('highScore').textContent = highScore;
+            document.getElementById('gameOver').style.display = 'none';
+        }
+
+        // プラットフォームを生成
+        function generatePlatform() {
+            const highestPlatform = platforms[platforms.length - 1];
+            const newY = highestPlatform.y - 80 - Math.random() * 20;
+
+            const platform = {
+                x: Math.random() * (canvas.width - 80),
+                y: newY,
+                width: 80,
+                height: 15,
+                type: Math.random() > 0.7 ? 'moving' : 'normal',
+                speed: Math.random() * 2 + 1,
+                direction: Math.random() > 0.5 ? 1 : -1
+            };
+
+            platforms.push(platform);
+
+            // 古いプラットフォームを削除
+            if (platforms.length > 12) {
+                platforms.shift();
+            }
+        }
+
+        // ジャンプ
+        function jump() {
+            if (!gameRunning) return;
+
+            // 地面またはプラットフォーム上ならジャンプ
+            if (player.y >= canvas.height - player.height - 10) {
+                player.velocityY = jumpForce;
+            }
+        }
+
+        // 当たり判定
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        // 更新
+        function update() {
+            if (!gameRunning) return;
+
+            // 重力
+            player.velocityY += gravity;
+            player.y += player.velocityY;
+
+            // 移動プラットフォーム
+            platforms.forEach(platform => {
+                if (platform.type === 'moving') {
+                    platform.x += platform.speed * platform.direction;
+                    if (platform.x <= 0 || platform.x + platform.width >= canvas.width) {
+                        platform.direction *= -1;
+                    }
+                }
+            });
+
+            // プラットフォームとの衝突
+            platforms.forEach(platform => {
+                if (player.velocityY > 0 && checkCollision(player, platform)) {
+                    // プレイヤーがプラットフォームの上にいる
+                    if (player.y + player.height - player.velocityY <= platform.y + 5) {
+                        player.y = platform.y - player.height;
+                        player.velocityY = jumpForce;
+
+                        // スコア増加
+                        score += 10;
+                        document.getElementById('score').textContent = score;
+
+                        // 絵文字チェンジ
+                        if (score % 50 === 0) {
+                            player.currentEmojiIndex = (player.currentEmojiIndex + 1) % player.emojis.length;
+                            player.emoji = player.emojis[player.currentEmojiIndex];
+                        }
+                    }
+                }
+            });
+
+            // 新しいプラットフォーム生成
+            const highestPlatform = platforms[platforms.length - 1];
+            if (highestPlatform.y > cameraY - 100) {
+                generatePlatform();
+            }
+
+            // カメラ追従
+            if (player.y < canvas.height / 2) {
+                cameraY = canvas.height / 2 - player.y;
+                player.y = canvas.height / 2;
+                platforms.forEach(platform => {
+                    platform.y += cameraY * 0.5;
+                });
+            }
+
+            // ゲームオーバー判定
+            if (player.y > canvas.height) {
+                gameOver();
+            }
+
+            // 下のプラットフォーム削除
+            platforms = platforms.filter(p => p.y < canvas.height + 50);
+        }
+
+        // 描画
+        function draw() {
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // プラットフォーム
+            platforms.forEach(platform => {
+                if (platform.type === 'normal') {
+                    ctx.fillStyle = 'linear-gradient(45deg, #00d2ff, #3a7bd5)';
+                    ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+                    ctx.strokeStyle = '#00d2ff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(platform.x, platform.y, platform.width, platform.height);
+                } else {
+                    ctx.fillStyle = '#ffd93d';
+                    ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+                    ctx.strokeStyle = '#ff9500';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(platform.x, platform.y, platform.width, platform.height);
+                }
+            });
+
+            // プレイヤー（絵文字）
+            ctx.font = '35px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(player.emoji, player.x + player.width / 2, player.y + player.height / 2);
+        }
+
+        // ゲームオーバー
+        function gameOver() {
+            gameRunning = false;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('emojiJumpHighScore', highScore);
+                document.getElementById('highScore').textContent = highScore;
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        // リスタート
+        function restartGame() {
+            init();
+        }
+
+        // 全画面
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 入力
+        canvas.addEventListener('click', jump);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                e.preventDefault();
+                jump();
+            }
+        });
+
+        // ゲームループ
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 開始
+        init();
+        gameLoop();
+    </script>
+</body>
+</html>
