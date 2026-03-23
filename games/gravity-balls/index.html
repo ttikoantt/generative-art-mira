@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gravity Balls - 重力ボール</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .score-panel {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 15px 25px;
+            color: #fff;
+        }
+
+        .score-panel .label {
+            font-size: 11px;
+            opacity: 0.7;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .score-panel .value {
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        .controls {
+            pointer-events: auto;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+
+        .modal {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 30px;
+            padding: 40px;
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .modal h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .modal p {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .modal .stats {
+            background: #f5f5f5;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .modal .stats .stat {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .modal .stats .stat:last-child {
+            margin-bottom: 0;
+        }
+
+        .modal .stats .label {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .modal .stats .value {
+            color: #333;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .modal button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: #fff;
+            padding: 15px 40px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+
+        .modal button:hover {
+            transform: scale(1.05);
+        }
+
+        .modal button:active {
+            transform: scale(0.95);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .gravity-indicator {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 50px;
+            padding: 10px 25px;
+            color: #fff;
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .combo-display {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: 700;
+            color: #fff;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            z-index: 50;
+        }
+
+        .combo-display.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="ui">
+        <div class="score-panel">
+            <div class="label">SCORE</div>
+            <div class="value" id="score">0</div>
+        </div>
+        <div class="controls">
+            <button class="btn" id="fullscreenBtn">全画面</button>
+            <button class="btn" id="restartBtn">再開</button>
+        </div>
+    </div>
+
+    <div class="gravity-indicator" id="gravityIndicator">↓ 重力: 下</div>
+    <div class="combo-display" id="comboDisplay"></div>
+
+    <div class="overlay" id="startOverlay">
+        <div class="modal">
+            <h1>🎱 Gravity Balls</h1>
+            <p>
+                タップで重力を変えてボールを集めよう！<br>
+                同じ色のボールを集めてスコア獲得
+            </p>
+            <button id="startBtn">スタート</button>
+        </div>
+    </div>
+
+    <div class="overlay hidden" id="gameOverOverlay">
+        <div class="modal">
+            <h1>ゲームオーバー</h1>
+            <div class="stats">
+                <div class="stat">
+                    <span class="label">スコア</span>
+                    <span class="value" id="finalScore">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">最高スコア</span>
+                    <span class="value" id="highScore">0</span>
+                </div>
+            </div>
+            <button id="retryBtn">もう一度</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startOverlay = document.getElementById('startOverlay');
+        const gameOverOverlay = document.getElementById('gameOverOverlay');
+        const startBtn = document.getElementById('startBtn');
+        const retryBtn = document.getElementById('retryBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const scoreEl = document.getElementById('score');
+        const finalScoreEl = document.getElementById('finalScore');
+        const highScoreEl = document.getElementById('highScore');
+        const gravityIndicator = document.getElementById('gravityIndicator');
+        const comboDisplay = document.getElementById('comboDisplay');
+
+        let width, height;
+        let balls = [];
+        let particles = [];
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('gravityBallsHighScore')) || 0;
+        let isPlaying = false;
+        let gravity = { x: 0, y: 1 };
+        let gravityDir = 2; // 0: 上, 1: 右, 2: 下, 3: 左
+        let combo = 0;
+        let lastCollectTime = 0;
+        let spawnTimer = 0;
+        let gameSpeed = 1;
+
+        const GRAVITY_DIRS = [
+            { x: 0, y: -1, label: '↑ 上' },
+            { x: 1, y: 0, label: '→ 右' },
+            { x: 0, y: 1, label: '↓ 下' },
+            { x: -1, y: 0, label: '← 左' }
+        ];
+
+        const COLORS = [
+            { hue: 0, name: 'red' },
+            { hue: 30, name: 'orange' },
+            { hue: 60, name: 'yellow' },
+            { hue: 120, name: 'green' },
+            { hue: 200, name: 'blue' },
+            { hue: 280, name: 'purple' }
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+
+        class Ball {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * (width - 100) + 50;
+                this.y = Math.random() * (height - 100) + 50;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.radius = Math.random() * 15 + 20;
+                this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
+                this.mass = this.radius * 0.5;
+                this.restitution = 0.7;
+                this.friction = 0.99;
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.2;
+            }
+
+            update() {
+                // 重力適用
+                this.vx += gravity.x * 0.5 * gameSpeed;
+                this.vy += gravity.y * 0.5 * gameSpeed;
+
+                // 空気抵抗
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+
+                // 移動
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 回転
+                this.rotation += this.rotationSpeed;
+
+                // 壁との衝突
+                const bounce = -this.restitution;
+
+                if (this.x - this.radius < 0) {
+                    this.x = this.radius;
+                    this.vx *= bounce;
+                }
+                if (this.x + this.radius > width) {
+                    this.x = width - this.radius;
+                    this.vx *= bounce;
+                }
+                if (this.y - this.radius < 0) {
+                    this.y = this.radius;
+                    this.vy *= bounce;
+                }
+                if (this.y + this.radius > height) {
+                    this.y = height - this.radius;
+                    this.vy *= bounce;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // 本体
+                const gradient = ctx.createRadialGradient(
+                    -this.radius * 0.3, -this.radius * 0.3, 0,
+                    0, 0, this.radius
+                );
+                gradient.addColorStop(0, `hsla(${this.color.hue}, 100%, 80%, 1)`);
+                gradient.addColorStop(0.5, `hsla(${this.color.hue}, 100%, 60%, 1)`);
+                gradient.addColorStop(1, `hsla(${this.color.hue}, 100%, 40%, 1)`);
+
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // 光沢
+                ctx.beginPath();
+                ctx.arc(-this.radius * 0.3, -this.radius * 0.3, this.radius * 0.2, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            checkCollision(other) {
+                const dx = other.x - this.x;
+                const dy = other.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const minDist = this.radius + other.radius;
+
+                if (dist < minDist) {
+                    // 衝突応答
+                    const angle = Math.atan2(dy, dx);
+                    const sin = Math.sin(angle);
+                    const cos = Math.cos(angle);
+
+                    // 速度を回転
+                    const vx1 = this.vx * cos + this.vy * sin;
+                    const vy1 = this.vy * cos - this.vx * sin;
+                    const vx2 = other.vx * cos + other.vy * sin;
+                    const vy2 = other.vy * cos - other.vx * sin;
+
+                    // 弾性衝突
+                    const m1 = this.mass;
+                    const m2 = other.mass;
+                    const u1 = vx1 * (m1 - m2) / (m1 + m2) + vx2 * 2 * m2 / (m1 + m2);
+                    const u2 = vx2 * (m2 - m1) / (m1 + m2) + vx1 * 2 * m1 / (m1 + m2);
+
+                    // 速度を元に戻す
+                    this.vx = u1 * cos - vy1 * sin;
+                    this.vy = vy1 * cos + u1 * sin;
+                    other.vx = u2 * cos - vy2 * sin;
+                    other.vy = vy2 * cos + u2 * sin;
+
+                    // 重なりを解消
+                    const overlap = minDist - dist;
+                    const separationX = overlap * cos / 2;
+                    const separationY = overlap * sin / 2;
+                    this.x -= separationX;
+                    this.y -= separationY;
+                    other.x += separationX;
+                    other.y += separationY;
+                }
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.life = 1;
+                this.decay = Math.random() * 0.02 + 0.02;
+                this.size = Math.random() * 8 + 4;
+                this.color = color;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.2;
+                this.life -= this.decay;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.color.hue}, 100%, 70%, ${this.life})`;
+                ctx.fill();
+            }
+        }
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 20; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function showCombo(text) {
+            comboDisplay.textContent = text;
+            comboDisplay.classList.add('show');
+            setTimeout(() => {
+                comboDisplay.classList.remove('show');
+            }, 500);
+        }
+
+        function initBalls(count) {
+            balls = [];
+            for (let i = 0; i < count; i++) {
+                balls.push(new Ball());
+            }
+        }
+
+        function checkCollections() {
+            const colorGroups = {};
+            balls.forEach(ball => {
+                const hue = ball.color.hue;
+                if (!colorGroups[hue]) {
+                    colorGroups[hue] = [];
+                }
+                colorGroups[hue].push(ball);
+            });
+
+            const now = Date.now();
+            let collected = false;
+
+            // 同じ色のボールが3つ以上近くにあるかチェック
+            Object.keys(colorGroups).forEach(hue => {
+                const group = colorGroups[hue];
+                if (group.length >= 3) {
+                    // 全てのペアが近くにあるか確認
+                    let allClose = true;
+                    for (let i = 0; i < group.length && allClose; i++) {
+                        for (let j = i + 1; j < group.length && allClose; j++) {
+                            const dx = group[i].x - group[j].x;
+                            const dy = group[i].y - group[j].y;
+                            const dist = Math.sqrt(dx * dx + dy * dy);
+                            if (dist > group[i].radius + group[j].radius + 50) {
+                                allClose = false;
+                            }
+                        }
+                    }
+
+                    if (allClose) {
+                        // コレクト！
+                        group.forEach(ball => {
+                            createExplosion(ball.x, ball.y, ball.color);
+                        });
+
+                        // コンボ判定
+                        if (now - lastCollectTime < 2000) {
+                            combo++;
+                        } else {
+                            combo = 1;
+                        }
+                        lastCollectTime = now;
+
+                        const points = 100 * group.length * combo;
+                        score += points;
+                        scoreEl.textContent = score;
+
+                        if (combo > 1) {
+                            showCombo(`${combo}x COMBO!`);
+                        }
+
+                        // ボールを削除
+                        balls = balls.filter(b => b.color.hue !== parseInt(hue));
+                        collected = true;
+                    }
+                }
+            });
+
+            return collected;
+        }
+
+        function spawnBall() {
+            if (balls.length < 20) {
+                balls.push(new Ball());
+            }
+        }
+
+        function drawBackground() {
+            const gradient = ctx.createLinearGradient(0, 0, width, height);
+            gradient.addColorStop(0, '#667eea');
+            gradient.addColorStop(1, '#764ba2');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // 装飾的な円
+            ctx.globalAlpha = 0.1;
+            for (let i = 0; i < 5; i++) {
+                ctx.beginPath();
+                ctx.arc(
+                    (Date.now() * 0.02 + i * 200) % (width + 400) - 200,
+                    height * 0.3 + Math.sin(Date.now() * 0.001 + i) * 100,
+                    100 + i * 20,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function update() {
+            if (!isPlaying) return;
+
+            // ボール更新
+            balls.forEach(ball => ball.update());
+
+            // 衝突判定
+            for (let i = 0; i < balls.length; i++) {
+                for (let j = i + 1; j < balls.length; j++) {
+                    balls[i].checkCollision(balls[j]);
+                }
+            }
+
+            // コレクション判定
+            checkCollections();
+
+            // パーティクル更新
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => p.update());
+
+            // スポーン
+            spawnTimer++;
+            if (spawnTimer > 180 / gameSpeed) {
+                spawnBall();
+                spawnTimer = 0;
+            }
+
+            // ゲームスピードアップ
+            gameSpeed = 1 + score / 5000;
+        }
+
+        function draw() {
+            drawBackground();
+
+            // ボール描画
+            balls.forEach(ball => ball.draw());
+
+            // パーティクル描画
+            particles.forEach(p => p.draw());
+
+            // 重力インジケーター
+            const dir = GRAVITY_DIRS[gravityDir];
+            gravityIndicator.textContent = `${dir.label}`;
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function changeGravity() {
+            gravityDir = (gravityDir + 1) % 4;
+            gravity = GRAVITY_DIRS[gravityDir];
+        }
+
+        function startGame() {
+            score = 0;
+            combo = 0;
+            gameSpeed = 1;
+            spawnTimer = 0;
+            scoreEl.textContent = '0';
+            isPlaying = true;
+            initBalls(8);
+            startOverlay.classList.add('hidden');
+            gameOverOverlay.classList.add('hidden');
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            finalScoreEl.textContent = score;
+            highScore = Math.max(highScore, score);
+            localStorage.setItem('gravityBallsHighScore', highScore);
+            highScoreEl.textContent = highScore;
+            gameOverOverlay.classList.remove('hidden');
+        }
+
+        // イベント
+        canvas.addEventListener('click', changeGravity);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            changeGravity();
+        });
+
+        startBtn.addEventListener('click', startGame);
+        retryBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // 初期化
+        gameLoop();
+    </script>
+</body>
+</html>
