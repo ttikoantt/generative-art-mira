@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音声波形アート | Audio Waveform Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            border-radius: 12px;
+            box-shadow: 0 0 60px rgba(100, 200, 255, 0.3);
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            display: flex;
+            gap: 15px;
+            z-index: 10;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 25px;
+            background: rgba(100, 200, 255, 0.2);
+            color: #64c8ff;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+        }
+
+        button:hover {
+            background: rgba(100, 200, 255, 0.4);
+            transform: scale(1.05);
+        }
+
+        button.active {
+            background: rgba(100, 200, 255, 0.5);
+            box-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            canvas {
+                width: 95vw !important;
+                height: 60vh !important;
+            }
+
+            .controls {
+                bottom: 20px;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        🎤 マイクを許可して、音に合わせてアートを楽しみましょう
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <button id="startBtn">🎤 開始</button>
+        <button id="styleBtn">🎨 スタイル変更</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶ 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const styleBtn = document.getElementById('styleBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let isRunning = false;
+        let currentStyle = 0;
+        const styles = ['waveform', 'frequency', 'radial', 'particles'];
+
+        // Canvas size
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.7, 800);
+            canvas.width = size;
+            canvas.height = size;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Fullscreen
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                fullscreenBtn.textContent = '⛶ 退出';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = '⛶ 全画面';
+            }
+        });
+
+        // Start/Stop
+        startBtn.addEventListener('click', async () => {
+            if (!isRunning) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioContext.createAnalyser();
+                    microphone = audioContext.createMediaStreamSource(stream);
+                    microphone.connect(analyser);
+                    analyser.fftSize = 2048;
+
+                    isRunning = true;
+                    startBtn.textContent = '⏹ 停止';
+                    startBtn.classList.add('active');
+                    draw();
+                } catch (err) {
+                    alert('マイクへのアクセスが許可されていません');
+                    console.error(err);
+                }
+            } else {
+                isRunning = false;
+                startBtn.textContent = '🎤 開始';
+                startBtn.classList.remove('active');
+                if (audioContext) {
+                    audioContext.close();
+                }
+            }
+        });
+
+        // Style change
+        styleBtn.addEventListener('click', () => {
+            currentStyle = (currentStyle + 1) % styles.length;
+        });
+
+        // Drawing
+        let particles = [];
+        let hue = 0;
+
+        function drawWaveform(dataArray, bufferLength) {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.lineWidth = 2;
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, `hsl(${hue}, 100%, 50%)`);
+            gradient.addColorStop(0.5, `hsl(${(hue + 120) % 360}, 100%, 50%)`);
+            gradient.addColorStop(1, `hsl(${(hue + 240) % 360}, 100%, 50%)`);
+            ctx.strokeStyle = gradient;
+
+            ctx.beginPath();
+            const sliceWidth = canvas.width / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = v * canvas.height / 2;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                x += sliceWidth;
+            }
+
+            ctx.stroke();
+        }
+
+        function drawFrequency(dataArray, bufferLength) {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const barWidth = (canvas.width / bufferLength) * 2.5;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const barHeight = (dataArray[i] / 255) * canvas.height * 0.8;
+
+                const gradient = ctx.createLinearGradient(0, canvas.height - barHeight, 0, canvas.height);
+                gradient.addColorStop(0, `hsla(${(hue + i * 2) % 360}, 100%, 60%, 0.9)`);
+                gradient.addColorStop(1, `hsla(${(hue + i * 2 + 60) % 360}, 100%, 40%, 0.3)`);
+
+                ctx.fillStyle = gradient;
+                ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+
+                x += barWidth + 1;
+            }
+        }
+
+        function drawRadial(dataArray, bufferLength) {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) * 0.3;
+
+            for (let i = 0; i < bufferLength; i += 4) {
+                const amplitude = dataArray[i];
+                const angle = (i / bufferLength) * Math.PI * 2;
+                const length = (amplitude / 255) * radius;
+
+                const x1 = centerX + Math.cos(angle) * radius;
+                const y1 = centerY + Math.sin(angle) * radius;
+                const x2 = centerX + Math.cos(angle) * (radius + length);
+                const y2 = centerY + Math.sin(angle) * (radius + length);
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = `hsla(${(hue + i * 3) % 360}, 100%, 60%, 0.8)`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // Center circle
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius * 0.3, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.3)`;
+            ctx.fill();
+        }
+
+        function drawParticles(dataArray, bufferLength) {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.15)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Calculate average amplitude
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                sum += dataArray[i];
+            }
+            const average = sum / bufferLength;
+
+            // Add new particles based on amplitude
+            if (average > 20) {
+                const count = Math.floor(average / 30);
+                for (let i = 0; i < count; i++) {
+                    particles.push({
+                        x: canvas.width / 2,
+                        y: canvas.height / 2,
+                        vx: (Math.random() - 0.5) * (average / 10),
+                        vy: (Math.random() - 0.5) * (average / 10),
+                        size: Math.random() * 5 + 2,
+                        hue: (hue + Math.random() * 60) % 360,
+                        life: 1
+                    });
+                }
+            }
+
+            // Update and draw particles
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.01;
+                p.size *= 0.99;
+
+                if (p.life > 0) {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${p.hue}, 100%, 60%, ${p.life})`;
+                    ctx.fill();
+                    return true;
+                }
+                return false;
+            });
+
+            // Limit particles
+            if (particles.length > 500) {
+                particles = particles.slice(-500);
+            }
+        }
+
+        function draw() {
+            if (!isRunning) return;
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            if (styles[currentStyle] === 'waveform') {
+                analyser.getByteTimeDomainData(dataArray);
+                drawWaveform(dataArray, bufferLength);
+            } else if (styles[currentStyle] === 'frequency') {
+                analyser.getByteFrequencyData(dataArray);
+                drawFrequency(dataArray, bufferLength);
+            } else if (styles[currentStyle] === 'radial') {
+                analyser.getByteFrequencyData(dataArray);
+                drawRadial(dataArray, bufferLength);
+            } else if (styles[currentStyle] === 'particles') {
+                analyser.getByteFrequencyData(dataArray);
+                drawParticles(dataArray, bufferLength);
+            }
+
+            hue = (hue + 0.5) % 360;
+            requestAnimationFrame(draw);
+        }
+
+        // Initial background
+        ctx.fillStyle = '#0a0a0a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    </script>
+</body>
+</html>
