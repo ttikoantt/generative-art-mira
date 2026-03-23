@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>光の粒子 - Particles Flow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px 20px;
+            border-radius: 10px;
+            pointer-events: none;
+            backdrop-filter: blur(10px);
+        }
+
+        .info h1 {
+            font-size: 18px;
+            margin-bottom: 8px;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <h1>✨ 光の粒子</h1>
+        <p>クリックで渦を発生</p>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        const particles = [];
+        const mouse = { x: null, y: null, pressed: false };
+        const vortexes = [];
+
+        // パーティクルクラス
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 3 + 1;
+                this.hue = Math.random() * 360;
+                this.life = 1;
+                this.decay = Math.random() * 0.002 + 0.001;
+            }
+
+            update() {
+                // 渦の影響
+                vortexes.forEach(v => {
+                    const dx = v.x - this.x;
+                    const dy = v.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < v.radius) {
+                        const angle = Math.atan2(dy, dx);
+                        const force = (1 - dist / v.radius) * v.strength;
+                        
+                        // 円周方向の力
+                        this.vx += Math.cos(angle + Math.PI / 2) * force;
+                        this.vy += Math.sin(angle + Math.PI / 2) * force;
+                        
+                        // 中心に引き込む力
+                        this.vx += Math.cos(angle) * force * 0.5;
+                        this.vy += Math.sin(angle) * force * 0.5;
+                    }
+                });
+
+                // マウスの影響
+                if (mouse.pressed && mouse.x !== null) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 200) {
+                        const angle = Math.atan2(dy, dx);
+                        const force = (1 - dist / 200) * 0.5;
+
+                        this.vx += Math.cos(angle) * force;
+                        this.vy += Math.sin(angle) * force;
+                    }
+                }
+
+                // 移動
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 摩擦
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+
+                // 色の変化
+                this.hue += 0.5;
+
+                // ライフ減少
+                this.life -= this.decay;
+
+                // 画面外またはライフが尽きたらリセット
+                if (this.x < -50 || this.x > width + 50 ||
+                    this.y < -50 || this.y > height + 50 ||
+                    this.life <= 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${this.life})`;
+                ctx.fill();
+
+                // グロー効果
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsla(${this.hue}, 100%, 60%, ${this.life * 0.5})`;
+            }
+        }
+
+        // 渦クラス
+        class Vortex {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 300;
+                this.strength = 2;
+                this.life = 1;
+                this.decay = 0.01;
+            }
+
+            update() {
+                this.life -= this.decay;
+                this.strength *= 0.99;
+                return this.life > 0;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * this.life, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(180, 100%, 50%, ${this.life * 0.3})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        // パーティクル初期化
+        for (let i = 0; i < 200; i++) {
+            particles.push(new Particle());
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('mousedown', (e) => {
+            mouse.pressed = true;
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            vortexes.push(new Vortex(e.clientX, e.clientY));
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            mouse.pressed = false;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mouse.pressed = true;
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            vortexes.push(new Vortex(mouse.x, mouse.y));
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.pressed = false;
+        });
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // アニメーションループ
+        function animate() {
+            // トレイル効果
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.shadowBlur = 0;
+
+            // 渦の更新と描画
+            for (let i = vortexes.length - 1; i >= 0; i--) {
+                if (!vortexes[i].update()) {
+                    vortexes.splice(i, 1);
+                } else {
+                    vortexes[i].draw();
+                }
+            }
+
+            // パーティクルの更新と描画
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            // 接続線（近いパーティクル同士）
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 100) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
