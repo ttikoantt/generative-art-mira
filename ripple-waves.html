@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Ripple Waves - Interactive Art</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ripple Waves - ジェネレーティブアート</title>
     <style>
         * {
             margin: 0;
@@ -12,75 +12,91 @@
         }
 
         body {
-            background: #0a0a0a;
-            overflow: hidden;
+            background: #0a0e27;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             font-family: 'Courier New', monospace;
-            touch-action: none;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+            width: 100%;
+            height: 100vh;
         }
 
         canvas {
-            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .info {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            z-index: 10;
+            background: rgba(10, 14, 39, 0.8);
+            padding: 8px 16px;
+            border-radius: 20px;
         }
 
         .fullscreen-btn {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            padding: 10px 15px;
+            position: absolute;
+            top: 20px;
+            right: 20px;
             background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 5px;
-            color: #fff;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 20px;
+            border-radius: 20px;
             cursor: pointer;
-            z-index: 100;
             font-size: 14px;
+            z-index: 100;
             transition: all 0.3s;
         }
 
         .fullscreen-btn:hover {
             background: rgba(255, 255, 255, 0.2);
         }
-
-        .info {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            color: rgba(255, 255, 255, 0.5);
-            font-size: 12px;
-            pointer-events: none;
-        }
     </style>
 </head>
 <body>
-    <canvas id="canvas"></canvas>
-    <button class="fullscreen-btn" id="fullscreenBtn">⛶ 全画面</button>
-    <div class="info">タップまたはクリックで波紋を作成</div>
+    <div class="container">
+        <canvas id="canvas"></canvas>
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+        <div class="info">Ripple Waves - Click to add ripples</div>
+    </div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const fullscreenBtn = document.getElementById('fullscreenBtn');
 
-        let width, height;
-        let ripples = [];
-        let hue = 0;
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
 
-        function resize() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-        }
+        const ripples = [];
+        const autoRipples = [];
 
         class Ripple {
-            constructor(x, y) {
+            constructor(x, y, hue) {
                 this.x = x;
                 this.y = y;
                 this.radius = 0;
-                this.maxRadius = Math.max(width, height) * 0.4;
-                this.hue = hue;
+                this.maxRadius = Math.max(width, height) * 0.8;
+                this.speed = 2 + Math.random() * 2;
+                this.hue = hue || Math.random() * 360;
                 this.alpha = 1;
                 this.lineWidth = 3;
-                this.speed = 2;
-                hue = (hue + 15) % 360;
             }
 
             update() {
@@ -92,92 +108,104 @@
             draw() {
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${this.alpha})`;
+
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, this.radius * 0.5,
+                    this.x, this.y, this.radius
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 80%, 60%, 0)`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 80%, 60%, ${this.alpha * 0.3})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 80%, 60%, 0)`);
+
+                ctx.strokeStyle = gradient;
                 ctx.lineWidth = this.lineWidth;
                 ctx.stroke();
-
-                // 追加の細いリング
-                if (this.radius > 20) {
-                    ctx.beginPath();
-                    ctx.arc(this.x, this.y, this.radius - 15, 0, Math.PI * 2);
-                    ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${this.alpha * 0.5})`;
-                    ctx.lineWidth = this.lineWidth * 0.5;
-                    ctx.stroke();
-                }
             }
 
             isDead() {
-                return this.alpha <= 0;
+                return this.radius >= this.maxRadius;
             }
         }
 
-        function createRipple(x, y) {
-            ripples.push(new Ripple(x, y));
-            // 同時に複数の波紋を
-            ripples.push(new Ripple(x, y));
+        function createRipple(x, y, hue) {
+            ripples.push(new Ripple(x, y, hue));
+        }
+
+        function addAutoRipple() {
+            const x = width / 2 + (Math.random() - 0.5) * width * 0.3;
+            const y = height / 2 + (Math.random() - 0.5) * height * 0.3;
+            const hue = (Date.now() / 50) % 360;
+            autoRipples.push(new Ripple(x, y, hue));
         }
 
         function animate() {
-            // フェード効果
-            ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
+            // Semi-transparent background for trail effect
+            ctx.fillStyle = 'rgba(10, 14, 39, 0.1)';
             ctx.fillRect(0, 0, width, height);
 
-            ripples = ripples.filter(ripple => {
-                ripple.update();
-                ripple.draw();
-                return !ripple.isDead();
-            });
+            // Update and draw ripples
+            for (let i = ripples.length - 1; i >= 0; i--) {
+                ripples[i].update();
+                ripples[i].draw();
+                if (ripples[i].isDead()) {
+                    ripples.splice(i, 1);
+                }
+            }
+
+            for (let i = autoRipples.length - 1; i >= 0; i--) {
+                autoRipples[i].update();
+                autoRipples[i].draw();
+                if (autoRipples[i].isDead()) {
+                    autoRipples.splice(i, 1);
+                }
+            }
+
+            // Add automatic ripples
+            if (Math.random() < 0.02) {
+                addAutoRipple();
+            }
 
             requestAnimationFrame(animate);
         }
 
-        // イベントリスナー
         canvas.addEventListener('click', (e) => {
-            createRipple(e.clientX, e.clientY);
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const hue = (Date.now() / 20) % 360;
+            createRipple(x, y, hue);
         });
 
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
             for (let touch of e.touches) {
-                createRipple(touch.clientX, touch.clientY);
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                const hue = (Date.now() / 20) % 360;
+                createRipple(x, y, hue);
             }
         });
 
-        // マウス移動でも小さな波紋を
-        let lastMouseTime = 0;
-        canvas.addEventListener('mousemove', (e) => {
-            const now = Date.now();
-            if (now - lastMouseTime > 100) {
-                const ripple = new Ripple(e.clientX, e.clientY);
-                ripple.maxRadius = 50;
-                ripples.push(ripple);
-                lastMouseTime = now;
-            }
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
         });
 
-        // 全画面ボタン
-        fullscreenBtn.addEventListener('click', () => {
+        function toggleFullscreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
             } else {
                 document.exitFullscreen();
             }
-        });
+        }
 
-        // 初期化
-        resize();
+        // Start with some ripples
+        for (let i = 0; i < 3; i++) {
+            setTimeout(() => addAutoRipple(), i * 300);
+        }
+
         animate();
-
-        window.addEventListener('resize', resize);
-
-        // 自動で波紋を生成（デモ用）
-        setInterval(() => {
-            if (ripples.length < 3) {
-                const x = Math.random() * width;
-                const y = Math.random() * height;
-                createRipple(x, y);
-            }
-        }, 3000);
     </script>
 </body>
 </html>
