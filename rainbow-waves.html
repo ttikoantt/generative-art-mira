@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Rainbow Waves</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%);
+            font-family: 'Arial', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 25px;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 14px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .info h1 {
+            font-size: 20px;
+            margin-bottom: 5px;
+            background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                bottom: 10px;
+                padding: 10px 15px;
+                font-size: 12px;
+            }
+
+            .info h1 {
+                font-size: 16px;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 15px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="info">
+        <h1>Rainbow Waves</h1>
+        <p>クリック/タップで波紋を生成</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let waves = [];
+        let hue = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Wave {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = Math.max(width, height) * 0.8;
+                this.hue = hue;
+                this.alpha = 1;
+                this.speed = 3;
+                this.lineWidth = 5;
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.alpha = 1 - (this.radius / this.maxRadius);
+                this.lineWidth = 5 * this.alpha;
+            }
+
+            draw() {
+                if (this.alpha <= 0) return;
+
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+
+                // 虹色のグラデーション
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius
+                );
+
+                for (let i = 0; i < 7; i++) {
+                    const colorHue = (this.hue + i * 30) % 360;
+                    const offset = i / 6;
+                    gradient.addColorStop(
+                        Math.min(1, offset),
+                        `hsla(${colorHue}, 80%, 60%, ${this.alpha})`
+                    );
+                }
+
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = this.lineWidth;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // 内側の波紋（エコー効果）
+                for (let i = 1; i <= 3; i++) {
+                    const echoRadius = this.radius - (i * 30);
+                    if (echoRadius > 0) {
+                        const echoAlpha = this.alpha * (1 - i * 0.25);
+                        if (echoAlpha > 0) {
+                            ctx.globalAlpha = echoAlpha;
+                            ctx.lineWidth = this.lineWidth * (1 - i * 0.2);
+                            ctx.beginPath();
+                            ctx.arc(this.x, this.y, echoRadius, 0, Math.PI * 2);
+                            ctx.stroke();
+                        }
+                    }
+                }
+
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.alpha <= 0 || this.radius >= this.maxRadius;
+            }
+        }
+
+        function createWave(x, y) {
+            waves.push(new Wave(x, y, hue));
+            hue = (hue + 15) % 360; // 色を少しずつ変化
+        }
+
+        function animate() {
+            // 背景を少し残す（トレイル効果）
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 波紋を更新・描画
+            waves = waves.filter(wave => {
+                wave.update();
+                wave.draw();
+                return !wave.isDead();
+            });
+
+            // 色をゆっくり変化
+            hue = (hue + 0.2) % 360;
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('click', (e) => {
+            createWave(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            createWave(touch.clientX, touch.clientY);
+        });
+
+        // 自動的に波紋を生成（デモ用）
+        function autoWave() {
+            const x = Math.random() * width;
+            const y = Math.random() * height;
+            createWave(x, y);
+        }
+
+        // 初期化
+        resize();
+        animate();
+
+        // 最初の波紋を生成
+        setTimeout(() => {
+            createWave(width / 2, height / 2);
+        }, 500);
+
+        // 3秒ごとに自動的に波紋を生成（ユーザーが操作しない場合）
+        setInterval(() => {
+            if (waves.length < 5) {
+                autoWave();
+            }
+        }, 3000);
+    </script>
+</body>
+</html>
