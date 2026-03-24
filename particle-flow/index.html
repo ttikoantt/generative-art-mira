@@ -3,53 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Particle Flow - 流れる光の粒子</title>
+    <title>Particle Flow - Mira's Generative Art</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #0a0a1a;
-            overflow: hidden;
-            font-family: 'Helvetica Neue', Arial, sans-serif;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
+
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
         canvas {
             display: block;
-            position: absolute;
-            top: 0;
-            left: 0;
         }
-        .info {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 14px;
-            z-index: 10;
-        }
+
         .fullscreen-btn {
-            position: absolute;
+            position: fixed;
             top: 20px;
             right: 20px;
             background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             color: white;
             padding: 10px 20px;
             border-radius: 25px;
             cursor: pointer;
             font-size: 14px;
-            z-index: 10;
-            backdrop-filter: blur(10px);
             transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            z-index: 1000;
         }
+
         .fullscreen-btn:hover {
             background: rgba(255, 255, 255, 0.2);
             transform: scale(1.05);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
-    <div class="info">マウスを動かすと光の粒子が流れます</div>
     <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    <div class="info">マウスを動かすとパーティクルが反応します</div>
 
     <script>
         const canvas = document.getElementById('canvas');
@@ -58,10 +64,18 @@
         let width = canvas.width = window.innerWidth;
         let height = canvas.height = window.innerHeight;
 
-        let mouseX = width / 2;
-        let mouseY = height / 2;
+        const particles = [];
+        const mouse = { x: width / 2, y: height / 2 };
+        let time = 0;
 
-        // パーティクルシステム
+        // カラーパレット
+        const colors = [
+            { r: 100, g: 200, b: 255 },
+            { r: 150, g: 100, b: 255 },
+            { r: 255, g: 100, b: 200 },
+            { r: 255, g: 200, b: 100 }
+        ];
+
         class Particle {
             constructor() {
                 this.reset();
@@ -70,134 +84,142 @@
             reset() {
                 this.x = Math.random() * width;
                 this.y = Math.random() * height;
-                this.vx = 0;
-                this.vy = 0;
-                this.life = Math.random() * 200 + 100;
-                this.maxLife = this.life;
                 this.size = Math.random() * 3 + 1;
-                
-                // 色相（青〜紫〜ピンク）
-                this.hue = Math.random() * 60 + 200;
+                this.speedX = 0;
+                this.speedY = 0;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.life = Math.random() * 0.5 + 0.5;
+                this.baseSize = this.size;
             }
 
             update() {
-                // マウスに引き寄せられる
-                const dx = mouseX - this.x;
-                const dy = mouseY - this.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                
-                if (dist < 200) {
-                    const force = (200 - dist) / 200;
-                    this.vx += (dx / dist) * force * 0.5;
-                    this.vy += (dy / dist) * force * 0.5;
+                // マウスへの引力
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < 300) {
+                    const force = (300 - distance) / 300;
+                    this.speedX += (dx / distance) * force * 0.5;
+                    this.speedY += (dy / distance) * force * 0.5;
                 }
 
+                // パーリンノイズのような動き
+                this.speedX += Math.sin(time * 0.01 + this.y * 0.01) * 0.1;
+                this.speedY += Math.cos(time * 0.01 + this.x * 0.01) * 0.1;
+
                 // 減速
-                this.vx *= 0.98;
-                this.vy *= 0.98;
+                this.speedX *= 0.98;
+                this.speedY *= 0.98;
 
-                // 自由な動き
-                this.vx += (Math.random() - 0.5) * 0.3;
-                this.vy += (Math.random() - 0.5) * 0.3;
+                // 位置更新
+                this.x += this.speedX;
+                this.y += this.speedY;
 
-                this.x += this.vx;
-                this.y += this.vy;
-                this.life--;
+                // 呼吸アニメーション
+                this.size = this.baseSize * (0.5 + Math.sin(time * 0.02 + this.x * 0.01) * 0.5);
 
-                // 境界チェック
-                if (this.x < 0) this.x = width;
-                if (this.x > width) this.x = 0;
-                if (this.y < 0) this.y = height;
-                if (this.y > height) this.y = 0;
-
-                // リセット
-                if (this.life <= 0) {
+                // 画面外に出たらリセット
+                if (this.x < -100 || this.x > width + 100 ||
+                    this.y < -100 || this.y > height + 100) {
                     this.reset();
                 }
             }
 
             draw() {
-                const alpha = (this.life / this.maxLife) * 0.8;
-                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                
+                const alpha = this.life * 0.6;
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size * (1 + speed * 0.5), 0, Math.PI * 2);
-                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${alpha})`;
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${alpha})`;
                 ctx.fill();
 
-                // 光る効果
-                if (speed > 1) {
-                    ctx.beginPath();
-                    ctx.arc(this.x, this.y, this.size * 2 * (1 + speed * 0.5), 0, Math.PI * 2);
-                    ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${alpha * 0.3})`;
-                    ctx.fill();
-                }
+                // グロー効果
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${alpha * 0.3})`;
+                ctx.fill();
             }
         }
 
-        // パーティクルを生成
-        const particles = [];
+        // パーティクル生成
         for (let i = 0; i < 150; i++) {
             particles.push(new Particle());
         }
 
-        // イベントリスナー
+        // 背景グラデーション
+        function drawBackground() {
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#0a0a0a');
+            gradient.addColorStop(0.5, '#1a1a2e');
+            gradient.addColorStop(1, '#0a0a0a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        // 接続線
+        function drawConnections() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < 80) {
+                        const alpha = (80 - distance) / 80 * 0.15;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `rgba(150, 150, 255, ${alpha})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // アニメーション
+        function animate() {
+            drawBackground();
+
+            time++;
+
+            // 接続線を描画
+            drawConnections();
+
+            // パーティクルを更新・描画
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // マウスイベント
         canvas.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
         });
 
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            mouseX = e.touches[0].clientX;
-            mouseY = e.touches[0].clientY;
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
         });
 
+        // ウィンドウサイズ変更
         window.addEventListener('resize', () => {
             width = canvas.width = window.innerWidth;
             height = canvas.height = window.innerHeight;
         });
 
+        // 全画面切り替え
         function toggleFullscreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
             } else {
                 document.exitFullscreen();
             }
-        }
-
-        // アニメーションループ
-        function animate() {
-            // トレイル効果
-            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
-            ctx.fillRect(0, 0, width, height);
-
-            particles.forEach(p => {
-                p.update();
-                p.draw();
-            });
-
-            // 接続線（近いパーティクル同士）
-            ctx.strokeStyle = 'rgba(150, 200, 255, 0.1)';
-            ctx.lineWidth = 0.5;
-            for (let i = 0; i < particles.length; i++) {
-                for (let j = i + 1; j < particles.length; j++) {
-                    const dx = particles[i].x - particles[j].x;
-                    const dy = particles[i].y - particles[j].y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (dist < 80) {
-                        ctx.beginPath();
-                        ctx.moveTo(particles[i].x, particles[i].y);
-                        ctx.lineTo(particles[j].x, particles[j].y);
-                        ctx.globalAlpha = (1 - dist / 80) * 0.3;
-                        ctx.stroke();
-                        ctx.globalAlpha = 1;
-                    }
-                }
-            }
-
-            requestAnimationFrame(animate);
         }
 
         animate();
