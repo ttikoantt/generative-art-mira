@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Reactive Fractal Garden</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0f0f23 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 100;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+            z-index: 100;
+            max-width: 90%;
+        }
+
+        .spectrum-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2, #f093fb);
+            transform-origin: left;
+            transition: transform 0.05s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button id="startBtn">🎵 マイクを開始</button>
+        <button id="plantBtn">🌱 植物を植える</button>
+        <button id="clearBtn">🗑️ クリア</button>
+        <button id="fullscreenBtn">📺 全画面</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        マイクで音楽や音声を拾うと、フラクタル植物がリアクションします！
+    </div>
+
+    <div class="spectrum-bar" id="spectrumBar"></div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const plantBtn = document.getElementById('plantBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const spectrumBar = document.getElementById('spectrumBar');
+
+        let width, height;
+        let audioContext, analyser, microphone, dataArray;
+        let isAudioActive = false;
+        let plants = [];
+        let audioLevel = 0;
+        let bassLevel = 0;
+        let midLevel = 0;
+        let highLevel = 0;
+        let time = 0;
+
+        function resize() {
+            width = canvas.width = Math.min(window.innerWidth * 0.95, 1200);
+            height = canvas.height = Math.min(window.innerHeight * 0.8, 800);
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+
+        class FractalPlant {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.angle = -Math.PI / 2;
+                this.branches = [];
+                this.colorHue = Math.random() * 360;
+                this.growthSpeed = 0.5 + Math.random() * 0.5;
+                this.maxDepth = 8;
+                this.branchLength = 60 + Math.random() * 40;
+                this.age = 0;
+                this.generateBranches(this.x, this.y, this.angle, this.branchLength, 0);
+            }
+
+            generateBranches(x, y, angle, length, depth) {
+                if (depth >= this.maxDepth) return;
+
+                const endX = x + Math.cos(angle) * length;
+                const endY = y + Math.sin(angle) * length;
+
+                this.branches.push({
+                    x, y, endX, endY,
+                    depth,
+                    length,
+                    angle,
+                    thickness: Math.max(1, (this.maxDepth - depth) * 1.5),
+                    hue: this.colorHue + depth * 20
+                });
+
+                const branchCount = 2 + Math.floor(Math.random() * 2);
+                const angleSpread = 0.4 + Math.random() * 0.3;
+
+                for (let i = 0; i < branchCount; i++) {
+                    const newAngle = angle + (i - (branchCount - 1) / 2) * angleSpread;
+                    const newLength = length * (0.6 + Math.random() * 0.2);
+                    this.generateBranches(endX, endY, newAngle, newLength, depth + 1);
+                }
+            }
+
+            draw(audioFactor) {
+                const swayAmount = audioFactor * 0.3;
+                const glowIntensity = audioFactor * 20;
+
+                this.branches.forEach((branch, index) => {
+                    const sway = Math.sin(time * 0.02 + index * 0.1) * swayAmount * (this.maxDepth - branch.depth);
+                    const newX = branch.x + Math.cos(branch.angle + sway) * branch.length * audioFactor * 0.1;
+                    const newY = branch.y + Math.sin(branch.angle + sway) * branch.length * audioFactor * 0.1;
+
+                    const hue = (branch.hue + time * 0.5) % 360;
+                    const saturation = 70 + audioFactor * 30;
+                    const lightness = 50 + audioFactor * 20;
+
+                    ctx.beginPath();
+                    ctx.moveTo(branch.x, branch.y);
+                    ctx.lineTo(newX, newY);
+                    ctx.strokeStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${1 - branch.depth / this.maxDepth})`;
+                    ctx.lineWidth = branch.thickness * (1 + audioFactor * 0.5);
+                    ctx.lineCap = 'round';
+                    ctx.shadowColor = `hsla(${hue}, 100%, 50%, ${glowIntensity / 20})`;
+                    ctx.shadowBlur = glowIntensity;
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                });
+
+                // 花を描く（低いレベルの枝）
+                if (audioFactor > 0.3) {
+                    this.branches.forEach(branch => {
+                        if (branch.depth >= this.maxDepth - 2 && Math.random() < 0.02 * audioFactor) {
+                            const sway = Math.sin(time * 0.02 + branch.depth * 0.5) * swayAmount;
+                            const endX = branch.x + Math.cos(branch.angle + sway) * branch.length * audioFactor * 0.1;
+                            const endY = branch.y + Math.sin(branch.angle + sway) * branch.length * audioFactor * 0.1;
+
+                            const flowerSize = 3 + audioFactor * 5;
+                            const gradient = ctx.createRadialGradient(endX, endY, 0, endX, endY, flowerSize);
+                            gradient.addColorStop(0, `hsla(${(this.colorHue + 180) % 360}, 100%, 70%, 0.8)`);
+                            gradient.addColorStop(1, `hsla(${(this.colorHue + 180) % 360}, 100%, 50%, 0)`);
+
+                            ctx.beginPath();
+                            ctx.arc(endX, endY, flowerSize, 0, Math.PI * 2);
+                            ctx.fillStyle = gradient;
+                            ctx.fill();
+                        }
+                    });
+                }
+            }
+        }
+
+        async function startAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                microphone.connect(analyser);
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                isAudioActive = true;
+                startBtn.textContent = '🎵 マイク起動中';
+                startBtn.disabled = true;
+            } catch (err) {
+                alert('マイクへのアクセスができませんでした: ' + err.message);
+            }
+        }
+
+        function updateAudio() {
+            if (!isAudioActive) return;
+
+            analyser.getByteFrequencyData(dataArray);
+
+            let sum = 0;
+            let bassSum = 0;
+            let midSum = 0;
+            let highSum = 0;
+
+            const bassCount = Math.floor(dataArray.length * 0.1);
+            const midCount = Math.floor(dataArray.length * 0.3);
+
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+
+                if (i < bassCount) {
+                    bassSum += dataArray[i];
+                } else if (i < bassCount + midCount) {
+                    midSum += dataArray[i];
+                } else {
+                    highSum += dataArray[i];
+                }
+            }
+
+            audioLevel = (sum / dataArray.length) / 255;
+            bassLevel = (bassSum / bassCount) / 255;
+            midLevel = (midSum / midCount) / 255;
+            highLevel = (highSum / (dataArray.length - bassCount - midCount)) / 255;
+
+            spectrumBar.style.transform = `scaleX(${audioLevel})`;
+        }
+
+        function drawBackground() {
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, `hsla(${240 + audioLevel * 30}, 50%, ${5 + audioLevel * 10}%, 0.1)`);
+            gradient.addColorStop(1, `hsla(${280 + audioLevel * 30}, 50%, ${10 + audioLevel * 10}%, 0.1)`);
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // 粒子エフェクト
+            if (audioLevel > 0.2) {
+                for (let i = 0; i < 20; i++) {
+                    const x = Math.random() * width;
+                    const y = Math.random() * height;
+                    const size = Math.random() * 2 * audioLevel;
+                    const hue = (time + Math.random() * 60) % 360;
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, size, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${hue}, 100%, 70%, ${audioLevel * 0.3})`;
+                    ctx.fill();
+                }
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            updateAudio();
+            drawBackground();
+
+            time++;
+
+            plants.forEach(plant => {
+                plant.draw(1 + audioLevel * 2);
+            });
+
+            // 地面を描画
+            const groundGradient = ctx.createLinearGradient(0, height - 50, 0, height);
+            groundGradient.addColorStop(0, 'rgba(50, 50, 80, 0.5)');
+            groundGradient.addColorStop(1, `rgba(80, 80, 120, ${0.5 + audioLevel * 0.3})`);
+            ctx.fillStyle = groundGradient;
+            ctx.fillRect(0, height - 50, width, 50);
+
+            // 光のエフェクト
+            if (audioLevel > 0.4) {
+                const lightGradient = ctx.createRadialGradient(
+                    width / 2, height / 2, 0,
+                    width / 2, height / 2, width * 0.4
+                );
+                lightGradient.addColorStop(0, `hsla(${(time * 0.5) % 360}, 100%, 70%, ${audioLevel * 0.1})`);
+                lightGradient.addColorStop(1, 'transparent');
+                ctx.fillStyle = lightGradient;
+                ctx.fillRect(0, 0, width, height);
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        startBtn.addEventListener('click', startAudio);
+
+        plantBtn.addEventListener('click', () => {
+            const x = Math.random() * (width - 200) + 100;
+            const y = height - 50;
+            plants.push(new FractalPlant(x, y));
+
+            // 植えるボタンのエフェクト
+            plantBtn.style.transform = 'scale(1.1)';
+            setTimeout(() => {
+                plantBtn.style.transform = '';
+            }, 100);
+        });
+
+        clearBtn.addEventListener('click', () => {
+            plants = [];
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // タッチ操作
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            if (y > height - 100) {
+                plants.push(new FractalPlant(x, height - 50));
+            }
+        });
+
+        // 初期植物を生成
+        for (let i = 0; i < 3; i++) {
+            const x = Math.random() * (width - 200) + 100;
+            plants.push(new FractalPlant(x, height - 50));
+        }
+
+        draw();
+    </script>
+</body>
+</html>
