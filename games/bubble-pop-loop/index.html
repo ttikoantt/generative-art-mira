@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Bubble Pop Loop</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Hiragino Kaku Gothic ProN', 'Helvetica Neue', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        #canvas {
+            display: block;
+            cursor: pointer;
+        }
+
+        .hud {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .timer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .combo {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #FFD700;
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 100;
+        }
+
+        .combo.show {
+            opacity: 1;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .overlay h1 {
+            color: white;
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        }
+
+        .overlay p {
+            color: white;
+            font-size: 20px;
+            margin-bottom: 30px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            border: 2px solid white;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.1);
+        }
+
+        .final-score {
+            font-size: 64px !important;
+            color: #FFD700 !important;
+            margin: 20px 0 !important;
+        }
+
+        .score-pop {
+            position: fixed;
+            pointer-events: none;
+            font-size: 24px;
+            font-weight: bold;
+            color: #FFD700;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            animation: scorePop 0.8s ease-out forwards;
+            z-index: 150;
+        }
+
+        @keyframes scorePop {
+            0% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-50px) scale(1.5);
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="hud">
+        <div>Score: <span id="score">0</span></div>
+        <div style="font-size: 16px; margin-top: 5px;">Combo: <span id="comboCount">0</span>x</div>
+    </div>
+
+    <div class="timer">
+        <div>Time: <span id="time">60</span></div>
+    </div>
+
+    <div class="combo" id="comboDisplay"></div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <div class="overlay" id="startOverlay">
+        <h1>🫧 Bubble Pop Loop</h1>
+        <p>泡をクリック/タップして割ろう！</p>
+        <button class="btn" onclick="startGame()">Start</button>
+    </div>
+
+    <div class="overlay hidden" id="gameOverOverlay">
+        <h1>Game Over</h1>
+        <p class="final-score" id="finalScore">0</p>
+        <button class="btn" onclick="startGame()">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let score = 0;
+        let timeLeft = 60;
+        let combo = 0;
+        let lastPopTime = 0;
+        let gameRunning = false;
+        let bubbles = [];
+        let particles = [];
+        let spawnTimer = 0;
+        let timerInterval;
+
+        const COMBO_TIMEOUT = 1500; // コンボが続く時間（ms）
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Bubble {
+            constructor() {
+                this.radius = 30 + Math.random() * 40;
+                this.x = this.radius + Math.random() * (width - this.radius * 2);
+                this.y = height + this.radius;
+                this.speedY = 1 + Math.random() * 2;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.wobble = Math.random() * Math.PI * 2;
+                this.wobbleSpeed = 0.02 + Math.random() * 0.03;
+
+                // 特殊泡
+                const rand = Math.random();
+                if (rand < 0.1) {
+                    this.type = 'bonus'; // ボーナス点（金色）
+                    this.color = '#FFD700';
+                    this.points = 50;
+                } else if (rand < 0.2) {
+                    this.type = 'time'; // 時間追加（青色）
+                    this.color = '#00BFFF';
+                    this.points = 20;
+                } else if (rand < 0.3) {
+                    this.type = 'bomb'; // 爆弾（赤色、近くの泡も割れる）
+                    this.color = '#FF4500';
+                    this.points = 30;
+                } else {
+                    this.type = 'normal';
+                    this.color = `hsl(${180 + Math.random() * 60}, 70%, 60%)`;
+                    this.points = 10;
+                }
+
+                this.opacity = 0;
+                this.maxOpacity = 0.6 + Math.random() * 0.3;
+            }
+
+            update() {
+                this.y -= this.speedY;
+                this.x += Math.sin(this.wobble) * 0.5 + this.speedX;
+                this.wobble += this.wobbleSpeed;
+
+                // フェードイン
+                if (this.opacity < this.maxOpacity) {
+                    this.opacity += 0.02;
+                }
+
+                // 壁で反射
+                if (this.x < this.radius || this.x > width - this.radius) {
+                    this.speedX *= -1;
+                }
+
+                return this.y > -this.radius;
+            }
+
+            draw() {
+                // 泡の本体
+                const gradient = ctx.createRadialGradient(
+                    this.x - this.radius * 0.3,
+                    this.y - this.radius * 0.3,
+                    0,
+                    this.x,
+                    this.y,
+                    this.radius
+                );
+
+                if (this.type === 'normal') {
+                    gradient.addColorStop(0, `rgba(255, 255, 255, ${this.opacity * 0.8})`);
+                    gradient.addColorStop(0.5, this.color.replace(')', `, ${this.opacity})`).replace('hsl', 'hsla'));
+                    gradient.addColorStop(1, `rgba(100, 150, 255, ${this.opacity * 0.3})`);
+                } else {
+                    gradient.addColorStop(0, `rgba(255, 255, 255, ${this.opacity * 0.8})`);
+                    gradient.addColorStop(0.5, this.color);
+                    gradient.addColorStop(1, this.color);
+                }
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // ハイライト
+                ctx.beginPath();
+                ctx.arc(this.x - this.radius * 0.3, this.y - this.radius * 0.3, this.radius * 0.2, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity * 0.6})`;
+                ctx.fill();
+
+                // 特殊泡のアイコン
+                if (this.type !== 'normal') {
+                    ctx.fillStyle = 'white';
+                    ctx.font = `bold ${this.radius * 0.8}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    let icon = '';
+                    if (this.type === 'bonus') icon = '⭐';
+                    if (this.type === 'time') icon = '+5';
+                    if (this.type === 'bomb') icon = '💥';
+                    ctx.fillText(icon, this.x, this.y);
+                }
+            }
+
+            contains(x, y) {
+                const dx = x - this.x;
+                const dy = y - this.y;
+                return dx * dx + dy * dy < this.radius * this.radius;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.radius = 3 + Math.random() * 5;
+                this.speedX = (Math.random() - 0.5) * 8;
+                this.speedY = (Math.random() - 0.5) * 8;
+                this.opacity = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.opacity -= this.decay;
+                return this.opacity > 0;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color.replace(')', `, ${this.opacity})`).replace('hsl', 'hsla');
+                ctx.fill();
+            }
+        }
+
+        function createPopParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function showScorePop(x, y, points) {
+            const pop = document.createElement('div');
+            pop.className = 'score-pop';
+            pop.textContent = `+${points}`;
+            pop.style.left = x + 'px';
+            pop.style.top = y + 'px';
+            document.body.appendChild(pop);
+
+            setTimeout(() => {
+                pop.remove();
+            }, 800);
+        }
+
+        function popBubble(bubble, index) {
+            const now = Date.now();
+
+            // コンボ判定
+            if (now - lastPopTime < COMBO_TIMEOUT) {
+                combo++;
+            } else {
+                combo = 1;
+            }
+            lastPopTime = now;
+
+            // スコア計算（コンボボーナス）
+            const comboBonus = Math.min(combo, 10);
+            const totalPoints = bubble.points * comboBonus;
+            score += totalPoints;
+
+            // 効果
+            createPopParticles(bubble.x, bubble.y, bubble.color, 15);
+
+            // 特殊効果
+            if (bubble.type === 'time') {
+                timeLeft += 5;
+                showComboDisplay('+5秒!', '#00BFFF');
+            } else if (bubble.type === 'bomb') {
+                // 近くの泡も割れる
+                bubbles.forEach((other, i) => {
+                    if (other !== bubble) {
+                        const dx = other.x - bubble.x;
+                        const dy = other.y - bubble.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < 150) {
+                            setTimeout(() => {
+                                const idx = bubbles.indexOf(other);
+                                if (idx !== -1) {
+                                    popBubble(other, idx);
+                                    bubbles.splice(idx, 1);
+                                }
+                            }, 100);
+                        }
+                    }
+                });
+                showComboDisplay('爆発!', '#FF4500');
+            } else if (combo >= 5) {
+                showComboDisplay(`${combo} COMBO!`, '#FFD700');
+            }
+
+            showScorePop(bubble.x, bubble.y, totalPoints);
+
+            // 音を再生（Web Audio API）
+            playPopSound();
+
+            bubbles.splice(index, 1);
+
+            // HUD更新
+            document.getElementById('score').textContent = score;
+            document.getElementById('comboCount').textContent = combo;
+        }
+
+        function showComboDisplay(text, color) {
+            const comboDisplay = document.getElementById('comboDisplay');
+            comboDisplay.textContent = text;
+            comboDisplay.style.color = color;
+            comboDisplay.classList.add('show');
+
+            setTimeout(() => {
+                comboDisplay.classList.remove('show');
+            }, 500);
+        }
+
+        function playPopSound() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                oscillator.frequency.value = 800 + Math.random() * 400;
+                oscillator.type = 'sine';
+
+                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.1);
+            } catch (e) {
+                // Web Audio APIが使えない場合は無視
+            }
+        }
+
+        function handleClick(x, y) {
+            for (let i = bubbles.length - 1; i >= 0; i--) {
+                if (bubbles[i].contains(x, y)) {
+                    popBubble(bubbles[i], i);
+                    return;
+                }
+            }
+        }
+
+        canvas.addEventListener('click', (e) => {
+            if (!gameRunning) return;
+            handleClick(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleClick(touch.clientX, touch.clientY);
+        });
+
+        function update() {
+            if (!gameRunning) return;
+
+            // 泡を生成
+            spawnTimer++;
+            if (spawnTimer > 30) {
+                spawnTimer = 0;
+                if (bubbles.length < 15) {
+                    bubbles.push(new Bubble());
+                }
+            }
+
+            // 泡を更新
+            bubbles = bubbles.filter(bubble => bubble.update());
+
+            // パーティクルを更新
+            particles = particles.filter(p => p.update());
+        }
+
+        function draw() {
+            // クリア
+            ctx.clearRect(0, 0, width, height);
+
+            // 背景
+            const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
+            bgGradient.addColorStop(0, '#667eea');
+            bgGradient.addColorStop(1, '#764ba2');
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // 泡を描画
+            bubbles.forEach(bubble => bubble.draw());
+
+            // パーティクルを描画
+            particles.forEach(p => p.draw());
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            score = 0;
+            timeLeft = 60;
+            combo = 0;
+            bubbles = [];
+            particles = [];
+            spawnTimer = 0;
+            gameRunning = true;
+
+            document.getElementById('score').textContent = '0';
+            document.getElementById('time').textContent = '60';
+            document.getElementById('comboCount').textContent = '0';
+
+            document.getElementById('startOverlay').classList.add('hidden');
+            document.getElementById('gameOverOverlay').classList.add('hidden');
+
+            // タイマー開始
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('time').textContent = timeLeft;
+
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+
+            // 最初の泡を生成
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => {
+                    if (gameRunning) bubbles.push(new Bubble());
+                }, i * 200);
+            }
+        }
+
+        function endGame() {
+            gameRunning = false;
+            clearInterval(timerInterval);
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOverOverlay').classList.remove('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            resize();
+            draw();
+        });
+
+        // 初期化
+        resize();
+        gameLoop();
+    </script>
+</body>
+</html>
