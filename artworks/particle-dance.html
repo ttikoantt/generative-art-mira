@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Dance - Chaos Theory Visualization</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+        }
+
+        h1 {
+            font-size: clamp(16px, 4vw, 32px);
+            color: #0ff;
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            font-size: clamp(10px, 2vw, 14px);
+            color: #888;
+        }
+
+        #canvas {
+            flex: 1;
+            display: block;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: clamp(12px, 2.5vw, 16px);
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #0ff;
+            color: #0ff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+        }
+
+        button:hover {
+            background: rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            padding: 10px 15px;
+        }
+
+        .info {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            font-size: clamp(10px, 2vw, 14px);
+            color: #0ff;
+            opacity: 0.8;
+            z-index: 100;
+        }
+
+        .stats {
+            position: absolute;
+            top: 20px;
+            right: 80px;
+            font-size: clamp(10px, 1.5vw, 12px);
+            color: #0ff;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🌊 Particle Dance</h1>
+        <div class="subtitle">Chaos Theory Visualization</div>
+    </header>
+
+    <div class="stats" id="stats">
+        Particles: <span id="particleCount">0</span>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        Click to add particles • Scroll to change chaos
+    </div>
+
+    <div class="controls">
+        <button id="resetBtn">🔄 Reset</button>
+        <button id="chaosBtn">🌀 Chaos Mode</button>
+        <button id="calmBtn">🌸 Calm Mode</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶ Fullscreen</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let chaosLevel = 0.5;
+        let hueShift = 0;
+        let mouse = { x: 0, y: 0 };
+
+        // Resize handler
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Particle class
+        class Particle {
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.radius = Math.random() * 3 + 1;
+                this.baseHue = Math.random() * 360;
+                this.life = 1;
+                this.maxLife = Math.random() * 200 + 100;
+                this.age = 0;
+            }
+
+            update() {
+                // Chaos theory-inspired movement
+                const chaos = chaosLevel * 0.1;
+
+                // Lorenz attractor-inspired equations (simplified)
+                const dx = this.vx * (1 + chaos * Math.sin(this.y * 0.01));
+                const dy = this.vy * (1 + chaos * Math.cos(this.x * 0.01));
+
+                this.x += dx;
+                this.y += dy;
+
+                // Mouse attraction
+                const mdx = mouse.x - this.x;
+                const mdy = mouse.y - this.y;
+                const dist = Math.sqrt(mdx * mdx + mdy * mdy);
+
+                if (dist < 150) {
+                    const force = (150 - dist) / 150;
+                    this.vx += (mdx / dist) * force * 0.5;
+                    this.vy += (mdy / dist) * force * 0.5;
+                }
+
+                // Bounce off walls
+                if (this.x < 0 || this.x > width) {
+                    this.vx *= -0.9;
+                    this.x = Math.max(0, Math.min(width, this.x));
+                }
+                if (this.y < 0 || this.y > height) {
+                    this.vy *= -0.9;
+                    this.y = Math.max(0, Math.min(height, this.y));
+                }
+
+                // Apply friction
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+
+                // Age
+                this.age++;
+                this.life = Math.max(0, 1 - this.age / this.maxLife);
+
+                // Keep minimum movement
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed < 0.5) {
+                    this.vx += (Math.random() - 0.5) * 0.1;
+                    this.vy += (Math.random() - 0.5) * 0.1;
+                }
+            }
+
+            draw() {
+                const hue = (this.baseHue + hueShift) % 360;
+                const alpha = this.life * 0.8;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
+                ctx.fill();
+
+                // Glow effect
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${hue}, 80%, 60%, ${alpha * 0.3})`;
+                ctx.fill();
+            }
+        }
+
+        // Initialize particles
+        function init() {
+            particles = [];
+            for (let i = 0; i < 100; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        // Draw connections between nearby particles
+        function drawConnections() {
+            const maxDist = 100;
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < maxDist) {
+                        const alpha = (1 - dist / maxDist) * 0.2 * Math.min(particles[i].life, particles[j].life);
+                        const hue = ((particles[i].baseHue + particles[j].baseHue) / 2 + hueShift) % 360;
+
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            // Fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Update and draw particles
+            particles.forEach((p, i) => {
+                p.update();
+                p.draw();
+
+                // Respawn dead particles
+                if (p.life <= 0) {
+                    particles[i] = new Particle();
+                }
+            });
+
+            // Draw connections
+            drawConnections();
+
+            // Update hue shift
+            hueShift += 0.2;
+
+            // Update particle count
+            document.getElementById('particleCount').textContent = particles.length;
+
+            requestAnimationFrame(animate);
+        }
+
+        // Mouse events
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            // Add 5 new particles at click position
+            for (let i = 0; i < 5; i++) {
+                particles.push(new Particle(e.clientX, e.clientY));
+            }
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            // Change chaos level
+            chaosLevel = Math.max(0, Math.min(1, chaosLevel - e.deltaY * 0.001));
+            e.preventDefault();
+        }, { passive: false });
+
+        // Button handlers
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            init();
+        });
+
+        document.getElementById('chaosBtn').addEventListener('click', () => {
+            chaosLevel = 1;
+        });
+
+        document.getElementById('calmBtn').addEventListener('click', () => {
+            chaosLevel = 0.1;
+        });
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Start
+        init();
+        animate();
+    </script>
+</body>
+</html>
