@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Breakout - ネオン・ブレイクアウト</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            padding: 20px;
+        }
+
+        canvas {
+            display: block;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #0ff;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+            margin: 0 auto;
+        }
+
+        .info {
+            display: flex;
+            justify-content: space-between;
+            color: #0ff;
+            font-size: 16px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px #0ff;
+        }
+
+        .start-screen, .game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #fff;
+            z-index: 10;
+        }
+
+        .start-screen h1, .game-over-screen h1 {
+            font-size: 32px;
+            color: #0ff;
+            text-shadow: 0 0 20px #0ff;
+            margin-bottom: 20px;
+        }
+
+        .start-btn {
+            padding: 15px 40px;
+            font-size: 18px;
+            background: transparent;
+            border: 2px solid #0ff;
+            color: #0ff;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+        }
+
+        .start-btn:hover {
+            background: rgba(0, 255, 255, 0.2);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #0ff;
+            color: #0ff;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.2);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 768px) {
+            .game-container {
+                padding: 10px;
+            }
+            .info {
+                font-size: 14px;
+            }
+            .start-screen h1, .game-over-screen h1 {
+                font-size: 24px;
+            }
+            .start-btn {
+                padding: 12px 30px;
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    
+    <div class="game-container">
+        <div class="info">
+            <div>Score: <span id="score">0</span></div>
+            <div>Lives: <span id="lives">3</span></div>
+        </div>
+        
+        <canvas id="canvas"></canvas>
+        
+        <div class="start-screen" id="startScreen">
+            <h1>🎮 NEON BREAKOUT</h1>
+            <p style="margin-bottom: 20px; color: #aaa;">マウス/タッチでパドル操作</p>
+            <button class="start-btn" onclick="startGame()">START</button>
+        </div>
+        
+        <div class="game-over-screen hidden" id="gameOverScreen">
+            <h1>GAME OVER</h1>
+            <p style="margin-bottom: 10px; color: #aaa;">Score: <span id="finalScore">0</span></p>
+            <button class="start-btn" onclick="startGame()">RETRY</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const scoreEl = document.getElementById('score');
+        const livesEl = document.getElementById('lives');
+        const finalScoreEl = document.getElementById('finalScore');
+
+        // キャンバスサイズ
+        const CANVAS_WIDTH = 500;
+        const CANVAS_HEIGHT = 600;
+
+        function initCanvas() {
+            const container = document.querySelector('.game-container');
+            const maxWidth = Math.min(CANVAS_WIDTH, window.innerWidth - 40);
+            const scale = maxWidth / CANVAS_WIDTH;
+            
+            canvas.width = CANVAS_WIDTH;
+            canvas.height = CANVAS_HEIGHT;
+            canvas.style.width = maxWidth + 'px';
+            canvas.style.height = (CANVAS_HEIGHT * scale) + 'px';
+        }
+
+        // ゲーム状態
+        let gameRunning = false;
+        let score = 0;
+        let lives = 3;
+
+        // パドル
+        const paddle = {
+            width: 80,
+            height: 10,
+            x: 0,
+            y: 0,
+            speed: 8
+        };
+
+        // ボール
+        const ball = {
+            x: 0,
+            y: 0,
+            radius: 6,
+            dx: 4,
+            dy: -4,
+            speed: 5
+        };
+
+        // ブロック
+        const blocks = [];
+        const blockRows = 6;
+        const blockCols = 8;
+        const blockWidth = 55;
+        const blockHeight = 20;
+        const blockPadding = 5;
+        const blockOffsetTop = 50;
+        const blockOffsetLeft = 15;
+
+        // 色パレット（ネオン）
+        const colors = ['#ff006e', '#fb5607', '#ffbe0b', '#8338ec', '#3a86ff', '#06ffa5'];
+
+        function createBlocks() {
+            blocks.length = 0;
+            for (let row = 0; row < blockRows; row++) {
+                for (let col = 0; col < blockCols; col++) {
+                    blocks.push({
+                        x: col * (blockWidth + blockPadding) + blockOffsetLeft,
+                        y: row * (blockHeight + blockPadding) + blockOffsetTop,
+                        width: blockWidth,
+                        height: blockHeight,
+                        color: colors[row % colors.length],
+                        alive: true
+                    });
+                }
+            }
+        }
+
+        function resetBall() {
+            ball.x = CANVAS_WIDTH / 2;
+            ball.y = CANVAS_HEIGHT - 50;
+            ball.dx = (Math.random() > 0.5 ? 1 : -1) * ball.speed;
+            ball.dy = -ball.speed;
+        }
+
+        function resetPaddle() {
+            paddle.x = (CANVAS_WIDTH - paddle.width) / 2;
+            paddle.y = CANVAS_HEIGHT - 30;
+        }
+
+        function startGame() {
+            score = 0;
+            lives = 3;
+            scoreEl.textContent = score;
+            livesEl.textContent = lives;
+            
+            createBlocks();
+            resetBall();
+            resetPaddle();
+            
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            gameRunning = true;
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            finalScoreEl.textContent = score;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function update() {
+            // ボール移動
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+
+            // 壁反射
+            if (ball.x - ball.radius < 0 || ball.x + ball.radius > CANVAS_WIDTH) {
+                ball.dx = -ball.dx;
+            }
+            if (ball.y - ball.radius < 0) {
+                ball.dy = -ball.dy;
+            }
+
+            // パドル衝突
+            if (ball.y + ball.radius > paddle.y &&
+                ball.y - ball.radius < paddle.y + paddle.height &&
+                ball.x > paddle.x &&
+                ball.x < paddle.x + paddle.width) {
+                
+                ball.dy = -Math.abs(ball.dy);
+                
+                // パドルの位置で反射角度を調整
+                const hitPos = (ball.x - paddle.x) / paddle.width;
+                ball.dx = (hitPos - 0.5) * 8;
+            }
+
+            // ブロック衝突
+            blocks.forEach(block => {
+                if (!block.alive) return;
+                
+                if (ball.x + ball.radius > block.x &&
+                    ball.x - ball.radius < block.x + block.width &&
+                    ball.y + ball.radius > block.y &&
+                    ball.y - ball.radius < block.y + block.height) {
+                    
+                    block.alive = false;
+                    ball.dy = -ball.dy;
+                    score += 10;
+                    scoreEl.textContent = score;
+                }
+            });
+
+            // ボールが底に落ちた
+            if (ball.y - ball.radius > CANVAS_HEIGHT) {
+                lives--;
+                livesEl.textContent = lives;
+                
+                if (lives <= 0) {
+                    gameOver();
+                } else {
+                    resetBall();
+                }
+            }
+
+            // 全ブロック破壊
+            if (blocks.every(b => !b.alive)) {
+                createBlocks();
+                ball.speed += 0.5;
+                resetBall();
+            }
+        }
+
+        function draw() {
+            // クリア
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // ブロック描画
+            blocks.forEach(block => {
+                if (!block.alive) return;
+                
+                ctx.fillStyle = block.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = block.color;
+                ctx.fillRect(block.x, block.y, block.width, block.height);
+                ctx.shadowBlur = 0;
+            });
+
+            // パドル描画
+            ctx.fillStyle = '#0ff';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#0ff';
+            ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+            ctx.shadowBlur = 0;
+
+            // ボール描画
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#fff';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // パドル操作
+        function movePaddle(clientX) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = CANVAS_WIDTH / rect.width;
+            const x = (clientX - rect.left) * scaleX;
+            paddle.x = Math.max(0, Math.min(CANVAS_WIDTH - paddle.width, x - paddle.width / 2));
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (gameRunning) {
+                movePaddle(e.clientX);
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (gameRunning) {
+                e.preventDefault();
+                movePaddle(e.touches[0].clientX);
+            }
+        }, { passive: false });
+
+        window.addEventListener('resize', initCanvas);
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        initCanvas();
+    </script>
+</body>
+</html>
