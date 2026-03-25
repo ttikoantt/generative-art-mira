@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fluid Fractal - 流体フラクタル</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+        }
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 5px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="info">
+        <div>Fluid Fractal | マウスで干渉</div>
+    </div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let time = 0;
+
+        // ジュリア集合のパラメータ
+        let cRe = -0.7;
+        let cIm = 0.27015;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+
+            // マウス位置でパラメータを変化
+            cRe = (mouseX / width - 0.5) * 2;
+            cIm = (mouseY / height - 0.5) * 2;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+
+            cRe = (mouseX / width - 0.5) * 2;
+            cIm = (mouseY / height - 0.5) * 2;
+        }, { passive: false });
+
+        // HSV to RGB
+        function hsvToRgb(h, s, v) {
+            let r, g, b;
+            const i = Math.floor(h * 6);
+            const f = h * 6 - i;
+            const p = v * (1 - s);
+            const q = v * (1 - f * s);
+            const t = v * (1 - (1 - f) * s);
+
+            switch (i % 6) {
+                case 0: r = v; g = t; b = p; break;
+                case 1: r = q; g = v; b = p; break;
+                case 2: r = p; g = v; b = t; break;
+                case 3: r = p; g = q; b = v; break;
+                case 4: r = t; g = p; b = v; break;
+                case 5: r = v; g = p; b = q; break;
+            }
+
+            return [r * 255, g * 255, b * 255];
+        }
+
+        // ピクセル単位で計算すると重いので、低解像度で計算して拡大
+        const scale = 4; // 1/4解像度で計算
+
+        function render() {
+            time += 0.01;
+
+            const imageData = ctx.createImageData(Math.ceil(width / scale), Math.ceil(height / scale));
+            const data = imageData.data;
+
+            for (let y = 0; y < height / scale; y++) {
+                for (let x = 0; x < width / scale; x++) {
+                    // 画面座標を複素数平面にマッピング
+                    const zx0 = (x * scale - width / 2) / (width * 0.25);
+                    const zy0 = (y * scale - height / 2) / (height * 0.25);
+
+                    let zx = zx0;
+                    let zy = zy0;
+                    let iter = 0;
+                    const maxIter = 50;
+
+                    while (zx * zx + zy * zy < 4 && iter < maxIter) {
+                        const xtemp = zx * zx - zy * zy + cRe;
+                        zy = 2 * zx * zy + cIm;
+                        zx = xtemp;
+                        iter++;
+                    }
+
+                    // 色の計算
+                    const idx = (y * Math.ceil(width / scale) + x) * 4;
+                    const hue = (iter / maxIter + time * 0.1) % 1;
+                    const sat = iter === maxIter ? 0 : 0.8;
+                    const val = iter === maxIter ? 0 : 1;
+
+                    const [r, g, b] = hsvToRgb(hue, sat, val);
+
+                    data[idx] = r;
+                    data[idx + 1] = g;
+                    data[idx + 2] = b;
+                    data[idx + 3] = 255;
+                }
+            }
+
+            // 低解像度イメージを拡大して描画
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = Math.ceil(width / scale);
+            tempCanvas.height = Math.ceil(height / scale);
+            tempCtx.putImageData(imageData, 0, 0);
+
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(tempCanvas, 0, 0, width, height);
+
+            requestAnimationFrame(render);
+        }
+
+        render();
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
