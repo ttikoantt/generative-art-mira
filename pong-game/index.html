@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pong Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .score {
+            color: #fff;
+            font-size: 32px;
+            font-weight: bold;
+            display: flex;
+            gap: 40px;
+        }
+
+        .player-score {
+            color: #00ff88;
+        }
+
+        .ai-score {
+            color: #ff0088;
+        }
+
+        #canvas {
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.2);
+        }
+
+        .controls {
+            color: #888;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-size: 32px;
+            font-weight: bold;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .message.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="game-container">
+        <div class="score">
+            <span class="player-score" id="playerScore">0</span>
+            <span>-</span>
+            <span class="ai-score" id="aiScore">0</span>
+        </div>
+        <canvas id="canvas"></canvas>
+        <div class="controls">
+            マウスまたはタップでパドルを移動
+        </div>
+    </div>
+
+    <div class="message" id="message"></div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let playerY = 0;
+        let aiY = 0;
+        let ballX, ballY;
+        let ballSpeedX = 6;
+        let ballSpeedY = 6;
+        let playerScore = 0;
+        let aiScore = 0;
+        let particles = [];
+        let lastHit = '';
+
+        const PADDLE_HEIGHT = 80;
+        const PADDLE_WIDTH = 12;
+        const BALL_SIZE = 12;
+        const AI_SPEED = 4;
+
+        // キャンバスサイズ設定
+        function resize() {
+            const maxWidth = Math.min(window.innerWidth - 40, 600);
+            const maxHeight = Math.min(window.innerHeight - 200, 400);
+            width = canvas.width = maxWidth;
+            height = canvas.height = maxHeight;
+
+            // パドルとボールの初期位置
+            playerY = height / 2 - PADDLE_HEIGHT / 2;
+            aiY = height / 2 - PADDLE_HEIGHT / 2;
+            resetBall();
+        }
+
+        // ボールをリセット
+        function resetBall() {
+            ballX = width / 2;
+            ballY = height / 2;
+            ballSpeedX = (Math.random() > 0.5 ? 6 : -6);
+            ballSpeedY = (Math.random() - 0.5) * 8;
+        }
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.life = 1;
+                this.color = color;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 0.02;
+                return this.life > 0;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = this.color.replace('1)', `${this.life})`);
+                ctx.fill();
+            }
+        }
+
+        // パーティクルを追加
+        function addParticles(x, y, color) {
+            for (let i = 0; i < 10; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        // 更新
+        function update() {
+            // ボール移動
+            ballX += ballSpeedX;
+            ballY += ballSpeedY;
+
+            // 上下の壁に当たった
+            if (ballY <= BALL_SIZE / 2 || ballY >= height - BALL_SIZE / 2) {
+                ballSpeedY = -ballSpeedY;
+                ballY = ballY <= BALL_SIZE / 2 ? BALL_SIZE / 2 : height - BALL_SIZE / 2;
+                addParticles(ballX, ballY, 'rgba(255, 255, 255, 1)');
+            }
+
+            // プレイヤーパドルに当たった
+            if (ballX <= PADDLE_WIDTH + BALL_SIZE / 2 &&
+                ballY >= playerY && ballY <= playerY + PADDLE_HEIGHT) {
+                ballSpeedX = Math.abs(ballSpeedX) + 0.2;
+                ballSpeedX = Math.min(ballSpeedX, 12);
+                ballSpeedY += (ballY - (playerY + PADDLE_HEIGHT / 2)) * 0.1;
+                lastHit = 'player';
+                addParticles(ballX, ballY, 'rgba(0, 255, 136, 1)');
+            }
+
+            // AIパドルに当たった
+            if (ballX >= width - PADDLE_WIDTH - BALL_SIZE / 2 &&
+                ballY >= aiY && ballY <= aiY + PADDLE_HEIGHT) {
+                ballSpeedX = -Math.abs(ballSpeedX) - 0.2;
+                ballSpeedX = Math.max(ballSpeedX, -12);
+                ballSpeedY += (ballY - (aiY + PADDLE_HEIGHT / 2)) * 0.1;
+                lastHit = 'ai';
+                addParticles(ballX, ballY, 'rgba(255, 0, 136, 1)');
+            }
+
+            // 得点
+            if (ballX < -50) {
+                aiScore++;
+                document.getElementById('aiScore').textContent = aiScore;
+                showMessage('AI SCORE!');
+                resetBall();
+            } else if (ballX > width + 50) {
+                playerScore++;
+                document.getElementById('playerScore').textContent = playerScore;
+                showMessage('YOU SCORE!');
+                resetBall();
+            }
+
+            // AIパドルの動き
+            const aiCenter = aiY + PADDLE_HEIGHT / 2;
+            if (ballX > width / 3) {
+                if (aiCenter < ballY - 10) {
+                    aiY += AI_SPEED;
+                } else if (aiCenter > ballY + 10) {
+                    aiY -= AI_SPEED;
+                }
+            }
+            aiY = Math.max(0, Math.min(height - PADDLE_HEIGHT, aiY));
+
+            // パーティクル更新
+            particles = particles.filter(p => {
+                const alive = p.update();
+                if (alive) p.draw();
+                return alive;
+            });
+        }
+
+        // 描画
+        function draw() {
+            // 背景
+            ctx.fillStyle = 'rgba(10, 10, 20, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 中央線
+            ctx.setLineDash([10, 10]);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.beginPath();
+            ctx.moveTo(width / 2, 0);
+            ctx.lineTo(width / 2, height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // プレイヤーパドル
+            ctx.fillStyle = '#00ff88';
+            ctx.shadowColor = '#00ff88';
+            ctx.shadowBlur = 15;
+            ctx.fillRect(0, playerY, PADDLE_WIDTH, PADDLE_HEIGHT);
+            ctx.shadowBlur = 0;
+
+            // AIパドル
+            ctx.fillStyle = '#ff0088';
+            ctx.shadowColor = '#ff0088';
+            ctx.shadowBlur = 15;
+            ctx.fillRect(width - PADDLE_WIDTH, aiY, PADDLE_WIDTH, PADDLE_HEIGHT);
+            ctx.shadowBlur = 0;
+
+            // ボール
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowColor = '#ffffff';
+            ctx.shadowBlur = 20;
+            ctx.beginPath();
+            ctx.arc(ballX, ballY, BALL_SIZE / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        // メッセージ表示
+        function showMessage(text) {
+            const message = document.getElementById('message');
+            message.textContent = text;
+            message.classList.add('show');
+            setTimeout(() => {
+                message.classList.remove('show');
+            }, 1000);
+        }
+
+        // アニメーションループ
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // マウス/タッチ操作
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const y = e.clientY - rect.top;
+            playerY = y - PADDLE_HEIGHT / 2;
+            playerY = Math.max(0, Math.min(height - PADDLE_HEIGHT, playerY));
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const y = e.touches[0].clientY - rect.top;
+            playerY = y - PADDLE_HEIGHT / 2;
+            playerY = Math.max(0, Math.min(height - PADDLE_HEIGHT, playerY));
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        window.addEventListener('resize', resize);
+        resize();
+        gameLoop();
+    </script>
+</body>
+</html>
