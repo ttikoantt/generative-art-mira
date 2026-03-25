@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Gravity Ball Puzzle - 重力ボールパズル</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            touch-action: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 3/4;
+        }
+
+        canvas {
+            background: #0a0a1a;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(100, 200, 255, 0.3);
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            color: #fff;
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            color: #1a1a2e;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            display: none;
+        }
+
+        .message h2 {
+            margin: 0 0 15px 0;
+            font-size: 24px;
+        }
+
+        .message button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: #fff;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: transform 0.2s;
+        }
+
+        .message button:hover {
+            transform: scale(1.05);
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 11px;
+            text-align: center;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+
+    <div class="game-container">
+        <canvas id="canvas"></canvas>
+        <div class="ui">
+            <div>ステージ <span id="stage">1</span> | 試行: <span id="attempts">1</span></div>
+        </div>
+        <div class="message" id="message">
+            <h2 id="message-title"></h2>
+            <p id="message-text"></p>
+            <button id="message-button" onclick="handleMessage()">次へ</button>
+        </div>
+        <div class="instructions">タップで重力を反転させる</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // キャンバスサイズ設定
+        const container = document.querySelector('.game-container');
+        canvas.width = 400;
+        canvas.height = 533;
+
+        // ゲーム状態
+        let gameState = {
+            stage: 1,
+            attempts: 1,
+            ball: { x: 50, y: 50, vx: 0, vy: 0, radius: 12 },
+            gravity: 0.4,
+            goal: { x: 350, y: 483, radius: 20 },
+            obstacles: [],
+            message: null
+        };
+
+        // ステージ定義
+        const stages = [
+            {
+                ball: { x: 50, y: 50 },
+                goal: { x: 350, y: 483 },
+                obstacles: [
+                    { x: 180, y: 200, width: 40, height: 133 }
+                ]
+            },
+            {
+                ball: { x: 50, y: 483 },
+                goal: { x: 350, y: 50 },
+                obstacles: [
+                    { x: 100, y: 150, width: 200, height: 20 },
+                    { x: 100, y: 363, width: 200, height: 20 }
+                ]
+            },
+            {
+                ball: { x: 50, y: 266 },
+                goal: { x: 350, y: 266 },
+                obstacles: [
+                    { x: 150, y: 100, width: 20, height: 150 },
+                    { x: 150, y: 283, width: 20, height: 150 },
+                    { x: 230, y: 180, width: 20, height: 173 }
+                ]
+            }
+        ];
+
+        // ステージをロード
+        function loadStage(stageNum) {
+            const stage = stages[stageNum - 1];
+            gameState.ball = {
+                x: stage.ball.x,
+                y: stage.ball.y,
+                vx: 0,
+                vy: 0,
+                radius: 12
+            };
+            gameState.goal = {
+                x: stage.goal.x,
+                y: stage.goal.y,
+                radius: 20
+            };
+            gameState.obstacles = stage.obstacles;
+            gameState.gravity = 0.4;
+        }
+
+        // 初期ステージをロード
+        loadStage(1);
+
+        // 入力処理
+        function handleInput() {
+            gameState.gravity = -gameState.gravity;
+        }
+
+        canvas.addEventListener('click', handleInput);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleInput();
+        }, { passive: false });
+
+        // 物理演算
+        function update() {
+            const ball = gameState.ball;
+
+            // 重力を適用
+            ball.vy += gameState.gravity;
+
+            // 摩擦
+            ball.vx *= 0.99;
+            ball.vy *= 0.99;
+
+            // 速度制限
+            const maxSpeed = 8;
+            const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+            if (speed > maxSpeed) {
+                ball.vx = (ball.vx / speed) * maxSpeed;
+                ball.vy = (ball.vy / speed) * maxSpeed;
+            }
+
+            // 位置更新
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+
+            // 壁との衝突
+            if (ball.x - ball.radius < 0) {
+                ball.x = ball.radius;
+                ball.vx *= -0.8;
+            }
+            if (ball.x + ball.radius > canvas.width) {
+                ball.x = canvas.width - ball.radius;
+                ball.vx *= -0.8;
+            }
+            if (ball.y - ball.radius < 0) {
+                ball.y = ball.radius;
+                ball.vy *= -0.8;
+            }
+            if (ball.y + ball.radius > canvas.height) {
+                ball.y = canvas.height - ball.radius;
+                ball.vy *= -0.8;
+            }
+
+            // 障害物との衝突
+            for (const obs of gameState.obstacles) {
+                if (ball.x + ball.radius > obs.x &&
+                    ball.x - ball.radius < obs.x + obs.width &&
+                    ball.y + ball.radius > obs.y &&
+                    ball.y - ball.radius < obs.y + obs.height) {
+
+                    // 衝突判定
+                    const overlapLeft = (ball.x + ball.radius) - obs.x;
+                    const overlapRight = (obs.x + obs.width) - (ball.x - ball.radius);
+                    const overlapTop = (ball.y + ball.radius) - obs.y;
+                    const overlapBottom = (obs.y + obs.height) - (ball.y - ball.radius);
+
+                    const minOverlapX = Math.min(overlapLeft, overlapRight);
+                    const minOverlapY = Math.min(overlapTop, overlapBottom);
+
+                    if (minOverlapX < minOverlapY) {
+                        if (overlapLeft < overlapRight) {
+                            ball.x = obs.x - ball.radius;
+                            ball.vx = -Math.abs(ball.vx) * 0.8;
+                        } else {
+                            ball.x = obs.x + obs.width + ball.radius;
+                            ball.vx = Math.abs(ball.vx) * 0.8;
+                        }
+                    } else {
+                        if (overlapTop < overlapBottom) {
+                            ball.y = obs.y - ball.radius;
+                            ball.vy = -Math.abs(ball.vy) * 0.8;
+                        } else {
+                            ball.y = obs.y + obs.height + ball.radius;
+                            ball.vy = Math.abs(ball.vy) * 0.8;
+                        }
+                    }
+                }
+            }
+
+            // ゴール判定
+            const dx = ball.x - gameState.goal.x;
+            const dy = ball.y - gameState.goal.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < ball.radius + gameState.goal.radius) {
+                if (gameState.stage < stages.length) {
+                    showMessage('クリア！', `ステージ ${gameState.stage} をクリア！`, '次のステージへ', () => {
+                        gameState.stage++;
+                        gameState.attempts = 1;
+                        loadStage(gameState.stage);
+                        updateUI();
+                    });
+                } else {
+                    showMessage('全ステージクリア！', 'おめでとうございます！', '最初から', () => {
+                        gameState.stage = 1;
+                        gameState.attempts = 1;
+                        loadStage(1);
+                        updateUI();
+                    });
+                }
+            }
+        }
+
+        // 描画
+        function draw() {
+            // クリア
+            ctx.fillStyle = '#0a0a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // グリッド
+            ctx.strokeStyle = 'rgba(100, 200, 255, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < canvas.width; i += 40) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, canvas.height);
+                ctx.stroke();
+            }
+            for (let i = 0; i < canvas.height; i += 40) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(canvas.width, i);
+                ctx.stroke();
+            }
+
+            // ゴール
+            const goalGradient = ctx.createRadialGradient(
+                gameState.goal.x, gameState.goal.y, 0,
+                gameState.goal.x, gameState.goal.y, gameState.goal.radius
+            );
+            goalGradient.addColorStop(0, 'rgba(0, 255, 150, 0.8)');
+            goalGradient.addColorStop(1, 'rgba(0, 255, 150, 0.2)');
+            ctx.fillStyle = goalGradient;
+            ctx.beginPath();
+            ctx.arc(gameState.goal.x, gameState.goal.y, gameState.goal.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#00ff96';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // 障害物
+            for (const obs of gameState.obstacles) {
+                ctx.fillStyle = 'rgba(255, 100, 100, 0.3)';
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                ctx.strokeStyle = 'rgba(255, 100, 100, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
+            }
+
+            // ボール
+            const ballGradient = ctx.createRadialGradient(
+                gameState.ball.x - 3, gameState.ball.y - 3, 0,
+                gameState.ball.x, gameState.ball.y, gameState.ball.radius
+            );
+            ballGradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            ballGradient.addColorStop(0.5, 'rgba(100, 200, 255, 1)');
+            ballGradient.addColorStop(1, 'rgba(50, 100, 200, 1)');
+            ctx.fillStyle = ballGradient;
+            ctx.beginPath();
+            ctx.arc(gameState.ball.x, gameState.ball.y, gameState.ball.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 重力インジケーター
+            const gravityIndicatorY = gameState.gravity > 0 ? '⬇️' : '⬆️';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(gravityIndicatorY, canvas.width / 2, 30);
+        }
+
+        // メッセージ表示
+        function showMessage(title, text, buttonText, callback) {
+            document.getElementById('message-title').textContent = title;
+            document.getElementById('message-text').textContent = text;
+            document.getElementById('message-button').textContent = buttonText;
+            document.getElementById('message').style.display = 'block';
+            gameState.message = callback;
+        }
+
+        function handleMessage() {
+            if (gameState.message) {
+                gameState.message();
+                gameState.message = null;
+            }
+            document.getElementById('message').style.display = 'none';
+        }
+
+        // UI更新
+        function updateUI() {
+            document.getElementById('stage').textContent = gameState.stage;
+            document.getElementById('attempts').textContent = gameState.attempts;
+        }
+
+        // 全画面トグル
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // ゲームループ
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
