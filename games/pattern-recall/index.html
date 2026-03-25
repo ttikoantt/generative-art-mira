@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Pattern Recall</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        h1 {
+            color: white;
+            font-size: 1.8em;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .level {
+            color: #ffd700;
+            font-size: 1.2em;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin: 20px auto;
+            max-width: 320px;
+            aspect-ratio: 1;
+        }
+
+        .cell {
+            background: rgba(255, 255, 255, 0.1);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cell.active {
+            background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
+            border-color: #00d2ff;
+            transform: scale(0.95);
+            box-shadow: 0 0 30px rgba(0, 210, 255, 0.6);
+        }
+
+        .cell.correct {
+            background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+            border-color: #00ff88;
+            animation: pulse 0.3s ease;
+        }
+
+        .cell.wrong {
+            background: linear-gradient(135deg, #ff4757 0%, #ff3838 100%);
+            border-color: #ff4757;
+            animation: shake 0.3s ease;
+        }
+
+        .cell:active {
+            transform: scale(0.9);
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        .status {
+            color: white;
+            font-size: 1em;
+            margin: 15px 0;
+            min-height: 30px;
+        }
+
+        .status.watching {
+            color: #ffd700;
+        }
+
+        .status.playing {
+            color: #00ff88;
+        }
+
+        .status.gameover {
+            color: #ff4757;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn.start {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            color: white;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .score-display {
+            color: white;
+            font-size: 1.5em;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <div class="container">
+        <h1>🧠 Pattern Recall</h1>
+        <div class="level" id="levelDisplay">Level 1</div>
+        <div class="score-display" id="scoreDisplay">Score: 0</div>
+
+        <div class="grid" id="grid"></div>
+
+        <div class="status" id="status">Press Start to Play</div>
+
+        <button class="btn start" id="startBtn" onclick="startGame()">Start Game</button>
+    </div>
+
+    <script>
+        const GRID_SIZE = 3;
+        const INITIAL_SEQUENCE_LENGTH = 3;
+        const FLASH_DURATION = 400;
+        const PAUSE_DURATION = 200;
+
+        let sequence = [];
+        let playerIndex = 0;
+        let level = 1;
+        let score = 0;
+        let isPlaying = false;
+        let isShowingPattern = false;
+
+        const grid = document.getElementById('grid');
+        const status = document.getElementById('status');
+        const levelDisplay = document.getElementById('levelDisplay');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const startBtn = document.getElementById('startBtn');
+
+        // Create grid cells
+        for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.dataset.index = i;
+            cell.addEventListener('click', () => handleCellClick(i));
+            cell.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                handleCellClick(i);
+            });
+            grid.appendChild(cell);
+        }
+
+        function getSequenceLength() {
+            return INITIAL_SEQUENCE_LENGTH + level - 1;
+        }
+
+        function generateSequence() {
+            sequence = [];
+            const length = getSequenceLength();
+            for (let i = 0; i < length; i++) {
+                sequence.push(Math.floor(Math.random() * (GRID_SIZE * GRID_SIZE)));
+            }
+        }
+
+        async function showPattern() {
+            isShowingPattern = true;
+            status.textContent = 'Watch carefully...';
+            status.className = 'status watching';
+            startBtn.style.display = 'none';
+
+            await sleep(500);
+
+            for (let i = 0; i < sequence.length; i++) {
+                await flashCell(sequence[i]);
+            }
+
+            await sleep(300);
+
+            isShowingPattern = false;
+            playerIndex = 0;
+            status.textContent = 'Your turn!';
+            status.className = 'status playing';
+        }
+
+        function flashCell(index) {
+            return new Promise(resolve => {
+                const cell = grid.children[index];
+                cell.classList.add('active');
+
+                setTimeout(() => {
+                    cell.classList.remove('active');
+                    setTimeout(resolve, PAUSE_DURATION);
+                }, FLASH_DURATION);
+            });
+        }
+
+        function handleCellClick(index) {
+            if (!isPlaying || isShowingPattern) return;
+
+            const cell = grid.children[index];
+
+            if (index === sequence[playerIndex]) {
+                // Correct
+                cell.classList.add('correct');
+                setTimeout(() => cell.classList.remove('correct'), 300);
+
+                playerIndex++;
+
+                if (playerIndex >= sequence.length) {
+                    // Level complete
+                    score += level * 10;
+                    scoreDisplay.textContent = `Score: ${score}`;
+                    level++;
+                    levelDisplay.textContent = `Level ${level}`;
+                    status.textContent = 'Correct! Next level...';
+                    status.className = 'status';
+
+                    setTimeout(() => {
+                        generateSequence();
+                        showPattern();
+                    }, 1000);
+                }
+            } else {
+                // Wrong
+                cell.classList.add('wrong');
+                setTimeout(() => cell.classList.remove('wrong'), 300);
+                gameOver();
+            }
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            status.textContent = `Game Over! Final Score: ${score}`;
+            status.className = 'status gameover';
+            startBtn.textContent = 'Play Again';
+            startBtn.style.display = 'inline-block';
+
+            // Flash all cells to show game over
+            for (let i = 0; i < grid.children.length; i++) {
+                setTimeout(() => {
+                    grid.children[i].classList.add('wrong');
+                    setTimeout(() => grid.children[i].classList.remove('wrong'), 500);
+                }, i * 50);
+            }
+        }
+
+        function startGame() {
+            level = 1;
+            score = 0;
+            isPlaying = true;
+            levelDisplay.textContent = `Level ${level}`;
+            scoreDisplay.textContent = `Score: ${score}`;
+
+            generateSequence();
+            showPattern();
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
