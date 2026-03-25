@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warp Speed Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 25px;
+            border-radius: 50px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 150, 255, 0.3);
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .control-group label {
+            color: #6496ff;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .control-group input[type="range"] {
+            width: 120px;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: linear-gradient(to right, #1a3a6e, #6496ff);
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #6496ff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px #6496ff;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(100, 150, 255, 0.2);
+            border: 1px solid rgba(100, 150, 255, 0.5);
+            color: #6496ff;
+            padding: 12px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(100, 150, 255, 0.4);
+            box-shadow: 0 0 20px rgba(100, 150, 255, 0.5);
+        }
+
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #6496ff;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            z-index: 100;
+            text-shadow: 0 0 10px rgba(100, 150, 255, 0.8);
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-wrap: wrap;
+                justify-content: center;
+                padding: 12px 18px;
+                gap: 10px;
+            }
+
+            .control-group input[type="range"] {
+                width: 80px;
+            }
+
+            .title {
+                font-size: 11px;
+                letter-spacing: 2px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="title">⚡ Warp Speed Visualizer ⚡</div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">Full Screen</button>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>Speed</label>
+            <input type="range" id="speed" min="1" max="100" value="30">
+        </div>
+        <div class="control-group">
+            <label>Stars</label>
+            <input type="range" id="starCount" min="100" max="2000" value="800">
+        </div>
+        <div class="control-group">
+            <label>Trail</label>
+            <input type="range" id="trail" min="0" max="100" value="85">
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let centerX, centerY;
+        let stars = [];
+        let speed = 30;
+        let starCount = 800;
+        let trail = 85;
+        let warpFactor = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+
+        class Star {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = (Math.random() - 0.5) * width * 2;
+                this.y = (Math.random() - 0.5) * height * 2;
+                this.z = Math.random() * 1000 + 500;
+                this.pz = this.z;
+                this.color = this.getRandomColor();
+                this.size = Math.random() * 2 + 1;
+            }
+
+            getRandomColor() {
+                const colors = [
+                    '#ffffff',
+                    '#aaccff',
+                    '#ffccaa',
+                    '#aaffcc',
+                    '#ffccff',
+                    '#ccffff'
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update() {
+                this.pz = this.z;
+                this.z -= speed * (1 + warpFactor * 2);
+
+                if (this.z <= 0) {
+                    this.reset();
+                    this.z = 1000;
+                    this.pz = 1000;
+                }
+            }
+
+            draw() {
+                const sx = (this.x / this.z) * 500 + centerX;
+                const sy = (this.y / this.z) * 500 + centerY;
+
+                const px = (this.x / this.pz) * 500 + centerX;
+                const py = (this.y / this.pz) * 500 + centerY;
+
+                if (sx < 0 || sx > width || sy < 0 || sy > height) {
+                    return;
+                }
+
+                const brightness = Math.max(0, 1 - this.z / 1500);
+                const size = this.size * brightness * (1 + warpFactor);
+
+                // Draw trail
+                if (speed > 5) {
+                    ctx.beginPath();
+                    ctx.moveTo(px, py);
+                    ctx.lineTo(sx, sy);
+                    ctx.strokeStyle = this.color;
+                    ctx.lineWidth = size;
+                    ctx.globalAlpha = brightness * 0.8;
+                    ctx.stroke();
+                }
+
+                // Draw star
+                ctx.beginPath();
+                ctx.arc(sx, sy, size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = brightness;
+                ctx.fill();
+
+                // Glow effect
+                if (brightness > 0.7) {
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, size * 3, 0, Math.PI * 2);
+                    const gradient = ctx.createRadialGradient(sx, sy, 0, sx, sy, size * 3);
+                    gradient.addColorStop(0, this.color);
+                    gradient.addColorStop(1, 'transparent');
+                    ctx.fillStyle = gradient;
+                    ctx.globalAlpha = brightness * 0.3;
+                    ctx.fill();
+                }
+            }
+        }
+
+        function initStars() {
+            stars = [];
+            for (let i = 0; i < starCount; i++) {
+                stars.push(new Star());
+            }
+        }
+
+        function animate() {
+            // Fade effect
+            ctx.fillStyle = `rgba(0, 0, 0, ${(100 - trail) / 100})`;
+            ctx.fillRect(0, 0, width, height);
+
+            // Update warp factor based on speed
+            const targetWarp = Math.max(0, (speed - 50) / 50);
+            warpFactor += (targetWarp - warpFactor) * 0.05;
+
+            // Update and draw stars
+            ctx.globalAlpha = 1;
+            stars.forEach(star => {
+                star.update();
+                star.draw();
+            });
+
+            // Add warp tunnel effect at high speeds
+            if (warpFactor > 0.3) {
+                ctx.save();
+                ctx.globalAlpha = warpFactor * 0.1;
+                const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, Math.min(width, height) / 2);
+                gradient.addColorStop(0, 'rgba(100, 150, 255, 0)');
+                gradient.addColorStop(0.5, 'rgba(100, 150, 255, 0.1)');
+                gradient.addColorStop(1, 'rgba(50, 100, 255, 0.2)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, width, height);
+                ctx.restore();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Event listeners
+        document.getElementById('speed').addEventListener('input', (e) => {
+            speed = parseInt(e.target.value);
+        });
+
+        document.getElementById('starCount').addEventListener('input', (e) => {
+            starCount = parseInt(e.target.value);
+            initStars();
+        });
+
+        document.getElementById('trail').addEventListener('input', (e) => {
+            trail = parseInt(e.target.value);
+        });
+
+        window.addEventListener('resize', () => {
+            resize();
+            initStars();
+        });
+
+        // Touch controls for mobile
+        let touchStartX = 0;
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touchX = e.touches[0].clientX;
+            const diff = touchX - touchStartX;
+            speed = Math.max(1, Math.min(100, speed + diff * 0.1));
+            document.getElementById('speed').value = speed;
+            touchStartX = touchX;
+        });
+
+        // Initialize
+        resize();
+        initStars();
+        animate();
+    </script>
+</body>
+</html>
