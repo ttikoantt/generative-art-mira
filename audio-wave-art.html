@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Wave Art - 音声波形アート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: #fff;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 2em;
+            background: linear-gradient(90deg, #ff6b6b, #4ecdc4, #45b7d1, #f7b731);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        #startBtn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        #startBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        #startBtn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .mode-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .mode-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .mode-btn.active {
+            background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%);
+            border-color: transparent;
+        }
+
+        #canvas {
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            max-width: 100%;
+            height: auto;
+        }
+
+        .info {
+            margin-top: 20px;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5em;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
+
+    <div class="header">
+        <h1>🎵 Audio Wave Art</h1>
+        <p>音声を美しいアートに変換</p>
+    </div>
+
+    <div class="controls">
+        <button id="startBtn">🎤 マイクを開始</button>
+        <button class="mode-btn active" data-mode="wave">波形</button>
+        <button class="mode-btn" data-mode="bars">周波数</button>
+        <button class="mode-btn" data-mode="circle">サークル</button>
+        <button class="mode-btn" data-mode="particles">パーティクル</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="info">
+        <p>マイクを許可して、音に合わせてアートを楽しんでください</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const modeBtns = document.querySelectorAll('.mode-btn');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let dataArray;
+        let bufferLength;
+        let animationId;
+        let currentMode = 'wave';
+        let particles = [];
+        let time = 0;
+
+        // Canvasサイズ設定
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 800);
+            const maxHeight = Math.min(window.innerHeight - 250, 500);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 全画面表示
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                canvas.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // モード切り替え
+        modeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                modeBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentMode = btn.dataset.mode;
+                if (currentMode === 'particles') {
+                    initParticles();
+                }
+            });
+        });
+
+        // パーティクル初期化
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < 100; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: (Math.random() - 0.5) * 2,
+                    size: Math.random() * 3 + 1,
+                    hue: Math.random() * 360
+                });
+            }
+        }
+
+        // マイク開始
+        startBtn.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+
+                analyser.fftSize = 256;
+                bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                startBtn.disabled = true;
+                startBtn.textContent = '🎵 録音中...';
+                initParticles();
+                animate();
+            } catch (err) {
+                alert('マイクへのアクセスができませんでした: ' + err.message);
+            }
+        });
+
+        // アニメーション
+        function animate() {
+            animationId = requestAnimationFrame(animate);
+            time += 0.01;
+
+            analyser.getByteFrequencyData(dataArray);
+
+            // 背景
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (currentMode === 'wave') {
+                drawWaveform();
+            } else if (currentMode === 'bars') {
+                drawFrequencyBars();
+            } else if (currentMode === 'circle') {
+                drawCircle();
+            } else if (currentMode === 'particles') {
+                drawParticles();
+            }
+        }
+
+        // 波形表示
+        function drawWaveform() {
+            analyser.getByteTimeDomainData(dataArray);
+
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = `hsl(${(time * 50) % 360}, 70%, 60%)`;
+            ctx.beginPath();
+
+            const sliceWidth = canvas.width / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * canvas.height) / 2;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
+
+            // グロー効果
+            ctx.shadowColor = `hsl(${(time * 50) % 360}, 70%, 60%)`;
+            ctx.shadowBlur = 20;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+
+        // 周波数バー
+        function drawFrequencyBars() {
+            const barWidth = (canvas.width / bufferLength) * 2.5;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const barHeight = (dataArray[i] / 255) * canvas.height * 0.8;
+                const hue = (i / bufferLength) * 360 + time * 20;
+
+                const gradient = ctx.createLinearGradient(0, canvas.height - barHeight, 0, canvas.height);
+                gradient.addColorStop(0, `hsla(${hue}, 70%, 60%, 0.9)`);
+                gradient.addColorStop(1, `hsla(${hue + 30}, 70%, 40%, 0.3)`);
+
+                ctx.fillStyle = gradient;
+                ctx.fillRect(x, canvas.height - barHeight, barWidth - 2, barHeight);
+
+                x += barWidth;
+            }
+        }
+
+        // サークル表示
+        function drawCircle() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) * 0.25;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const angle = (i / bufferLength) * Math.PI * 2 - Math.PI / 2;
+                const amplitude = (dataArray[i] / 255) * radius;
+                const hue = (i / bufferLength) * 360 + time * 20;
+
+                const x1 = centerX + Math.cos(angle) * radius;
+                const y1 = centerY + Math.sin(angle) * radius;
+                const x2 = centerX + Math.cos(angle) * (radius + amplitude);
+                const y2 = centerY + Math.sin(angle) * (radius + amplitude);
+
+                ctx.strokeStyle = `hsla(${hue}, 70%, 60%, 0.8)`;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+
+                // 内円
+                ctx.fillStyle = `hsla(${hue}, 70%, 60%, 0.5)`;
+                ctx.beginPath();
+                ctx.arc(x2, y2, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // パーティクル表示
+        function drawParticles() {
+            const avgFreq = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
+            const energy = avgFreq / 255;
+
+            particles.forEach((p, i) => {
+                const freq = dataArray[i % bufferLength] / 255;
+                const speed = 1 + freq * 5 * energy;
+
+                p.x += p.vx * speed;
+                p.y += p.vy * speed;
+
+                if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+                if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+
+                const size = p.size * (1 + freq * 3);
+                const hue = (p.hue + time * 30 + freq * 100) % 360;
+                const alpha = 0.3 + freq * 0.7;
+
+                ctx.fillStyle = `hsla(${hue}, 70%, 60%, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 接続線
+                particles.forEach((p2, j) => {
+                    if (i >= j) return;
+                    const dx = p.x - p2.x;
+                    const dy = p.y - p2.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 100 * (1 + energy)) {
+                        ctx.strokeStyle = `hsla(${hue}, 70%, 60%, ${(1 - dist / 100) * 0.2})`;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.stroke();
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>
