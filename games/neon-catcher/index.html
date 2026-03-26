@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Neon Catcher</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .score {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        .lives {
+            display: flex;
+            gap: 5px;
+        }
+
+        .life {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #ff006e;
+            box-shadow: 0 0 10px #ff006e;
+        }
+
+        .start-screen, .game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(10, 10, 15, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .start-screen h1, .game-over-screen h1 {
+            font-size: 48px;
+            color: #ff006e;
+            text-shadow: 0 0 20px #ff006e;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .start-screen p, .game-over-screen p {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 18px;
+            margin-bottom: 30px;
+            text-align: center;
+            max-width: 80%;
+        }
+
+        .start-btn {
+            background: linear-gradient(135deg, #ff006e, #8338ec);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            pointer-events: auto;
+            transition: transform 0.2s;
+            box-shadow: 0 0 20px rgba(255, 0, 110, 0.5);
+        }
+
+        .start-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .final-score {
+            font-size: 36px;
+            color: #00f5ff;
+            margin: 20px 0;
+            text-shadow: 0 0 20px #00f5ff;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 50;
+            transition: all 0.3s;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="ui">
+        <div class="score">SCORE: <span id="score">0</span></div>
+        <div class="lives" id="lives"></div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="start-screen" id="startScreen">
+        <h1>NEON CATCHER</h1>
+        <p>落ちてくるネオンの光をキャッチ！<br>赤い光は避けて！</p>
+        <button class="start-btn" onclick="startGame()">START</button>
+    </div>
+
+    <div class="game-over-screen hidden" id="gameOverScreen">
+        <h1>GAME OVER</h1>
+        <div class="final-score" id="finalScore">0</div>
+        <button class="start-btn" onclick="startGame()">RETRY</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let gameRunning = false;
+        let score = 0;
+        let lives = 3;
+
+        // プレイヤー
+        let player = {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 15
+        };
+
+        // ネオンオーブ
+        let orbs = [];
+        const colors = ['#00f5ff', '#ffbe0b', '#8338ec', '#06ffa5', '#ff006e'];
+
+        // パーティクル
+        let particles = [];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            player.y = height - 80;
+            player.x = width / 2 - player.width / 2;
+        }
+
+        function spawnOrb() {
+            const isBad = Math.random() < 0.2; // 20%の確率で悪玉
+            const size = 15 + Math.random() * 20;
+            orbs.push({
+                x: Math.random() * (width - size * 2) + size,
+                y: -size,
+                size: size,
+                speed: 2 + Math.random() * 3 + score * 0.1,
+                color: isBad ? '#ff006e' : colors[Math.floor(Math.random() * (colors.length - 1))],
+                isBad: isBad,
+                rotation: 0,
+                rotationSpeed: (Math.random() - 0.5) * 0.1
+            });
+        }
+
+        function createParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    size: 2 + Math.random() * 4,
+                    color: color,
+                    life: 1
+                });
+            }
+        }
+
+        function updateLives() {
+            const livesEl = document.getElementById('lives');
+            livesEl.innerHTML = '';
+            for (let i = 0; i < lives; i++) {
+                const life = document.createElement('div');
+                life.className = 'life';
+                livesEl.appendChild(life);
+            }
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            // オーブ更新
+            orbs = orbs.filter(orb => {
+                orb.y += orb.speed;
+                orb.rotation += orb.rotationSpeed;
+
+                // プレイヤーとの衝突判定
+                if (orb.y + orb.size > player.y &&
+                    orb.y - orb.size < player.y + player.height &&
+                    orb.x + orb.size > player.x &&
+                    orb.x - orb.size < player.x + player.width) {
+
+                    createParticles(orb.x, orb.y, orb.color, 15);
+
+                    if (orb.isBad) {
+                        lives--;
+                        updateLives();
+                        if (lives <= 0) {
+                            gameOver();
+                        }
+                    } else {
+                        score += Math.floor(orb.size);
+                        document.getElementById('score').textContent = score;
+                    }
+                    return false;
+                }
+
+                // 画面外
+                return orb.y < height + 50;
+            });
+
+            // パーティクル更新
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.2; // 重力
+                p.life -= 0.02;
+                return p.life > 0;
+            });
+
+            // オーブ生成
+            if (Math.random() < 0.02 + score * 0.0001) {
+                spawnOrb();
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, width, height);
+
+            // グリッド背景
+            ctx.strokeStyle = 'rgba(255, 0, 110, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < width; i += 50) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, height);
+                ctx.stroke();
+            }
+            for (let i = 0; i < height; i += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(width, i);
+                ctx.stroke();
+            }
+
+            if (gameRunning) {
+                // オーブ描画
+                orbs.forEach(orb => {
+                    ctx.save();
+                    ctx.translate(orb.x, orb.y);
+                    ctx.rotate(orb.rotation);
+
+                    // グロー効果
+                    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, orb.size);
+                    gradient.addColorStop(0, orb.color);
+                    gradient.addColorStop(0.5, orb.color + '80');
+                    gradient.addColorStop(1, 'transparent');
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, orb.size * 2, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // 核心
+                    ctx.fillStyle = orb.color;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, orb.size * 0.5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.restore();
+                });
+
+                // パーティクル描画
+                particles.forEach(p => {
+                    ctx.globalAlpha = p.life;
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1;
+
+                // プレイヤー描画
+                const gradient = ctx.createLinearGradient(player.x, player.y, player.x + player.width, player.y);
+                gradient.addColorStop(0, '#00f5ff');
+                gradient.addColorStop(0.5, '#8338ec');
+                gradient.addColorStop(1, '#ff006e');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(player.x, player.y, player.width, player.height);
+
+                // グロー
+                ctx.shadowColor = '#00f5ff';
+                ctx.shadowBlur = 20;
+                ctx.fillRect(player.x, player.y, player.width, player.height);
+                ctx.shadowBlur = 0;
+            }
+
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
+        }
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            lives = 3;
+            orbs = [];
+            particles = [];
+            document.getElementById('score').textContent = '0';
+            updateLives();
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        // タッチ/マウス操作
+        function handleMove(clientX) {
+            if (!gameRunning) return;
+            player.x = Math.max(0, Math.min(width - player.width, clientX - player.width / 2));
+        }
+
+        canvas.addEventListener('mousemove', (e) => handleMove(e.clientX));
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            handleMove(e.touches[0].clientX);
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+        updateLives();
+        draw();
+    </script>
+</body>
+</html>
