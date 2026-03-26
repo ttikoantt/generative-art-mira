@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Flow Symphony</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 24px;
+            font-weight: 300;
+            letter-spacing: 3px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="title">Particle Flow Symphony</div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    <canvas id="canvas"></canvas>
+    <div class="info">マウスを動かすとパーティクルに影響します</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let mouse = { x: 0, y: 0, radius: 150 };
+        let time = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Simplex Noise implementation
+        class SimplexNoise {
+            constructor() {
+                this.p = new Uint8Array(256);
+                for (let i = 0; i < 256; i++) this.p[i] = i;
+                for (let i = 255; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [this.p[i], this.p[j]] = [this.p[j], this.p[i]];
+                }
+                this.perm = new Uint8Array(512);
+                for (let i = 0; i < 512; i++) this.perm[i] = this.p[i & 255];
+            }
+
+            noise2D(x, y) {
+                const F2 = 0.5 * (Math.sqrt(3) - 1);
+                const G2 = (3 - Math.sqrt(3)) / 6;
+                let s = (x + y) * F2;
+                let i = Math.floor(x + s);
+                let j = Math.floor(y + s);
+                let t = (i + j) * G2;
+                let X0 = i - t;
+                let Y0 = j - t;
+                let x0 = x - X0;
+                let y0 = y - Y0;
+
+                let i1, j1;
+                if (x0 > y0) { i1 = 1; j1 = 0; }
+                else { i1 = 0; j1 = 1; }
+
+                let x1 = x0 - i1 + G2;
+                let y1 = y0 - j1 + G2;
+                let x2 = x0 - 1 + 2 * G2;
+                let y2 = y0 - 1 + 2 * G2;
+
+                let ii = i & 255;
+                let jj = j & 255;
+
+                let n0 = 0, n1 = 0, n2 = 0;
+
+                let t0 = 0.5 - x0 * x0 - y0 * y0;
+                if (t0 >= 0) {
+                    let gi0 = this.perm[ii + this.perm[jj]] % 12;
+                    t0 *= t0;
+                    n0 = t0 * t0 * this.dot2(gi0, x0, y0);
+                }
+
+                let t1 = 0.5 - x1 * x1 - y1 * y1;
+                if (t1 >= 0) {
+                    let gi1 = this.perm[ii + i1 + this.perm[jj + j1]] % 12;
+                    t1 *= t1;
+                    n1 = t1 * t1 * this.dot2(gi1, x1, y1);
+                }
+
+                let t2 = 0.5 - x2 * x2 - y2 * y2;
+                if (t2 >= 0) {
+                    let gi2 = this.perm[ii + 1 + this.perm[jj + 1]] % 12;
+                    t2 *= t2;
+                    n2 = t2 * t2 * this.dot2(gi2, x2, y2);
+                }
+
+                return 70 * (n0 + n1 + n2);
+            }
+
+            dot2(g, x, y) {
+                const grad3 = [
+                    [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
+                    [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+                    [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
+                ];
+                return grad3[g][0] * x + grad3[g][1] * y;
+            }
+        }
+
+        const noise = new SimplexNoise();
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.size = Math.random() * 2 + 1;
+                this.speed = Math.random() * 0.5 + 0.3;
+                this.life = 1;
+                this.hue = Math.random() * 60 + 180; // Blue to cyan range
+            }
+
+            update() {
+                // Get flow field from noise
+                const scale = 0.003;
+                const angle = noise.noise2D(this.x * scale, this.y * scale + time * 0.1) * Math.PI * 2;
+
+                // Apply flow
+                this.x += Math.cos(angle) * this.speed;
+                this.y += Math.sin(angle) * this.speed;
+
+                // Mouse interaction
+                const dx = this.x - mouse.x;
+                const dy = this.y - mouse.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < mouse.radius) {
+                    const force = (mouse.radius - dist) / mouse.radius;
+                    this.x += dx * force * 0.1;
+                    this.y += dy * force * 0.1;
+                    this.hue = (this.hue + 1) % 360;
+                }
+
+                // Wrap around
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+
+                // Cycle hue
+                this.hue = (this.hue + 0.1) % 360;
+            }
+
+            draw() {
+                const alpha = 0.6;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        function init() {
+            particles = [];
+            const count = Math.min(1500, (width * height) / 800);
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function animate() {
+            // Fade effect
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            time += 0.01;
+            requestAnimationFrame(animate);
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        }, { passive: false });
+
+        window.addEventListener('resize', () => {
+            resize();
+            init();
+        });
+
+        resize();
+        init();
+        animate();
+    </script>
+</body>
+</html>
