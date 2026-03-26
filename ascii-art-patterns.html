@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Art Pattern Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            color: #00ff00;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            padding: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        h1 {
+            font-size: clamp(1.5rem, 4vw, 3rem);
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px #00ff00, 0 0 20px #00ff00;
+            animation: glow 2s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% { text-shadow: 0 0 10px #00ff00, 0 0 20px #00ff00; }
+            50% { text-shadow: 0 0 20px #00ff00, 0 0 40px #00ff00, 0 0 60px #00ff00; }
+        }
+
+        #asciiCanvas {
+            background: #000;
+            border: 2px solid #00ff00;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 20px auto;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        button {
+            background: transparent;
+            border: 2px solid #00ff00;
+            color: #00ff00;
+            padding: 12px 24px;
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #00ff00;
+            color: #000;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        }
+
+        .info {
+            margin-top: 20px;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 255, 0, 0.1);
+            border: 2px solid #00ff00;
+            color: #00ff00;
+            padding: 10px 20px;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            z-index: 1000;
+        }
+
+        .fullscreen-btn:hover {
+            background: #00ff00;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="container">
+        <h1>⌨️ ASCII Art Pattern Generator</h1>
+        <canvas id="asciiCanvas"></canvas>
+        <div class="controls">
+            <button onclick="changePattern()">パターン変更</button>
+            <button onclick="changeSpeed()">速度変更</button>
+            <button onclick="changeCharset()">文字セット変更</button>
+            <button onclick="toggleAnimation()">一時停止/再生</button>
+        </div>
+        <div class="info">
+            <p>パターン: <span id="patternName">Waves</span> | 速度: <span id="speedLevel">中</span></p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('asciiCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvas size setup
+        function setupCanvas() {
+            const size = Math.min(window.innerWidth - 40, 800);
+            canvas.width = size;
+            canvas.height = size * 0.75;
+        }
+        setupCanvas();
+        window.addEventListener('resize', setupCanvas);
+
+        // Pattern configurations
+        const patterns = ['waves', 'spirals', 'matrix', 'geometric', 'particles'];
+        let currentPattern = 0;
+        let isAnimating = true;
+        let animationId = null;
+
+        // Speed control
+        const speeds = [0.5, 1, 2, 3];
+        let currentSpeed = 1;
+
+        // Character sets
+        const charsets = [
+            '░▒▓█',  // Block characters
+            '·●○◎',  // Circle characters
+            '┼╋╬█',  // Line characters
+            '⌂⌂⌂■',  // Special characters
+            '▁▂▃▄▅▆▇█'  // Bar characters
+        ];
+        let currentCharset = 0;
+
+        // Animation state
+        let time = 0;
+        let particles = [];
+
+        // Initialize particles
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < 100; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: (Math.random() - 0.5) * 2,
+                    life: Math.random() * 100
+                });
+            }
+        }
+        initParticles();
+
+        // Get character based on value
+        function getChar(value) {
+            const charset = charsets[currentCharset];
+            const index = Math.floor(value * (charset.length - 1));
+            return charset[index];
+        }
+
+        // Draw pattern
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Font settings
+            const fontSize = Math.max(8, Math.floor(canvas.width / 80));
+            ctx.font = `${fontSize}px 'Courier New', monospace`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            const cols = Math.floor(canvas.width / (fontSize * 0.6));
+            const rows = Math.floor(canvas.height / fontSize);
+
+            // Draw pattern based on current mode
+            switch (patterns[currentPattern]) {
+                case 'waves':
+                    drawWaves(cols, rows, fontSize);
+                    break;
+                case 'spirals':
+                    drawSpirals(cols, rows, fontSize);
+                    break;
+                case 'matrix':
+                    drawMatrix(cols, rows, fontSize);
+                    break;
+                case 'geometric':
+                    drawGeometric(cols, rows, fontSize);
+                    break;
+                case 'particles':
+                    drawParticles(cols, rows, fontSize);
+                    break;
+            }
+        }
+
+        // Wave pattern
+        function drawWaves(cols, rows, fontSize) {
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const x = col * fontSize * 0.6;
+                    const y = row * fontSize;
+
+                    const value = Math.sin(col * 0.1 + time) * 0.5 +
+                                  Math.cos(row * 0.1 + time * 0.5) * 0.5 +
+                                  Math.sin((col + row) * 0.05 + time * 0.3) * 0.5;
+
+                    const normalized = (value + 1.5) / 3;
+                    const brightness = Math.floor(normalized * 255);
+
+                    ctx.fillStyle = `rgb(0, ${brightness}, ${Math.floor(brightness * 0.5)})`;
+                    ctx.fillText(getChar(normalized), x, y);
+                }
+            }
+        }
+
+        // Spiral pattern
+        function drawSpirals(cols, rows, fontSize) {
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const x = col * fontSize * 0.6;
+                    const y = row * fontSize;
+
+                    const dx = col - cols / 2;
+                    const dy = row - rows / 2;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const angle = Math.atan2(dy, dx);
+
+                    const value = Math.sin(dist * 0.2 - time * 2 + angle * 3);
+
+                    const normalized = (value + 1) / 2;
+                    const hue = (normalized * 360 + time * 50) % 360;
+
+                    ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                    ctx.fillText(getChar(normalized), x, y);
+                }
+            }
+        }
+
+        // Matrix rain
+        function drawMatrix(cols, rows, fontSize) {
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const x = col * fontSize * 0.6;
+                    const y = row * fontSize;
+
+                    const value = Math.sin(col * 0.3 - time * 3 + row * 0.1);
+                    const normalized = (value + 1) / 2;
+
+                    const brightness = normalized > 0.7 ? 255 : normalized * 100;
+
+                    ctx.fillStyle = `rgb(0, ${brightness}, 0)`;
+                    ctx.fillText(getChar(normalized), x, y);
+                }
+            }
+        }
+
+        // Geometric pattern
+        function drawGeometric(cols, rows, fontSize) {
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const x = col * fontSize * 0.6;
+                    const y = row * fontSize;
+
+                    const value1 = Math.sin(col * 0.2 + time);
+                    const value2 = Math.cos(row * 0.2 + time * 0.7);
+                    const combined = value1 * value2;
+
+                    const normalized = (combined + 1) / 2;
+                    const intensity = Math.floor(normalized * 255);
+
+                    ctx.fillStyle = `rgb(${intensity}, ${Math.floor(intensity * 0.5)}, ${Math.floor(intensity * 0.8)})`;
+                    ctx.fillText(getChar(normalized), x, y);
+                }
+            }
+        }
+
+        // Particle pattern
+        function drawParticles(cols, rows, fontSize) {
+            // Create field
+            const field = Array(cols).fill().map(() => Array(rows).fill(0));
+
+            // Update and draw particles
+            particles.forEach((p, i) => {
+                // Update position
+                p.x += p.vx * currentSpeed;
+                p.y += p.vy * currentSpeed;
+                p.life -= 0.5 * currentSpeed;
+
+                // Wrap around
+                if (p.x < 0) p.x = canvas.width;
+                if (p.x > canvas.width) p.x = 0;
+                if (p.y < 0) p.y = canvas.height;
+                if (p.y > canvas.height) p.y = 0;
+
+                // Reset if dead
+                if (p.life <= 0) {
+                    p.x = Math.random() * canvas.width;
+                    p.y = Math.random() * canvas.height;
+                    p.vx = (Math.random() - 0.5) * 2;
+                    p.vy = (Math.random() - 0.5) * 2;
+                    p.life = 100;
+                }
+
+                // Add to field
+                const col = Math.floor(p.x / (fontSize * 0.6));
+                const row = Math.floor(p.y / fontSize);
+                if (col >= 0 && col < cols && row >= 0 && row < rows) {
+                    field[col][row] = Math.min(1, field[col][row] + p.life / 100);
+                }
+            });
+
+            // Draw field
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    if (field[col][row] > 0) {
+                        const x = col * fontSize * 0.6;
+                        const y = row * fontSize;
+
+                        const normalized = field[col][row];
+                        const brightness = Math.floor(normalized * 255);
+
+                        ctx.fillStyle = `rgb(${brightness}, ${Math.floor(brightness * 0.8)}, ${Math.floor(brightness * 0.5)})`;
+                        ctx.fillText(getChar(normalized), x, y);
+                    }
+                }
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            if (!isAnimating) return;
+
+            time += 0.016 * currentSpeed;
+            draw();
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // Control functions
+        function changePattern() {
+            currentPattern = (currentPattern + 1) % patterns.length;
+            document.getElementById('patternName').textContent =
+                patterns[currentPattern].charAt(0).toUpperCase() + patterns[currentPattern].slice(1);
+
+            // Reset particles for particle pattern
+            if (patterns[currentPattern] === 'particles') {
+                initParticles();
+            }
+        }
+
+        function changeSpeed() {
+            currentSpeed = (currentSpeed + 1) % speeds.length;
+            const speedText = ['遅い', '中', '速い', '超高速'][currentSpeed];
+            document.getElementById('speedLevel').textContent = speedText;
+        }
+
+        function changeCharset() {
+            currentCharset = (currentCharset + 1) % charsets.length;
+        }
+
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+            if (isAnimating) {
+                animate();
+            } else if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>
