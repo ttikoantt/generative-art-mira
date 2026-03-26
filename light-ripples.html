@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>光の波紋 - Light Ripples</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+            z-index: 10;
+        }
+
+        .container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            cursor: pointer;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .hint {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    <div class="container">
+        <h1>✨ 光の波紋 - Light Ripples</h1>
+        <canvas id="canvas"></canvas>
+    </div>
+    <p class="hint">クリックまたはタップして波紋を作成</p>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let ripples = [];
+        let hue = 0;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = Math.max(canvas.width, canvas.height) * 0.4;
+                this.hue = hue;
+                this.alpha = 1;
+                this.lineWidth = 3;
+            }
+
+            update() {
+                this.radius += 3;
+                this.alpha = 1 - (this.radius / this.maxRadius);
+                this.lineWidth = 3 * this.alpha;
+            }
+
+            draw() {
+                if (this.alpha <= 0) return;
+
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+
+                // 外側の波紋
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsl(${this.hue}, 80%, 60%)`;
+                ctx.lineWidth = this.lineWidth;
+                ctx.stroke();
+
+                // 内側の波紋（少し遅れて）
+                if (this.radius > 20) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius - 20, 0, Math.PI * 2);
+                    ctx.strokeStyle = `hsl(${(this.hue + 30) % 360}, 80%, 60%)`;
+                    ctx.lineWidth = this.lineWidth * 0.7;
+                    ctx.stroke();
+                }
+
+                // 中心の光
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius * 0.3
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${this.alpha * 0.5})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 70%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.alpha <= 0;
+            }
+        }
+
+        function createRipple(x, y) {
+            ripples.push(new Ripple(x, y));
+            hue = (hue + 45) % 360;
+        }
+
+        canvas.addEventListener('click', (e) => {
+            createRipple(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            createRipple(touch.clientX, touch.clientY);
+        });
+
+        // マウスドラッグでも波紋を作成
+        let isDragging = false;
+        canvas.addEventListener('mousedown', () => isDragging = true);
+        canvas.addEventListener('mouseup', () => isDragging = false);
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging && Math.random() > 0.9) {
+                createRipple(e.clientX, e.clientY);
+            }
+        });
+
+        function animate() {
+            // フェードアウト効果
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 波紋の更新と描画
+            ripples = ripples.filter(ripple => {
+                ripple.update();
+                ripple.draw();
+                return !ripple.isDead();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
