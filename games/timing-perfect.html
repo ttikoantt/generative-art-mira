@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Timing Perfect</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: manipulation;
+        }
+        #gameCanvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        .ui {
+            position: fixed;
+            pointer-events: none;
+            z-index: 100;
+        }
+        .score {
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+        }
+        .score-value {
+            font-size: 48px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+        .score-label {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+            letter-spacing: 2px;
+        }
+        .combo {
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .combo.show {
+            opacity: 1;
+        }
+        .best {
+            top: 20px;
+            right: 20px;
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: rgba(255, 255, 255, 0.8);
+            padding: 10px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+            z-index: 100;
+            pointer-events: auto;
+        }
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .feedback {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 36px;
+            font-weight: bold;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 200;
+        }
+        .feedback.perfect {
+            color: #00ff88;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.8);
+        }
+        .feedback.good {
+            color: #ffcc00;
+            text-shadow: 0 0 20px rgba(255, 204, 0, 0.8);
+        }
+        .feedback.miss {
+            color: #ff4444;
+            text-shadow: 0 0 20px rgba(255, 68, 68, 0.8);
+        }
+        .feedback.show {
+            opacity: 1;
+            animation: feedbackPop 0.5s ease-out;
+        }
+        @keyframes feedbackPop {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+        }
+        .tutorial {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui score">
+        <div class="score-value" id="score">0</div>
+        <div class="score-label">SCORE</div>
+    </div>
+    <div class="ui combo" id="combo">COMBO x2!</div>
+    <div class="ui best" id="best">BEST: 0</div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+    <div class="feedback" id="feedback"></div>
+    <div class="tutorial" id="tutorial">Tap when circles overlap!</div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const comboEl = document.getElementById('combo');
+        const bestEl = document.getElementById('best');
+        const feedbackEl = document.getElementById('feedback');
+        const tutorialEl = document.getElementById('tutorial');
+
+        let width, height, centerX, centerY;
+        let score = 0;
+        let combo = 0;
+        let bestScore = parseInt(localStorage.getItem('timingPerfectBest')) || 0;
+        let angle = 0;
+        let speed = 0.03;
+        let baseSpeed = 0.03;
+        let targetAngle = 0;
+        let targetSize = 60;
+        let circleRadius = 100;
+        let circleDistance = 80;
+        let gameStarted = false;
+        let tapCount = 0;
+
+        bestEl.textContent = `BEST: ${bestScore}`;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+
+            // Responsive sizes
+            circleRadius = Math.min(width, height) * 0.25;
+            circleDistance = circleRadius * 0.7;
+            targetSize = Math.min(width, height) * 0.12;
+        }
+
+        function getCirclePosition() {
+            return {
+                x: centerX + Math.cos(angle) * circleDistance,
+                y: centerY + Math.sin(angle) * circleDistance
+            };
+        }
+
+        function getTargetPosition() {
+            return {
+                x: centerX + Math.cos(targetAngle) * circleDistance,
+                y: centerY + Math.sin(targetAngle) * circleDistance
+            };
+        }
+
+        function drawCircle(x, y, radius, color, glow = false) {
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            if (glow) {
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 20;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function drawTarget(x, y, radius) {
+            // Outer ring
+            ctx.beginPath();
+            ctx.arc(x, y, radius + 15, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Inner target
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0.1)');
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Bullseye
+            ctx.beginPath();
+            ctx.arc(x, y, radius * 0.4, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fill();
+        }
+
+        function checkAccuracy() {
+            const circle = getCirclePosition();
+            const target = getTargetPosition();
+            const distance = Math.sqrt(
+                Math.pow(circle.x - target.x, 2) +
+                Math.pow(circle.y - target.y, 2)
+            );
+
+            const maxDistance = targetSize + 20;
+            const accuracy = 1 - (distance / maxDistance);
+
+            if (accuracy > 0.8) {
+                return 'perfect';
+            } else if (accuracy > 0.4) {
+                return 'good';
+            } else {
+                return 'miss';
+            }
+        }
+
+        function showFeedback(type) {
+            feedbackEl.className = `feedback ${type} show`;
+            feedbackEl.textContent = type === 'perfect' ? 'PERFECT!' :
+                                    type === 'good' ? 'GOOD!' : 'MISS!';
+            setTimeout(() => {
+                feedbackEl.className = 'feedback';
+            }, 500);
+        }
+
+        function handleTap() {
+            if (!gameStarted) {
+                gameStarted = true;
+                tutorialEl.style.opacity = '0';
+            }
+
+            tapCount++;
+
+            const accuracy = checkAccuracy();
+
+            if (accuracy === 'perfect') {
+                score += 100 + combo * 20;
+                combo++;
+                showFeedback('perfect');
+
+                // Increase speed gradually
+                speed = baseSpeed + Math.min(tapCount * 0.002, 0.04);
+
+                // New random target
+                targetAngle = Math.random() * Math.PI * 2;
+            } else if (accuracy === 'good') {
+                score += 50;
+                combo = 0;
+                showFeedback('good');
+                targetAngle = Math.random() * Math.PI * 2;
+            } else {
+                combo = 0;
+                showFeedback('miss');
+            }
+
+            // Update combo display
+            if (combo > 1) {
+                comboEl.textContent = `COMBO x${combo}!`;
+                comboEl.classList.add('show');
+            } else {
+                comboEl.classList.remove('show');
+            }
+
+            // Update score
+            scoreEl.textContent = score;
+
+            // Update best
+            if (score > bestScore) {
+                bestScore = score;
+                bestEl.textContent = `BEST: ${bestScore}`;
+                localStorage.setItem('timingPerfectBest', bestScore);
+            }
+        }
+
+        function draw() {
+            // Clear
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Center hub
+            drawCircle(centerX, centerY, 30, 'rgba(255, 255, 255, 0.1)', true);
+
+            // Draw path
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, circleDistance, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw connector lines
+            const circle = getCirclePosition();
+            const target = getTargetPosition();
+
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(circle.x, circle.y);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // Draw target
+            drawTarget(target.x, target.y, targetSize);
+
+            // Draw moving circle
+            const hue = (angle * 50) % 360;
+            const color = `hsl(${hue}, 70%, 60%)`;
+            drawCircle(circle.x, circle.y, targetSize, color, true);
+
+            // Inner dot
+            ctx.beginPath();
+            ctx.arc(circle.x, circle.y, 8, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+
+            // Update angle
+            angle += speed;
+
+            requestAnimationFrame(draw);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('click', handleTap);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleTap();
+        });
+
+        // Keyboard support
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                handleTap();
+            }
+        });
+
+        // Initialize
+        resize();
+        targetAngle = Math.PI; // Start with target opposite
+        draw();
+    </script>
+</body>
+</html>
