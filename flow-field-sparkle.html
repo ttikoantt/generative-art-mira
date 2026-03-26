@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Flow Field Sparkle</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 12px;
+            z-index: 1000;
+            max-width: 280px;
+            display: none;
+        }
+
+        .controls.visible {
+            display: block;
+        }
+
+        .controls button {
+            background: linear-gradient(135deg, #ff6b6b, #ff8e53);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            margin: 5px 5px 5px 0;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11px;
+            font-family: inherit;
+        }
+
+        .controls button:hover {
+            transform: scale(1.05);
+        }
+
+        .controls label {
+            display: block;
+            margin: 8px 0 4px;
+            color: #ddd;
+        }
+
+        .controls input[type="range"] {
+            width: 100%;
+            margin: 4px 0;
+        }
+
+        .controls .value {
+            color: #ffd93d;
+            font-size: 11px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: inherit;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .fullscreen-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 15px;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 11px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls" id="controls">
+        <div>
+            <button onclick="toggleColors()">色変更</button>
+            <button onclick="reset()">リセット</button>
+            <button onclick="toggleControls()">閉じる</button>
+        </div>
+        <label>パーティクル数: <span class="value" id="particleValue">2000</span></label>
+        <input type="range" id="particleCount" min="500" max="5000" value="2000" onchange="updateParticles()">
+        <label>流れの強さ: <span class="value" id="flowValue">0.5</span></label>
+        <input type="range" id="flowStrength" min="0.1" max="2.0" step="0.1" value="0.5" onchange="updateFlow()">
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="info">
+        <div>Flow Field Sparkle</div>
+        <div style="margin-top:5px;color:#aaa;">タップで操作パネル</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let particleCount = 2000;
+        let flowStrength = 0.5;
+        let colorIndex = 0;
+        let mouse = { x: null, y: null, active: false };
+        let scale = 0.005;
+        let time = 0;
+
+        const colorPalettes = [
+            ['#ff6b6b', '#ff8e53', '#ffd93d', '#6bcb77', '#4d96ff', '#9b59b6'],
+            ['#f72585', '#7209b7', '#3a0ca3', '#4361ee', '#4cc9f0', '#4895ef'],
+            ['#ffbe0b', '#fb5607', '#ff006e', '#8338ec', '#3a86ff', '#06ffa5'],
+            ['#00f5d4', '#00bbf9', '#fee440', '#ff9e00', '#ff4d00', '#f15bb5'],
+            ['#7400b8', '#6930c3', '#5e60ce', '#5390d9', '#4ea8de', '#48bfe3'],
+            ['#e63946', '#f1faee', '#a8dadc', '#457b9d', '#1d3557', '#fb8500']
+        ];
+
+        let colors = colorPalettes[0];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initParticles();
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.size = Math.random() * 2 + 1;
+                this.alpha = Math.random() * 0.5 + 0.5;
+                this.alphaSpeed = (Math.random() - 0.5) * 0.02;
+                this.life = Math.random() * 100 + 100;
+                this.maxLife = this.life;
+            }
+
+            update() {
+                const noise = simplexNoise(this.x * scale, this.y * scale, time * 0.0001);
+                const angle = noise * Math.PI * 4;
+
+                this.vx += Math.cos(angle) * 0.1 * flowStrength;
+                this.vy += Math.sin(angle) * 0.1 * flowStrength;
+
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                if (mouse.active) {
+                    const dx = this.x - mouse.x;
+                    const dy = this.y - mouse.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 150) {
+                        const force = (150 - dist) / 150;
+                        this.vx += (dx / dist) * force * 2;
+                        this.vy += (dy / dist) * force * 2;
+                    }
+                }
+
+                this.alpha += this.alphaSpeed;
+                if (this.alpha > 1 || this.alpha < 0.3) {
+                    this.alphaSpeed *= -1;
+                }
+
+                this.life--;
+
+                if (this.life <= 0 ||
+                    this.x < 0 || this.x > width ||
+                    this.y < 0 || this.y > height) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const lifeAlpha = this.life / this.maxLife;
+                ctx.globalAlpha = this.alpha * lifeAlpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function simplexNoise(x, y, z) {
+            return Math.sin(x) * Math.cos(y) * Math.sin(z) +
+                   Math.sin(x * 2.1 + 1.5) * Math.cos(y * 1.8 + 2.3) * 0.5 +
+                   Math.sin(x * 0.7 + 3.7) * Math.cos(y * 1.3 + 1.1) * 0.25;
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            time++;
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleColors() {
+            colorIndex = (colorIndex + 1) % colorPalettes.length;
+            colors = colorPalettes[colorIndex];
+            particles.forEach(p => {
+                p.color = colors[Math.floor(Math.random() * colors.length)];
+            });
+        }
+
+        function reset() {
+            initParticles();
+        }
+
+        function updateParticles() {
+            particleCount = parseInt(document.getElementById('particleCount').value);
+            document.getElementById('particleValue').textContent = particleCount;
+            initParticles();
+        }
+
+        function updateFlow() {
+            flowStrength = parseFloat(document.getElementById('flowStrength').value);
+            document.getElementById('flowValue').textContent = flowStrength;
+        }
+
+        function toggleControls() {
+            document.getElementById('controls').classList.toggle('visible');
+        }
+
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            mouse.active = false;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.active = false;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('click', toggleControls);
+
+        window.addEventListener('resize', resize);
+        resize();
+        animate();
+    </script>
+</body>
+</html>
