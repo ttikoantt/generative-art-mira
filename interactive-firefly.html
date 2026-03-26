@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Firefly - インタラクティブ・ファイアフライ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        h1 {
+            color: #ffff88;
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px #ffff88, 0 0 20px #ffff00;
+            text-align: center;
+            padding: 0 20px;
+            z-index: 10;
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 0 20px;
+        }
+
+        button {
+            background: rgba(255, 255, 136, 0.2);
+            border: 2px solid #ffff88;
+            color: #ffff88;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+
+        button:hover {
+            background: rgba(255, 255, 136, 0.4);
+            box-shadow: 0 0 20px rgba(255, 255, 136, 0.5);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 136, 0.2);
+            border: 2px solid #ffff88;
+            color: #ffff88;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            backdrop-filter: blur(5px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 136, 0.4);
+            box-shadow: 0 0 20px rgba(255, 255, 136, 0.5);
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1rem;
+                margin-bottom: 15px;
+            }
+
+            .controls {
+                bottom: 10px;
+                gap: 5px;
+            }
+
+            button {
+                padding: 8px 15px;
+                font-size: 0.8rem;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                width: 40px;
+                height: 40px;
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="canvas-container">
+        <canvas id="fireflyCanvas"></canvas>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <div class="controls">
+        <button onclick="addFireflies(20)">✨ +20</button>
+        <button onclick="clearFireflies()">🗑️ クリア</button>
+        <button onclick="changeColorScheme()">🎨 色変更</button>
+        <button onclick="toggleAttraction()">🧲 魔力</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('fireflyCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let fireflies = [];
+        let mouse = { x: null, y: null };
+        let attractionEnabled = false;
+        let colorScheme = 0;
+
+        const colorSchemes = [
+            [{r: 255, g: 255, b: 136}, {r: 255, g: 200, b: 100}, {r: 200, g: 255, b: 150}],
+            [{r: 100, g: 200, b: 255}, {r: 150, g: 100, b: 255}, {r: 255, g: 150, b: 255}],
+            [{r: 255, g: 100, b: 150}, {r: 255, g: 150, b: 100}, {r: 255, g: 200, b: 200}],
+            [{r: 100, g: 255, b: 200}, {r: 150, g: 255, b: 150}, {r: 200, g: 255, b: 100}]
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Firefly {
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 3 + 2;
+                this.baseRadius = this.radius;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+                this.pulseSpeed = Math.random() * 0.05 + 0.02;
+                this.color = this.randomColor();
+                this.alpha = Math.random() * 0.5 + 0.5;
+            }
+
+            randomColor() {
+                const colors = colorSchemes[colorScheme];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update() {
+                // マウスの引力
+                if (attractionEnabled && mouse.x !== null) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < 200) {
+                        const force = (200 - dist) / 200 * 0.5;
+                        this.vx += (dx / dist) * force;
+                        this.vy += (dy / dist) * force;
+                    }
+                }
+
+                // 自然な動き
+                this.vx += (Math.random() - 0.5) * 0.1;
+                this.vy += (Math.random() - 0.5) * 0.1;
+
+                // 速度制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 3) {
+                    this.vx = (this.vx / speed) * 3;
+                    this.vy = (this.vy / speed) * 3;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 境界で跳ね返る
+                if (this.x < 0 || this.x > width) this.vx *= -1;
+                if (this.y < 0 || this.y > height) this.vy *= -1;
+
+                this.x = Math.max(0, Math.min(width, this.x));
+                this.y = Math.max(0, Math.min(height, this.y));
+
+                // パルス効果
+                this.pulsePhase += this.pulseSpeed;
+                this.radius = this.baseRadius + Math.sin(this.pulsePhase) * 1.5;
+            }
+
+            draw() {
+                const alpha = this.alpha * (0.5 + Math.sin(this.pulsePhase) * 0.5);
+                
+                // グロー効果
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius * 3
+                );
+                gradient.addColorStop(0, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${alpha})`);
+                gradient.addColorStop(0.3, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${alpha * 0.5})`);
+                gradient.addColorStop(1, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, 0)`);
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 3, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // コア
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        function init() {
+            resize();
+            fireflies = [];
+            for (let i = 0; i < 50; i++) {
+                fireflies.push(new Firefly());
+            }
+        }
+
+        function addFireflies(count) {
+            for (let i = 0; i < count; i++) {
+                fireflies.push(new Firefly());
+            }
+        }
+
+        function clearFireflies() {
+            fireflies = [];
+        }
+
+        function changeColorScheme() {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+            fireflies.forEach(f => f.color = f.randomColor());
+        }
+
+        function toggleAttraction() {
+            attractionEnabled = !attractionEnabled;
+        }
+
+        function animate() {
+            // トレイル効果
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            fireflies.forEach(f => {
+                f.update();
+                f.draw();
+            });
+
+            // 近いファイアフライ同士を線で繋ぐ
+            fireflies.forEach((f1, i) => {
+                fireflies.slice(i + 1).forEach(f2 => {
+                    const dx = f1.x - f2.x;
+                    const dy = f1.y - f2.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 80) {
+                        const alpha = (1 - dist / 80) * 0.3;
+                        ctx.beginPath();
+                        ctx.moveTo(f1.x, f1.y);
+                        ctx.lineTo(f2.x, f2.y);
+                        ctx.strokeStyle = `rgba(${f1.color.r}, ${f1.color.g}, ${f1.color.b}, ${alpha})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                });
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            for (let i = 0; i < 5; i++) {
+                fireflies.push(new Firefly(e.clientX, e.clientY));
+            }
+        });
+
+        // タッチ対応
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouse.x = touch.clientX;
+            mouse.y = touch.clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            for (let i = 0; i < 5; i++) {
+                fireflies.push(new Firefly(touch.clientX, touch.clientY));
+            }
+        }, { passive: false });
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
