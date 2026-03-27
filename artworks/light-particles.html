@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Light Particles - 光の粒子</title>
+    <title>流れる光の粒子 | Interactive Light Particles</title>
     <style>
         * {
             margin: 0;
@@ -14,7 +14,7 @@
         body {
             background: #000;
             overflow: hidden;
-            font-family: 'Courier New', monospace;
+            font-family: 'Arial', sans-serif;
         }
 
         canvas {
@@ -23,196 +23,176 @@
 
         .info {
             position: fixed;
-            bottom: 20px;
+            top: 20px;
             left: 20px;
             color: rgba(255, 255, 255, 0.5);
-            font-size: 12px;
+            font-size: 14px;
             pointer-events: none;
+            user-select: none;
         }
 
         .fullscreen-btn {
             position: fixed;
-            top: 20px;
+            bottom: 20px;
             right: 20px;
             background: rgba(255, 255, 255, 0.1);
             border: 1px solid rgba(255, 255, 255, 0.3);
             color: white;
             padding: 10px 20px;
+            border-radius: 5px;
             cursor: pointer;
             font-size: 14px;
-            border-radius: 5px;
             transition: all 0.3s;
         }
 
         .fullscreen-btn:hover {
             background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
         }
 
         @media (max-width: 768px) {
-            .fullscreen-btn {
+            .info {
+                font-size: 12px;
                 top: 10px;
-                right: 10px;
+                left: 10px;
+            }
+
+            .fullscreen-btn {
                 padding: 8px 16px;
                 font-size: 12px;
+                bottom: 10px;
+                right: 10px;
             }
         }
     </style>
 </head>
 <body>
+    <div class="info">
+        マウスを動かすと光の粒子が流れる<br>
+        Move mouse to create light particles
+    </div>
+
     <canvas id="canvas"></canvas>
-    <div class="info">Light Particles - マウス/タッチで光を誘導</div>
-    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">
+        全画面表示 / Fullscreen
+    </button>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
-        let width = canvas.width = window.innerWidth;
-        let height = canvas.height = window.innerHeight;
+        let width, height;
+        let particles = [];
+        let mouseX = 0;
+        let mouseY = 0;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        let hue = 0;
 
-        const particles = [];
-        const particleCount = 150;
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
 
-        // マウス/タッチ位置
-        let mouse = { x: width / 2, y: height / 2 };
-
-        // 粒子クラス
         class Particle {
-            constructor() {
-                this.reset();
-            }
-
-            reset() {
-                this.x = Math.random() * width;
-                this.y = Math.random() * height;
-                this.vx = (Math.random() - 0.5) * 2;
-                this.vy = (Math.random() - 0.5) * 2;
-                this.radius = Math.random() * 3 + 1;
-                this.baseRadius = this.radius;
-                this.life = Math.random() * Math.PI * 2;
-                this.lifeSpeed = Math.random() * 0.02 + 0.01;
-
-                // 色相
-                this.hue = Math.random() * 60 + 180; // 青〜紫〜水色
+            constructor(x, y, vx, vy) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.life = 1;
+                this.decay = 0.01 + Math.random() * 0.02;
+                this.size = 2 + Math.random() * 3;
+                this.hue = hue;
             }
 
             update() {
-                // マウスに向かう力
-                const dx = mouse.x - this.x;
-                const dy = mouse.y - this.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-
-                if (dist < 300) {
-                    const force = (300 - dist) / 300;
-                    this.vx += (dx / dist) * force * 0.3;
-                    this.vy += (dy / dist) * force * 0.3;
-                }
-
-                // 抵抗
-                this.vx *= 0.98;
-                this.vy *= 0.98;
-
-                // 移動
                 this.x += this.vx;
                 this.y += this.vy;
-
-                // ライフ更新
-                this.life += this.lifeSpeed;
-                this.radius = this.baseRadius * (Math.sin(this.life) * 0.5 + 1);
-
-                // 画面外に出たらリセット
-                if (this.x < -50 || this.x > width + 50 ||
-                    this.y < -50 || this.y > height + 50) {
-                    this.reset();
-                }
+                this.life -= this.decay;
+                this.vx *= 0.99;
+                this.vy *= 0.99;
             }
 
             draw() {
-                ctx.beginPath();
-
-                // 光のグロー
+                const alpha = this.life;
                 const gradient = ctx.createRadialGradient(
                     this.x, this.y, 0,
-                    this.x, this.y, this.radius * 4
+                    this.x, this.y, this.size
                 );
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 60%, ${alpha})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 60%, 0)`);
 
-                const alpha = Math.sin(this.life) * 0.3 + 0.5;
-                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${alpha})`);
-                gradient.addColorStop(0.5, `hsla(${this.hue}, 100%, 50%, ${alpha * 0.3})`);
-                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 50%, 0)`);
-
-                ctx.fillStyle = gradient;
-                ctx.arc(this.x, this.y, this.radius * 4, 0, Math.PI * 2);
-                ctx.fill();
-
-                // 中心の明るい点
                 ctx.beginPath();
-                ctx.fillStyle = `hsla(${this.hue}, 100%, 90%, ${alpha})`;
-                ctx.arc(this.x, this.y, this.radius * 0.5, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
                 ctx.fill();
             }
         }
 
-        // 粒子を初期化
-        for (let i = 0; i < particleCount; i++) {
-            particles.push(new Particle());
+        function createParticles(x, y) {
+            const count = 5;
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 2 + 1;
+                const vx = Math.cos(angle) * speed;
+                const vy = Math.sin(angle) * speed;
+                particles.push(new Particle(x, y, vx, vy));
+            }
         }
 
-        // アニメーションループ
-        function animate() {
-            // トレイル効果
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+        function update() {
+            // Fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
             ctx.fillRect(0, 0, width, height);
 
-            particles.forEach(p => {
-                p.update();
-                p.draw();
-            });
+            // Update particles
+            particles = particles.filter(p => p.life > 0);
 
-            // 粒子間の線を描画（近い粒子同士）
-            ctx.strokeStyle = 'rgba(100, 200, 255, 0.05)';
-            ctx.lineWidth = 1;
-            for (let i = 0; i < particles.length; i++) {
-                for (let j = i + 1; j < particles.length; j++) {
-                    const dx = particles[i].x - particles[j].x;
-                    const dy = particles[i].y - particles[j].y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-
-                    if (dist < 80) {
-                        ctx.beginPath();
-                        ctx.moveTo(particles[i].x, particles[i].y);
-                        ctx.lineTo(particles[j].x, particles[j].y);
-                        ctx.stroke();
-                    }
-                }
+            for (const particle of particles) {
+                particle.update();
+                particle.draw();
             }
 
-            requestAnimationFrame(animate);
+            // Create particles from mouse movement
+            const dx = mouseX - lastMouseX;
+            const dy = mouseY - lastMouseY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 5) {
+                createParticles(mouseX, mouseY);
+                lastMouseX = mouseX;
+                lastMouseY = mouseY;
+            }
+
+            // Update hue
+            hue = (hue + 0.5) % 360;
+
+            requestAnimationFrame(update);
         }
 
-        animate();
+        // Event listeners
+        window.addEventListener('resize', resize);
 
-        // イベントリスナー
         canvas.addEventListener('mousemove', (e) => {
-            mouse.x = e.clientX;
-            mouse.y = e.clientY;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
         });
 
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            mouse.x = e.touches[0].clientX;
-            mouse.y = e.touches[0].clientY;
-        });
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        }, { passive: false });
 
         canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            mouse.x = e.touches[0].clientX;
-            mouse.y = e.touches[0].clientY;
-        });
-
-        window.addEventListener('resize', () => {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            lastMouseX = mouseX;
+            lastMouseY = mouseY;
         });
 
         function toggleFullscreen() {
@@ -222,6 +202,14 @@
                 document.exitFullscreen();
             }
         }
+
+        // Initialize
+        resize();
+        mouseX = width / 2;
+        mouseY = height / 2;
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+        update();
     </script>
 </body>
 </html>

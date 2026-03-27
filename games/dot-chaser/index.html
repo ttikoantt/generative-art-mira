@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dot Chaser</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .dot {
+            position: absolute;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        .dot:active {
+            transform: scale(1.1);
+        }
+
+        .score {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .timer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .combo {
+            position: fixed;
+            top: 60px;
+            left: 20px;
+            color: #ffd700;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .combo.show {
+            opacity: 1;
+        }
+
+        .start-screen, .end-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 100;
+        }
+
+        .end-screen {
+            display: none;
+        }
+
+        h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
+        }
+
+        .subtitle {
+            font-size: 18px;
+            margin-bottom: 40px;
+            opacity: 0.8;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 30px;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin: 10px;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .final-score {
+            font-size: 64px;
+            font-weight: bold;
+            margin: 20px 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat {
+            font-size: 20px;
+            margin: 10px 0;
+            opacity: 0.8;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container" id="gameContainer">
+        <div class="score">Score: <span id="score">0</span></div>
+        <div class="timer">Time: <span id="timer">30</span>s</div>
+        <div class="combo" id="combo">Combo x<span id="comboCount">0</span>!</div>
+
+        <div class="start-screen" id="startScreen">
+            <h1>Dot Chaser</h1>
+            <div class="subtitle">点をタップしてスコアを稼ごう！</div>
+            <button class="btn" onclick="startGame()">スタート</button>
+        </div>
+
+        <div class="end-screen" id="endScreen">
+            <h1>ゲーム終了！</h1>
+            <div class="final-score" id="finalScore">0</div>
+            <div class="stat">Max Combo: <span id="maxCombo">0</span></div>
+            <div class="stat">Total Clicks: <span id="totalClicks">0</span></div>
+            <div class="stat">Accuracy: <span id="accuracy">0%</span></div>
+            <button class="btn" onclick="startGame()">もう一度</button>
+        </div>
+
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+    </div>
+
+    <script>
+        let score = 0;
+        let timeLeft = 30;
+        let combo = 0;
+        let maxCombo = 0;
+        let totalClicks = 0;
+        let successfulClicks = 0;
+        let gameActive = false;
+        let gameTimer;
+        let dotSpawnTimer;
+
+        const colors = [
+            '#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24',
+            '#6c5ce7', '#a29bfe', '#fd79a8', '#00b894'
+        ];
+
+        function createDot() {
+            if (!gameActive) return;
+
+            const container = document.getElementById('gameContainer');
+            const dot = document.createElement('div');
+            dot.className = 'dot';
+
+            const size = 30 + Math.random() * 40;
+            const x = Math.random() * (window.innerWidth - size - 100) + 50;
+            const y = Math.random() * (window.innerHeight - size - 150) + 100;
+
+            dot.style.width = size + 'px';
+            dot.style.height = size + 'px';
+            dot.style.left = x + 'px';
+            dot.style.top = y + 'px';
+            dot.style.background = `radial-gradient(circle at 30% 30%, ${colors[Math.floor(Math.random() * colors.length)]}, ${colors[Math.floor(Math.random() * colors.length)]})`;
+            dot.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.3)';
+
+            dot.onclick = (e) => {
+                e.stopPropagation();
+                totalClicks++;
+                successfulClicks++;
+                combo++;
+                if (combo > maxCombo) maxCombo = combo;
+
+                const points = Math.floor(10 + (100 / parseInt(dot.style.width)) * 5) * (1 + combo * 0.1);
+                score += Math.floor(points);
+
+                updateScore();
+                updateCombo();
+
+                dot.remove();
+
+                // Create particles
+                createParticles(e.clientX, e.clientY, dot.style.background);
+            };
+
+            container.appendChild(dot);
+
+            // Auto remove after 2-4 seconds
+            setTimeout(() => {
+                if (dot.parentNode) {
+                    dot.remove();
+                    combo = 0;
+                    updateCombo();
+                }
+            }, 2000 + Math.random() * 2000);
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 8; i++) {
+                const particle = document.createElement('div');
+                particle.style.cssText = `
+                    position: fixed;
+                    left: ${x}px;
+                    top: ${y}px;
+                    width: 8px;
+                    height: 8px;
+                    background: ${color};
+                    border-radius: 50%;
+                    pointer-events: none;
+                    z-index: 1000;
+                `;
+                document.body.appendChild(particle);
+
+                const angle = (i / 8) * Math.PI * 2;
+                const velocity = 3 + Math.random() * 3;
+                const vx = Math.cos(angle) * velocity;
+                const vy = Math.sin(angle) * velocity;
+
+                let opacity = 1;
+                const animate = () => {
+                    const currentX = parseFloat(particle.style.left);
+                    const currentY = parseFloat(particle.style.top);
+
+                    particle.style.left = (currentX + vx) + 'px';
+                    particle.style.top = (currentY + vy) + 'px';
+                    opacity -= 0.05;
+                    particle.style.opacity = opacity;
+
+                    if (opacity > 0) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        particle.remove();
+                    }
+                };
+                requestAnimationFrame(animate);
+            }
+        }
+
+        function updateScore() {
+            document.getElementById('score').textContent = score;
+        }
+
+        function updateCombo() {
+            const comboEl = document.getElementById('combo');
+            const comboCountEl = document.getElementById('comboCount');
+
+            if (combo > 1) {
+                comboCountEl.textContent = combo;
+                comboEl.classList.add('show');
+            } else {
+                comboEl.classList.remove('show');
+            }
+        }
+
+        function updateTimer() {
+            document.getElementById('timer').textContent = timeLeft;
+        }
+
+        function startGame() {
+            score = 0;
+            timeLeft = 30;
+            combo = 0;
+            maxCombo = 0;
+            totalClicks = 0;
+            successfulClicks = 0;
+            gameActive = true;
+
+            updateScore();
+            updateTimer();
+            updateCombo();
+
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('endScreen').style.display = 'none';
+
+            // Remove existing dots
+            document.querySelectorAll('.dot').forEach(dot => dot.remove());
+
+            // Start game timer
+            gameTimer = setInterval(() => {
+                timeLeft--;
+                updateTimer();
+
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+
+            // Start spawning dots
+            dotSpawnTimer = setInterval(() => {
+                createDot();
+                if (timeLeft < 10) {
+                    // Spawn faster in last 10 seconds
+                    setTimeout(createDot, 200);
+                }
+            }, 500);
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(gameTimer);
+            clearInterval(dotSpawnTimer);
+
+            // Remove all dots
+            document.querySelectorAll('.dot').forEach(dot => dot.remove());
+
+            // Show end screen
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('maxCombo').textContent = maxCombo;
+            document.getElementById('totalClicks').textContent = totalClicks;
+            document.getElementById('accuracy').textContent =
+                totalClicks > 0 ? Math.round((successfulClicks / totalClicks) * 100) + '%' : '0%';
+            document.getElementById('endScreen').style.display = 'flex';
+        }
+
+        // Miss click handler
+        document.getElementById('gameContainer').addEventListener('click', (e) => {
+            if (!gameActive) return;
+            if (e.target.classList.contains('dot')) return;
+
+            totalClicks++;
+            combo = 0;
+            updateCombo();
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
