@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ink Drop Simulation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a2e;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #eee;
+            margin-bottom: 10px;
+            font-size: 2rem;
+            text-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+
+        #canvas {
+            border: 2px solid #333;
+            border-radius: 10px;
+            background: #0a0a15;
+            cursor: crosshair;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            max-width: 100%;
+            height: auto;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .btn-tertiary {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            color: #666;
+            margin-top: 15px;
+            font-size: 0.85rem;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Ink Drop Simulation</h1>
+        <p class="subtitle">クリックしてインクを落とす</p>
+
+        <canvas id="canvas" width="600" height="600"></canvas>
+
+        <div class="controls">
+            <button class="btn-primary" onclick="randomDrop()">ランダム追加</button>
+            <button class="btn-secondary" onclick="clearCanvas()">クリア</button>
+            <button class="btn-tertiary" onclick="toggleAnimation()">一時停止</button>
+        </div>
+
+        <p class="info">✨ クリックまたはタップでインクを落とせます</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let inkDrops = [];
+        let particles = [];
+        let isAnimating = true;
+        let animationId;
+
+        // インク滴クラス
+        class InkDrop {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.radius = 1;
+                this.maxRadius = 80 + Math.random() * 60;
+                this.growthRate = 1.5 + Math.random() * 1;
+                this.alpha = 0.8;
+                this.spread = 0.3 + Math.random() * 0.3;
+            }
+
+            update() {
+                if (this.radius < this.maxRadius) {
+                    this.radius += this.growthRate;
+                    this.alpha -= 0.002;
+                    this.growthRate *= 0.99;
+                }
+            }
+
+            draw() {
+                ctx.save();
+
+                // メインのインク滴
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius
+                );
+
+                const r = parseInt(this.color.slice(1, 3), 16);
+                const g = parseInt(this.color.slice(3, 5), 16);
+                const b = parseInt(this.color.slice(5, 7), 16);
+
+                gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${this.alpha})`);
+                gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${this.alpha * 0.5})`);
+                gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 不規則なエッジ
+                for (let i = 0; i < 8; i++) {
+                    const angle = (i / 8) * Math.PI * 2;
+                    const offset = Math.sin(Date.now() / 500 + i) * 10;
+                    const edgeX = this.x + Math.cos(angle) * (this.radius + offset);
+                    const edgeY = this.y + Math.sin(angle) * (this.radius + offset);
+
+                    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${this.alpha * 0.3})`;
+                    ctx.beginPath();
+                    ctx.arc(edgeX, edgeY, 5 + Math.random() * 5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.alpha <= 0.01;
+            }
+        }
+
+        // パーティクルクラス（余韻エフェクト）
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = 1 + Math.random() * 2;
+                this.alpha = 0.6;
+                this.life = 100 + Math.random() * 50;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+                this.alpha -= 0.01;
+                this.life--;
+            }
+
+            draw() {
+                const r = parseInt(this.color.slice(1, 3), 16);
+                const g = parseInt(this.color.slice(3, 5), 16);
+                const b = parseInt(this.color.slice(5, 7), 16);
+
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${this.alpha})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            isDead() {
+                return this.alpha <= 0 || this.life <= 0;
+            }
+        }
+
+        // カラーパレット
+        const colors = [
+            '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A',
+            '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2',
+            '#F8B500', '#FF69B4', '#00CED1', '#FF4500'
+        ];
+
+        function getRandomColor() {
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        function addInkDrop(x, y) {
+            const color = getRandomColor();
+            inkDrops.push(new InkDrop(x, y, color));
+
+            // パーティクル追加
+            for (let i = 0; i < 15; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function randomDrop() {
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            addInkDrop(x, y);
+        }
+
+        function clearCanvas() {
+            inkDrops = [];
+            particles = [];
+            ctx.fillStyle = '#0a0a15';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+            const btn = document.querySelector('.btn-tertiary');
+            btn.textContent = isAnimating ? '一時停止' : '再開';
+        }
+
+        function animate() {
+            if (!isAnimating) {
+                animationId = requestAnimationFrame(animate);
+                return;
+            }
+
+            // 半透明の黒で上書き（トレイルエフェクト）
+            ctx.fillStyle = 'rgba(10, 10, 21, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // インク滴更新
+            inkDrops = inkDrops.filter(drop => !drop.isDead());
+            inkDrops.forEach(drop => {
+                drop.update();
+                drop.draw();
+            });
+
+            // パーティクル更新
+            particles = particles.filter(p => !p.isDead());
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // クリックイベント
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+            addInkDrop(x, y);
+        });
+
+        // タッチイベント
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const touch = e.touches[0];
+            const x = (touch.clientX - rect.left) * scaleX;
+            const y = (touch.clientY - rect.top) * scaleY;
+            addInkDrop(x, y);
+        });
+
+        // 初期化
+        clearCanvas();
+        animate();
+
+        // ランダムに数滴追加
+        setTimeout(() => {
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => randomDrop(), i * 300);
+            }
+        }, 500);
+    </script>
+</body>
+</html>
