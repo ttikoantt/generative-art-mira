@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Particle Orbits - Mira's Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(10, 10, 15, 0.9);
+            padding: 15px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .controls h1 {
+            color: #fff;
+            font-size: 18px;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .control-group {
+            margin-bottom: 10px;
+        }
+
+        .control-group label {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            cursor: pointer;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            transition: transform 0.2s, opacity 0.2s;
+            font-weight: 500;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(10, 10, 15, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: transform 0.2s;
+        }
+
+        .fullscreen-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .stats {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 11px;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                top: 10px;
+                left: 10px;
+                padding: 12px 15px;
+                font-size: 11px;
+            }
+
+            .controls h1 {
+                font-size: 14px;
+            }
+
+            .btn {
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <h1>🌌 Particle Orbits</h1>
+        <div class="control-group">
+            <label>粒子数: <span id="particleCountValue">150</span></label>
+            <input type="range" id="particleCount" min="50" max="300" value="150">
+        </div>
+        <div class="control-group">
+            <label>引力強度: <span id="gravityValue">0.5</span></label>
+            <input type="range" id="gravity" min="0.1" max="2" step="0.1" value="0.5">
+        </div>
+        <div class="control-group">
+            <label>軌跡長さ: <span id="trailValue">0.97</span></label>
+            <input type="range" id="trail" min="0.9" max="0.99" step="0.01" value="0.97">
+        </div>
+        <div>
+            <button class="btn btn-primary" onclick="resetArt()">リセット</button>
+            <button class="btn btn-secondary" onclick="changeColorScheme()">色変更</button>
+        </div>
+        <div class="stats" id="stats"></div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height, centerX, centerY;
+        let particles = [];
+        let mouse = { x: null, y: null, active: false };
+
+        // パラメータ
+        let params = {
+            particleCount: 150,
+            gravity: 0.5,
+            trail: 0.97,
+            colorScheme: 0
+        };
+
+        // カラースキーム
+        const colorSchemes = [
+            // Nebula
+            [(h) => `hsl(${260 + h * 60}, 70%, ${50 + h * 20}%)`, [0.05, 0.95]],
+            // Aurora
+            [(h) => `hsl(${120 + h * 100}, 80%, ${50 + h * 20}%)`, [0.1, 0.9]],
+            // Sunset
+            [(h) => `hsl(${20 + h * 40}, 90%, ${50 + h * 20}%)`, [0.15, 0.85]],
+            // Ocean
+            [(h) => `hsl(${180 + h * 60}, 70%, ${50 + h * 20}%)`, [0.2, 0.8]],
+            // Magma
+            [(h) => `hsl(${10 + h * 50}, 100%, ${40 + h * 30}%)`, [0.25, 0.75]]
+        ];
+
+        // 粒子クラス
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 2 + 1;
+                this.hue = Math.random();
+                this.life = Math.random() * 1000 + 500;
+                this.orbitCenter = {
+                    x: centerX + (Math.random() - 0.5) * 200,
+                    y: centerY + (Math.random() - 0.5) * 200
+                };
+            }
+
+            update() {
+                // 軌道中心への引力
+                const dx = this.orbitCenter.x - this.x;
+                const dy = this.orbitCenter.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist > 10) {
+                    const force = params.gravity * 0.5;
+                    this.vx += (dx / dist) * force;
+                    this.vy += (dy / dist) * force;
+                }
+
+                // 隣接粒子との相互作用
+                particles.forEach(p => {
+                    if (p === this) return;
+                    const pdx = p.x - this.x;
+                    const pdy = p.y - this.y;
+                    const pdist = Math.sqrt(pdx * pdx + pdy * pdy);
+
+                    if (pdist < 100 && pdist > 20) {
+                        const force = -0.02;
+                        this.vx += (pdx / pdist) * force;
+                        this.vy += (pdy / pdist) * force;
+                    }
+                });
+
+                // マウスの影響
+                if (mouse.active) {
+                    const mdx = mouse.x - this.x;
+                    const mdy = mouse.y - this.y;
+                    const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
+
+                    if (mdist < 150) {
+                        const force = 0.5;
+                        this.vx += (mdx / mdist) * force;
+                        this.vy += (mdy / mdist) * force;
+                    }
+                }
+
+                // 速度制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 8) {
+                    this.vx = (this.vx / speed) * 8;
+                    this.vy = (this.vy / speed) * 8;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 境界処理
+                if (this.x < 0 || this.x > width) this.vx *= -0.8;
+                if (this.y < 0 || this.y > height) this.vy *= -0.8;
+
+                this.x = Math.max(0, Math.min(width, this.x));
+                this.y = Math.max(0, Math.min(height, this.y));
+
+                this.hue += 0.001;
+            }
+
+            draw() {
+                const getColor = colorSchemes[params.colorScheme][0];
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = getColor(this.hue);
+                ctx.fill();
+            }
+        }
+
+        // 初期化
+        function init() {
+            resize();
+            createParticles();
+            animate();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+
+        function createParticles() {
+            particles = [];
+            for (let i = 0; i < params.particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function animate() {
+            // 軌跡効果
+            ctx.fillStyle = `rgba(10, 10, 15, ${1 - params.trail})`;
+            ctx.fillRect(0, 0, width, height);
+
+            // 粒子を描画
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // 粒子間の線を描画（近い粒子同士）
+            ctx.strokeStyle = `rgba(255, 255, 255, 0.03)`;
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 80) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            updateStats();
+            requestAnimationFrame(animate);
+        }
+
+        function updateStats() {
+            document.getElementById('stats').textContent =
+                `粒子数: ${particles.length}`;
+        }
+
+        function resetArt() {
+            createParticles();
+        }
+
+        function changeColorScheme() {
+            params.colorScheme = (params.colorScheme + 1) % colorSchemes.length;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.active = false;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            mouse.active = true;
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.active = false;
+        });
+
+        // コントロール
+        document.getElementById('particleCount').addEventListener('input', (e) => {
+            params.particleCount = parseInt(e.target.value);
+            document.getElementById('particleCountValue').textContent = params.particleCount;
+            createParticles();
+        });
+
+        document.getElementById('gravity').addEventListener('input', (e) => {
+            params.gravity = parseFloat(e.target.value);
+            document.getElementById('gravityValue').textContent = params.gravity;
+        });
+
+        document.getElementById('trail').addEventListener('input', (e) => {
+            params.trail = parseFloat(e.target.value);
+            document.getElementById('trailValue').textContent = params.trail;
+        });
+
+        // 開始
+        init();
+    </script>
+</body>
+</html>
