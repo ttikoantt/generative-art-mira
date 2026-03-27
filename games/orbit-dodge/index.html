@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbit Dodge - Mira's Games</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        .game-container {
+            text-align: center;
+            width: 100%;
+            max-width: 600px;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 2rem;
+            margin-bottom: 5px;
+            text-shadow: 0 0 20px rgba(255,255,255,0.3);
+        }
+
+        .subtitle {
+            color: rgba(255,255,255,0.7);
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+
+        canvas {
+            background: radial-gradient(circle, #1a1a2e 0%, #0f0f1a 100%);
+            border-radius: 15px;
+            box-shadow: 0 0 30px rgba(100, 100, 255, 0.3);
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+            cursor: pointer;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 15px;
+            color: white;
+            font-size: 1.1rem;
+        }
+
+        .stat {
+            background: rgba(255,255,255,0.1);
+            padding: 10px 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-label {
+            color: rgba(255,255,255,0.7);
+            font-size: 0.8rem;
+            margin-bottom: 3px;
+        }
+
+        .stat-value {
+            font-weight: bold;
+            font-size: 1.3rem;
+            color: #6B8EFF;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            backdrop-filter: blur(5px);
+        }
+
+        .overlay.show {
+            display: flex;
+        }
+
+        .modal {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            color: white;
+            box-shadow: 0 0 40px rgba(102, 126, 234, 0.5);
+            max-width: 90%;
+        }
+
+        .modal h2 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .modal p {
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+            opacity: 0.9;
+        }
+
+        .modal button {
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            border: none;
+            border-radius: 25px;
+            background: white;
+            color: #667eea;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .modal button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .controls-hint {
+            color: rgba(255,255,255,0.6);
+            font-size: 0.85rem;
+            margin-top: 15px;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            canvas {
+                height: 350px !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>Orbit Dodge</h1>
+        <p class="subtitle">周回する障害物を避けろ！</p>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-label">スコア</div>
+                <div class="stat-value" id="score">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">ハイスコア</div>
+                <div class="stat-value" id="highScore">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">レベル</div>
+                <div class="stat-value" id="level">1</div>
+            </div>
+        </div>
+
+        <p class="controls-hint">🖱️ クリック/タップでプレイヤーを回転</p>
+    </div>
+
+    <!-- Start Overlay -->
+    <div class="overlay show" id="startOverlay">
+        <div class="modal">
+            <h2>Orbit Dodge</h2>
+            <p>周回する障害物を避けろ！<br>クリック/タップでプレイヤーを回転させてね</p>
+            <button id="startBtn">スタート</button>
+        </div>
+    </div>
+
+    <!-- Game Over Overlay -->
+    <div class="overlay" id="gameOverOverlay">
+        <div class="modal">
+            <h2>ゲームオーバー！</h2>
+            <p>スコア: <span id="finalScore">0</span></p>
+            <button id="restartBtn">もう一度</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Responsive canvas
+        function resizeCanvas() {
+            const container = document.querySelector('.game-container');
+            const maxWidth = Math.min(window.innerWidth - 40, 500);
+            canvas.width = maxWidth;
+            canvas.height = maxWidth;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Game state
+        let gameRunning = false;
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('orbitDodgeHighScore')) || 0;
+        let level = 1;
+        let animationId;
+
+        // Center and orbit radius
+        const centerX = () => canvas.width / 2;
+        const centerY = () => canvas.height / 2;
+        const orbitRadius = () => Math.min(canvas.width, canvas.height) * 0.35;
+
+        // Player
+        const player = {
+            angle: 0,
+            size: 15,
+            color: '#6B8EFF',
+            trail: []
+        };
+
+        // Obstacles
+        let obstacles = [];
+
+        // Particles
+        let particles = [];
+
+        class Obstacle {
+            constructor() {
+                this.angle = Math.random() * Math.PI * 2;
+                this.orbitRadius = orbitRadius() * (0.8 + Math.random() * 0.4);
+                this.speed = 0.02 + level * 0.005 + Math.random() * 0.01;
+                this.direction = Math.random() > 0.5 ? 1 : -1;
+                this.size = 8 + Math.random() * 8;
+                this.color = `hsl(${Math.random() * 60 + 330}, 70%, 60%)`;
+            }
+
+            update() {
+                this.angle += this.speed * this.direction;
+            }
+
+            draw() {
+                const x = centerX() + Math.cos(this.angle) * this.orbitRadius;
+                const y = centerY() + Math.sin(this.angle) * this.orbitRadius;
+
+                // Glow effect
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 15;
+
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.shadowBlur = 0;
+            }
+
+            getPosition() {
+                return {
+                    x: centerX() + Math.cos(this.angle) * this.orbitRadius,
+                    y: centerY() + Math.sin(this.angle) * this.orbitRadius
+                };
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.size = Math.random() * 4 + 2;
+                this.speedX = (Math.random() - 0.5) * 8;
+                this.speedY = (Math.random() - 0.5) * 8;
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= this.decay;
+                this.size *= 0.95;
+            }
+
+            draw() {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function spawnObstacle() {
+            if (obstacles.length < 5 + level * 2) {
+                obstacles.push(new Obstacle());
+            }
+        }
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 20; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function checkCollision() {
+            const px = centerX() + Math.cos(player.angle) * orbitRadius();
+            const py = centerY() + Math.sin(player.angle) * orbitRadius();
+
+            for (let obstacle of obstacles) {
+                const pos = obstacle.getPosition();
+                const dist = Math.sqrt((px - pos.x) ** 2 + (py - pos.y) ** 2);
+                if (dist < player.size + obstacle.size) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function update() {
+            // Update player trail
+            player.trail.push(player.angle);
+            if (player.trail.length > 20) {
+                player.trail.shift();
+            }
+
+            // Update obstacles
+            obstacles.forEach(obstacle => obstacle.update());
+
+            // Update particles
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => p.update());
+
+            // Check collision
+            if (checkCollision()) {
+                gameOver();
+                return;
+            }
+
+            // Score
+            score += 1;
+            if (score % 500 === 0) {
+                level++;
+                spawnObstacle();
+            }
+
+            // Spawn obstacles periodically
+            if (score % 200 === 0) {
+                spawnObstacle();
+            }
+
+            updateUI();
+        }
+
+        function draw() {
+            ctx.fillStyle = 'rgba(15, 15, 26, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw center
+            ctx.fillStyle = 'rgba(100, 100, 255, 0.3)';
+            ctx.shadowColor = '#6B8EFF';
+            ctx.shadowBlur = 20;
+            ctx.beginPath();
+            ctx.arc(centerX(), centerY(), 30, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Draw orbit path
+            ctx.strokeStyle = 'rgba(100, 100, 255, 0.2)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(centerX(), centerY(), orbitRadius(), 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Draw player trail
+            if (player.trail.length > 1) {
+                for (let i = 0; i < player.trail.length - 1; i++) {
+                    const alpha = i / player.trail.length;
+                    ctx.strokeStyle = `rgba(107, 142, 255, ${alpha * 0.5})`;
+                    ctx.lineWidth = player.size * alpha;
+                    ctx.beginPath();
+                    const x1 = centerX() + Math.cos(player.trail[i]) * orbitRadius();
+                    const y1 = centerY() + Math.sin(player.trail[i]) * orbitRadius();
+                    const x2 = centerX() + Math.cos(player.trail[i + 1]) * orbitRadius();
+                    const y2 = centerY() + Math.sin(player.trail[i + 1]) * orbitRadius();
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                    ctx.stroke();
+                }
+            }
+
+            // Draw player
+            const px = centerX() + Math.cos(player.angle) * orbitRadius();
+            const py = centerY() + Math.sin(player.angle) * orbitRadius();
+
+            ctx.shadowColor = player.color;
+            ctx.shadowBlur = 20;
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.arc(px, py, player.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Draw obstacles
+            obstacles.forEach(obstacle => obstacle.draw());
+
+            // Draw particles
+            particles.forEach(p => p.draw());
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            update();
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('highScore').textContent = highScore;
+            document.getElementById('level').textContent = level;
+        }
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            level = 1;
+            obstacles = [];
+            particles = [];
+            player.angle = 0;
+            player.trail = [];
+
+            // Spawn initial obstacles
+            for (let i = 0; i < 3; i++) {
+                obstacles.push(new Obstacle());
+            }
+
+            document.getElementById('startOverlay').classList.remove('show');
+            document.getElementById('gameOverOverlay').classList.remove('show');
+            updateUI();
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+
+            createExplosion(
+                centerX() + Math.cos(player.angle) * orbitRadius(),
+                centerY() + Math.sin(player.angle) * orbitRadius(),
+                player.color
+            );
+
+            // Draw one more frame to show explosion
+            draw();
+            particles.forEach(p => { p.update(); p.draw(); });
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('orbitDodgeHighScore', highScore);
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOverOverlay').classList.add('show');
+        }
+
+        // Event listeners
+        canvas.addEventListener('click', (e) => {
+            if (!gameRunning) return;
+            player.angle += Math.PI / 4;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!gameRunning) return;
+            player.angle += Math.PI / 4;
+        }, { passive: false });
+
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+
+        // Initialize
+        document.getElementById('highScore').textContent = highScore;
+    </script>
+</body>
+</html>
