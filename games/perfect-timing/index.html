@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Perfect Timing</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: manipulation;
+        }
+        #gameContainer {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+        #ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            color: #fff;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            pointer-events: none;
+        }
+        #message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            pointer-events: none;
+            opacity: 0;
+            transition: all 0.3s;
+        }
+        #message.show {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+        #startScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            z-index: 100;
+        }
+        #startScreen h1 {
+            font-size: 42px;
+            margin-bottom: 20px;
+            text-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        #startScreen p {
+            font-size: 16px;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+        #startBtn {
+            background: #fff;
+            color: #667eea;
+            border: none;
+            padding: 20px 60px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            transition: all 0.3s;
+        }
+        #startBtn:hover, #startBtn:active {
+            transform: scale(1.1);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.4);
+        }
+        #fullscreenBtn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            z-index: 50;
+        }
+        #fullscreenBtn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        #combo {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            color: #fff;
+            font-weight: bold;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            pointer-events: none;
+            opacity: 0;
+            transition: all 0.3s;
+        }
+        #combo.show {
+            opacity: 1;
+        }
+        .perfect { color: #ffd700 !important; }
+        .good { color: #00ff88 !important; }
+        .bad { color: #ff4444 !important; }
+    </style>
+</head>
+<body>
+    <div id="startScreen">
+        <h1>⏱️ Perfect Timing</h1>
+        <p>円が最小になった瞬間にタップ！</p>
+        <button id="startBtn">スタート</button>
+    </div>
+
+    <div id="gameContainer">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div id="ui">
+        <div id="score">スコア: 0</div>
+        <div id="best">ベスト: 0</div>
+    </div>
+
+    <div id="message"></div>
+    <div id="combo"></div>
+    <button id="fullscreenBtn">⛶ 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const startBtn = document.getElementById('startBtn');
+        const scoreEl = document.getElementById('score');
+        const bestEl = document.getElementById('best');
+        const messageEl = document.getElementById('message');
+        const comboEl = document.getElementById('combo');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let score = 0;
+        let bestScore = localStorage.getItem('perfectTimingBest') || 0;
+        let combo = 0;
+        let gameStarted = false;
+        let animationId;
+
+        // Circle properties
+        let circle = {
+            x: 0,
+            y: 0,
+            maxRadius: 0,
+            minRadius: 0,
+            currentRadius: 0,
+            shrinking: true,
+            speed: 3
+        };
+
+        // Colors
+        const colors = {
+            perfect: '#ffd700',
+            good: '#00ff88',
+            bad: '#ff4444',
+            circle: '#ffffff'
+        };
+
+        bestEl.textContent = `ベスト: ${bestScore}`;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            circle.x = canvas.width / 2;
+            circle.y = canvas.height / 2;
+            circle.maxRadius = Math.min(canvas.width, canvas.height) * 0.35;
+            circle.minRadius = circle.maxRadius * 0.15;
+            if (!gameStarted) {
+                circle.currentRadius = circle.maxRadius;
+            }
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        function showMessage(text, type) {
+            messageEl.textContent = text;
+            messageEl.className = 'show ' + type;
+            setTimeout(() => {
+                messageEl.className = '';
+            }, 800);
+        }
+
+        function showCombo() {
+            if (combo > 1) {
+                comboEl.textContent = `${combo} コンボ！`;
+                comboEl.className = 'show';
+            } else {
+                comboEl.className = '';
+            }
+        }
+
+        function startGame() {
+            gameStarted = true;
+            score = 0;
+            combo = 0;
+            scoreEl.textContent = `スコア: ${score}`;
+            startScreen.style.display = 'none';
+            circle.currentRadius = circle.maxRadius;
+            circle.shrinking = true;
+            circle.speed = 3;
+            showCombo();
+            animate();
+        }
+
+        function stopCircle() {
+            const targetRadius = circle.minRadius;
+            const diff = Math.abs(circle.currentRadius - targetRadius);
+            const percentage = (1 - diff / (circle.maxRadius - circle.minRadius)) * 100;
+
+            let points = 0;
+            let type = '';
+
+            if (percentage >= 95) {
+                points = 100;
+                type = 'perfect';
+                showMessage('PERFECT！', 'perfect');
+                combo++;
+                circle.speed = Math.min(circle.speed + 0.2, 8);
+            } else if (percentage >= 80) {
+                points = 50;
+                type = 'good';
+                showMessage('GOOD！', 'good');
+                combo++;
+            } else {
+                points = 10;
+                type = 'bad';
+                showMessage('BAD...', 'bad');
+                combo = 0;
+            }
+
+            score += points + (combo > 1 ? combo * 10 : 0);
+            scoreEl.textContent = `スコア: ${score}`;
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestEl.textContent = `ベスト: ${bestScore}`;
+                localStorage.setItem('perfectTimingBest', bestScore);
+            }
+
+            showCombo();
+
+            // Reset circle
+            circle.currentRadius = circle.maxRadius;
+            circle.shrinking = true;
+        }
+
+        function handleTap(e) {
+            if (!gameStarted) return;
+            e.preventDefault();
+            stopCircle();
+        }
+
+        canvas.addEventListener('click', handleTap);
+        canvas.addEventListener('touchstart', handleTap);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && gameStarted) {
+                e.preventDefault();
+                stopCircle();
+            }
+        });
+
+        startBtn.addEventListener('click', startGame);
+
+        function drawCircle() {
+            // Outer ring
+            ctx.beginPath();
+            ctx.arc(circle.x, circle.y, circle.maxRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Target area (glow)
+            const gradient = ctx.createRadialGradient(
+                circle.x, circle.y, circle.minRadius * 0.5,
+                circle.x, circle.y, circle.minRadius * 1.5
+            );
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
+            gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.05)');
+            gradient.addColorStop(1, 'transparent');
+
+            ctx.beginPath();
+            ctx.arc(circle.x, circle.y, circle.minRadius * 1.5, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Inner circle (shrinking)
+            ctx.beginPath();
+            ctx.arc(circle.x, circle.y, circle.currentRadius, 0, Math.PI * 2);
+            ctx.fillStyle = colors.circle;
+            ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+            ctx.shadowBlur = 20;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Pulse effect when near target
+            const diff = Math.abs(circle.currentRadius - circle.minRadius);
+            if (diff < 30) {
+                const pulseAlpha = 1 - (diff / 30);
+                ctx.beginPath();
+                ctx.arc(circle.x, circle.y, circle.minRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(255, 215, 0, ${pulseAlpha})`;
+                ctx.lineWidth = 5;
+                ctx.stroke();
+            }
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Update circle
+            if (circle.shrinking) {
+                circle.currentRadius -= circle.speed;
+                if (circle.currentRadius <= circle.minRadius) {
+                    circle.currentRadius = circle.minRadius;
+                    circle.shrinking = false;
+                }
+            } else {
+                circle.currentRadius += circle.speed;
+                if (circle.currentRadius >= circle.maxRadius) {
+                    // Miss - circle expanded back to full size
+                    showMessage('MISS...', 'bad');
+                    combo = 0;
+                    showCombo();
+                    circle.currentRadius = circle.maxRadius;
+                    circle.shrinking = true;
+                }
+            }
+
+            drawCircle();
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // Initial draw
+        drawCircle();
+    </script>
+</body>
+</html>
