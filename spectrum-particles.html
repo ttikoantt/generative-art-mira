@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spectrum Particles - Audio Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #00ff88;
+            font-size: 14px;
+            z-index: 100;
+            text-shadow: 0 0 10px #00ff88;
+        }
+
+        .start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 10, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            cursor: pointer;
+        }
+
+        .start-screen h1 {
+            color: #00ff88;
+            font-size: 32px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px #00ff88;
+        }
+
+        .start-screen p {
+            color: #ffffff;
+            font-size: 16px;
+            opacity: 0.8;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid #00ff88;
+            color: #00ff88;
+            padding: 10px 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.3s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 136, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            .start-screen h1 {
+                font-size: 24px;
+            }
+
+            .start-screen p {
+                font-size: 14px;
+            }
+
+            .overlay {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="start-screen" id="startScreen">
+        <h1>🎵 Spectrum Particles</h1>
+        <p>Click or tap to start audio visualization</p>
+    </div>
+
+    <div class="overlay">
+        <div id="info">Spectrum Particles</div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const info = document.getElementById('info');
+
+        let width, height;
+        let audioContext, analyser, dataArray, bufferLength;
+        let particles = [];
+        let hue = 0;
+        let isRunning = false;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Particle {
+            constructor(x, y, frequency, amplitude) {
+                this.x = x;
+                this.y = y;
+                this.frequency = frequency;
+                this.amplitude = amplitude;
+                this.baseY = y;
+                this.speed = Math.random() * 2 + 1;
+                this.size = Math.random() * 3 + 1;
+                this.life = 1;
+                this.decay = Math.random() * 0.005 + 0.002;
+                this.hue = hue + frequency * 0.5;
+            }
+
+            update(spectrum) {
+                this.y -= this.speed;
+                this.life -= this.decay;
+
+                // Spectrum-based movement
+                const spectrumIndex = Math.floor(this.frequency * (spectrum.length / 256));
+                const spectrumValue = spectrum[spectrumIndex] || 0;
+                const spectrumRatio = spectrumValue / 255;
+
+                // Add turbulence based on spectrum
+                this.x += Math.sin(this.y * 0.01 + this.frequency) * spectrumRatio * 5;
+                this.amplitude = spectrumRatio * 50 + 20;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, ${50 + this.amplitude}%, ${this.life})`;
+                ctx.fill();
+            }
+        }
+
+        async function initAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 512;
+                bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                // Get microphone input
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+
+                // Create oscillator for demo audio
+                await startDemoAudio();
+
+                isRunning = true;
+                animate();
+            } catch (err) {
+                console.log('Microphone access denied, using demo audio only');
+                await startDemoAudio();
+                isRunning = true;
+                animate();
+            }
+        }
+
+        async function startDemoAudio() {
+            // Create demo audio using oscillators
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            const filter = audioContext.createBiquadFilter();
+
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(110, audioContext.currentTime);
+
+            // LFO for frequency modulation
+            const lfo = audioContext.createOscillator();
+            const lfoGain = audioContext.createGain();
+            lfo.frequency.setValueAtTime(0.5, audioContext.currentTime);
+            lfoGain.gain.setValueAtTime(50, audioContext.currentTime);
+            lfo.connect(lfoGain);
+            lfoGain.connect(oscillator.frequency);
+
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1000, audioContext.currentTime);
+            filter.Q.setValueAtTime(5, audioContext.currentTime);
+
+            // Another oscillator for harmony
+            const oscillator2 = audioContext.createOscillator();
+            oscillator2.type = 'sine';
+            oscillator2.frequency.setValueAtTime(165, audioContext.currentTime);
+
+            const gainNode2 = audioContext.createGain();
+            gainNode2.gain.setValueAtTime(0.3, audioContext.currentTime);
+
+            oscillator.connect(gainNode);
+            oscillator2.connect(gainNode2);
+            gainNode.connect(filter);
+            gainNode2.connect(filter);
+            filter.connect(analyser);
+
+            // LFO for filter frequency
+            const filterLfo = audioContext.createOscillator();
+            const filterLfoGain = audioContext.createGain();
+            filterLfo.frequency.setValueAtTime(0.3, audioContext.currentTime);
+            filterLfoGain.gain.setValueAtTime(500, audioContext.currentTime);
+            filterLfo.connect(filterLfoGain);
+            filterLfoGain.connect(filter.frequency);
+
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+
+            oscillator.start();
+            oscillator2.start();
+            lfo.start();
+            filterLfo.start();
+        }
+
+        function spawnParticles(spectrum) {
+            if (particles.length < 500) {
+                const spectrumStep = Math.floor(spectrum.length / 10);
+                for (let i = 0; i < spectrumStep; i++) {
+                    const x = (width / spectrumStep) * i + Math.random() * (width / spectrumStep);
+                    const y = height;
+                    const frequency = i;
+                    const amplitude = spectrum[i] || 0;
+
+                    if (Math.random() < 0.3) {
+                        particles.push(new Particle(x, y, frequency, amplitude));
+                    }
+                }
+            }
+        }
+
+        function drawSpectrum(spectrum) {
+            const barWidth = width / spectrum.length;
+
+            for (let i = 0; i < spectrum.length; i++) {
+                const barHeight = (spectrum[i] / 255) * height * 0.5;
+                const x = i * barWidth;
+                const y = height - barHeight;
+
+                const gradient = ctx.createLinearGradient(x, height, x, y);
+                gradient.addColorStop(0, `hsla(${hue + i * 0.5}, 100%, 50%, 0.8)`);
+                gradient.addColorStop(1, `hsla(${hue + i * 0.5 + 30}, 100%, 70%, 0.1)`);
+
+                ctx.fillStyle = gradient;
+                ctx.fillRect(x, y, barWidth - 1, barHeight);
+            }
+        }
+
+        function animate() {
+            if (!isRunning) return;
+
+            // Semi-transparent background for trails
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Get spectrum data
+            analyser.getByteFrequencyData(dataArray);
+
+            // Draw spectrum
+            drawSpectrum(dataArray);
+
+            // Spawn and update particles
+            spawnParticles(dataArray);
+
+            particles = particles.filter(p => p.life > 0);
+
+            particles.forEach(particle => {
+                particle.update(dataArray);
+                particle.draw();
+            });
+
+            // Cycle hue
+            hue = (hue + 0.5) % 360;
+
+            // Update info
+            const avgFrequency = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+            info.textContent = `Particles: ${particles.length} | Avg: ${Math.floor(avgFrequency)}`;
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        startScreen.addEventListener('click', () => {
+            startScreen.classList.add('hidden');
+            initAudio();
+        });
+
+        // Touch support
+        startScreen.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startScreen.classList.add('hidden');
+            initAudio();
+        });
+    </script>
+</body>
+</html>
