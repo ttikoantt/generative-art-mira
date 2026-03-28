@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>量子波形シミュレーター</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0e27;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        canvas {
+            display: block;
+        }
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        .btn {
+            padding: 10px 20px;
+            background: rgba(100, 200, 255, 0.2);
+            border: 1px solid rgba(100, 200, 255, 0.5);
+            color: #64c8ff;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+        .btn:hover {
+            background: rgba(100, 200, 255, 0.4);
+            transform: scale(1.05);
+        }
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(100, 200, 255, 0.7);
+            font-size: 12px;
+            z-index: 100;
+        }
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+        @media (max-width: 600px) {
+            .controls {
+                flex-wrap: wrap;
+                justify-content: center;
+                bottom: 10px;
+            }
+            .btn {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+            .info {
+                font-size: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="info">
+        <div>量子波形シミュレーター #888</div>
+        <div id="waveInfo">Wave 1: ψ₁ = A·sin(kx - ωt)</div>
+    </div>
+    
+    <div class="controls">
+        <button class="btn" onclick="addWave()">+ 波を追加</button>
+        <button class="btn" onclick="toggleInterference()">干渉切替</button>
+        <button class="btn" onclick="resetWaves()">リセット</button>
+    </div>
+    
+    <button class="btn fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let waves = [];
+        let showInterference = true;
+        let time = 0;
+        let nextId = 1;
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        class Wave {
+            constructor(id) {
+                this.id = id;
+                this.amplitude = 50 + Math.random() * 50;
+                this.frequency = 0.01 + Math.random() * 0.02;
+                this.phase = Math.random() * Math.PI * 2;
+                this.speed = 0.02 + Math.random() * 0.03;
+                this.hue = Math.random() * 360;
+                this.y = height / 2 + (Math.random() - 0.5) * 200;
+                this.lineWidth = 2;
+                this.opacity = 0.6;
+            }
+            
+            getValue(x, t) {
+                return this.amplitude * Math.sin(x * this.frequency + t * this.speed + this.phase);
+            }
+            
+            draw(ctx, t) {
+                ctx.beginPath();
+                ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${this.opacity})`;
+                ctx.lineWidth = this.lineWidth;
+                
+                for (let x = 0; x < width; x += 2) {
+                    const y = this.y + this.getValue(x, t);
+                    if (x === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                
+                ctx.stroke();
+            }
+        }
+        
+        function addWave() {
+            if (waves.length < 8) {
+                const wave = new Wave(nextId++);
+                waves.push(wave);
+                updateInfo();
+            }
+        }
+        
+        function toggleInterference() {
+            showInterference = !showInterference;
+        }
+        
+        function resetWaves() {
+            waves = [];
+            nextId = 1;
+            addWave();
+            addWave();
+            updateInfo();
+        }
+        
+        function updateInfo() {
+            const info = document.getElementById('waveInfo');
+            info.innerHTML = waves.map((w, i) => 
+                `Wave ${w.id}: ψ${i+1} = ${w.amplitude.toFixed(0)}·sin(${(w.frequency*100).toFixed(1)}x - ${(w.speed*100).toFixed(1)}t)`
+            ).join('<br>');
+        }
+        
+        function drawInterference(t) {
+            if (waves.length === 0) return;
+            
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.lineWidth = 3;
+            
+            for (let x = 0; x < width; x += 2) {
+                let totalY = height / 2;
+                
+                for (const wave of waves) {
+                    totalY += wave.getValue(x, t) * 0.5;
+                }
+                
+                if (x === 0) {
+                    ctx.moveTo(x, totalY);
+                } else {
+                    ctx.lineTo(x, totalY);
+                }
+            }
+            
+            ctx.stroke();
+        }
+        
+        function drawParticles() {
+            for (let i = 0; i < 50; i++) {
+                const x = (i * width / 50 + time * 50) % width;
+                const baseY = height / 2;
+                
+                let offset = 0;
+                for (const wave of waves) {
+                    offset += wave.getValue(x, time) * 0.3;
+                }
+                
+                const y = baseY + offset;
+                const size = 2 + Math.sin(time * 2 + i) * 1;
+                
+                ctx.beginPath();
+                ctx.fillStyle = `hsla(${(time * 50 + i * 10) % 360}, 80%, 70%, 0.8)`;
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        function animate() {
+            ctx.fillStyle = 'rgba(10, 14, 39, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            time += 0.5;
+            
+            // 個々の波を描画
+            for (const wave of waves) {
+                wave.draw(ctx, time);
+            }
+            
+            // 干渉パターンを描画
+            if (showInterference && waves.length > 1) {
+                drawInterference(time);
+            }
+            
+            // 粒子を描画
+            drawParticles();
+            
+            requestAnimationFrame(animate);
+        }
+        
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        resetWaves();
+        animate();
+    </script>
+</body>
+</html>
