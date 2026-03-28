@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Visualizer - Mira's Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            color: #fff;
+        }
+
+        h1 {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            font-weight: 300;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            background: linear-gradient(90deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #ffeaa7);
+            background-size: 300% 100%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradient 5s ease infinite;
+            z-index: 10;
+        }
+
+        @keyframes gradient {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 10;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 0 20px;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 12px 28px;
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 1px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: #667eea;
+        }
+
+        #fullscreenBtn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            font-size: 12px;
+            z-index: 10;
+        }
+
+        .info {
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            opacity: 0.6;
+            letter-spacing: 1px;
+            z-index: 10;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 16px;
+                top: 15px;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 12px;
+            }
+
+            .controls {
+                gap: 10px;
+                bottom: 20px;
+            }
+
+            .info {
+                font-size: 10px;
+                bottom: 80px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Audio Visualizer</h1>
+
+    <canvas id="canvas"></canvas>
+
+    <button id="fullscreenBtn">全画面</button>
+
+    <div class="info">「Start」をクリックしてマイクをオンにしてください</div>
+
+    <div class="controls">
+        <button id="startBtn">Start</button>
+        <button id="modeBtn">Mode: Circle</button>
+        <button id="colorBtn">Color: Rainbow</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const modeBtn = document.getElementById('modeBtn');
+        const colorBtn = document.getElementById('colorBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let dataArray;
+        let bufferLength;
+        let isRunning = false;
+        let animationId;
+
+        let visualMode = 0; // 0: Circle, 1: Waveform, 2: Particles
+        const modes = ['Circle', 'Waveform', 'Particles'];
+
+        let colorMode = 0; // 0: Rainbow, 1: Blue, 2: Purple
+        const colorModes = ['Rainbow', 'Blue', 'Purple'];
+
+        // Resize canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Fullscreen
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Mode button
+        modeBtn.addEventListener('click', () => {
+            visualMode = (visualMode + 1) % modes.length;
+            modeBtn.textContent = `Mode: ${modes[visualMode]}`;
+        });
+
+        // Color button
+        colorBtn.addEventListener('click', () => {
+            colorMode = (colorMode + 1) % colorModes.length;
+            colorBtn.textContent = `Color: ${colorModes[colorMode]}`;
+        });
+
+        // Get color based on mode and index
+        function getColor(index, total) {
+            const hue = colorMode === 0
+                ? (index / total) * 360
+                : colorMode === 1
+                ? 200 + (index / total) * 60
+                : 280 + (index / total) * 60;
+            const saturation = colorMode === 0 ? 80 : 70;
+            const lightness = 60;
+            return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+        }
+
+        // Start audio
+        startBtn.addEventListener('click', async () => {
+            if (isRunning) return;
+
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 512;
+                bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+
+                isRunning = true;
+                startBtn.textContent = 'Running';
+                startBtn.classList.add('active');
+
+                animate();
+            } catch (err) {
+                console.error('Microphone access denied:', err);
+                alert('マイクへのアクセスが許可されませんでした');
+            }
+        });
+
+        // Animate
+        function animate() {
+            animationId = requestAnimationFrame(animate);
+
+            analyser.getByteFrequencyData(dataArray);
+
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            switch (visualMode) {
+                case 0:
+                    drawCircle();
+                    break;
+                case 1:
+                    drawWaveform();
+                    break;
+                case 2:
+                    drawParticles();
+                    break;
+            }
+        }
+
+        // Circle visualization
+        function drawCircle() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const maxRadius = Math.min(canvas.width, canvas.height) * 0.4;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const value = dataArray[i];
+                const percent = value / 255;
+                const radius = 50 + percent * maxRadius;
+                const angle = (i / bufferLength) * Math.PI * 2;
+
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+
+                ctx.beginPath();
+                ctx.arc(x, y, 2 + percent * 5, 0, Math.PI * 2);
+                ctx.fillStyle = getColor(i, bufferLength);
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = getColor(i, bufferLength);
+                ctx.fill();
+            }
+
+            // Inner glow circle
+            const avgValue = dataArray.reduce((a, b) => a + b) / bufferLength;
+            const glowRadius = 30 + (avgValue / 255) * 50;
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, glowRadius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${avgValue / 255 * 0.3})`;
+            ctx.shadowBlur = 50;
+            ctx.shadowColor = '#fff';
+            ctx.fill();
+        }
+
+        // Waveform visualization
+        function drawWaveform() {
+            const sliceWidth = canvas.width / bufferLength;
+            let x = 0;
+
+            ctx.beginPath();
+
+            for (let i = 0; i < bufferLength; i++) {
+                const value = dataArray[i];
+                const percent = value / 255;
+                const y = canvas.height / 2 + (percent - 0.5) * canvas.height * 0.8;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.strokeStyle = getColor(0, 1);
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = getColor(0, 1);
+            ctx.stroke();
+
+            // Draw bars
+            for (let i = 0; i < bufferLength; i++) {
+                const value = dataArray[i];
+                const percent = value / 255;
+                const barWidth = sliceWidth * 0.8;
+                const barHeight = percent * canvas.height * 0.3;
+                const x = i * sliceWidth;
+                const y = canvas.height / 2;
+
+                ctx.fillStyle = getColor(i, bufferLength);
+                ctx.globalAlpha = 0.5;
+                ctx.fillRect(x, y - barHeight / 2, barWidth, barHeight);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // Particles visualization
+        let particles = [];
+
+        function drawParticles() {
+            const avgValue = dataArray.reduce((a, b) => a + b) / bufferLength;
+            const lowFreq = dataArray.slice(0, bufferLength / 4).reduce((a, b) => a + b) / (bufferLength / 4);
+
+            // Add new particles based on audio
+            if (lowFreq > 100) {
+                for (let i = 0; i < 3; i++) {
+                    particles.push({
+                        x: canvas.width / 2,
+                        y: canvas.height / 2,
+                        vx: (Math.random() - 0.5) * 10,
+                        vy: (Math.random() - 0.5) * 10,
+                        size: Math.random() * 5 + 2,
+                        color: getColor(Math.floor(Math.random() * bufferLength), bufferLength),
+                        life: 1
+                    });
+                }
+            }
+
+            // Update and draw particles
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.01;
+                p.size *= 0.99;
+
+                if (p.life <= 0) return false;
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = p.color;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                return true;
+            });
+
+            // Limit particles
+            if (particles.length > 500) {
+                particles = particles.slice(-500);
+            }
+
+            // Draw center circle
+            const centerRadius = 50 + (avgValue / 255) * 100;
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, centerRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = getColor(0, 1);
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = getColor(0, 1);
+            ctx.stroke();
+        }
+
+        // Stop audio when page is hidden
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && isRunning) {
+                cancelAnimationFrame(animationId);
+            } else if (!document.hidden && isRunning) {
+                animate();
+            }
+        });
+
+        // Initial draw
+        function drawInitial() {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 80, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        drawInitial();
+    </script>
+</body>
+</html>
