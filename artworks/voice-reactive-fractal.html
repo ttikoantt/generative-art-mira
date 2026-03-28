@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音声リアクティブ・フラクタル</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            font-size: 14px;
+            z-index: 100;
+            text-shadow: 0 0 10px #0ff;
+            pointer-events: none;
+        }
+
+        #startButton {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px 40px;
+            font-size: 18px;
+            background: rgba(0, 255, 255, 0.2);
+            border: 2px solid #0ff;
+            color: #0ff;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            z-index: 100;
+            transition: all 0.3s;
+        }
+
+        #startButton:hover {
+            background: rgba(0, 255, 255, 0.4);
+            box-shadow: 0 0 30px #0ff;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            border-radius: 20px;
+            cursor: pointer;
+            z-index: 100;
+            font-size: 14px;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <div>音声リアクティブ・フラクタル</div>
+        <div id="fps">FPS: 0</div>
+        <div id="audioLevel">音量: 0</div>
+    </div>
+
+    <button id="startButton">🎤 スタート</button>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startButton');
+        const fpsDisplay = document.getElementById('fps');
+        const audioLevelDisplay = document.getElementById('audioLevel');
+
+        let width, height;
+        let audioContext, analyser, microphone, dataArray;
+        let isRunning = false;
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 0;
+
+        // 色相サイクル
+        let hue = 0;
+
+        // パーティクル配列
+        const particles = [];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y, hue, size, speed) {
+                this.x = x;
+                this.y = y;
+                this.hue = hue;
+                this.size = size;
+                this.speed = speed;
+                this.angle = Math.random() * Math.PI * 2;
+                this.life = 1;
+                this.decay = 0.005 + Math.random() * 0.01;
+            }
+
+            update() {
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+                this.life -= this.decay;
+                this.size *= 0.99;
+            }
+
+            draw(ctx) {
+                const alpha = this.life * 0.8;
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                // 光る効果
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size);
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${alpha})`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 100%, 50%, ${alpha * 0.5})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 30%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // フラクタルツリーを描画（音声に反応）
+        function drawFractalTree(x, y, angle, length, depth, audioValue) {
+            if (depth === 0 || length < 2) return;
+
+            const endX = x + Math.cos(angle) * length;
+            const endY = y + Math.sin(angle) * length;
+
+            // 音声レベルに応じて色と太さを変化
+            const hueShift = audioValue * 180;
+            const lineHue = (hue + hueShift + depth * 20) % 360;
+            const lineWidth = Math.max(0.5, depth * audioValue * 3);
+
+            ctx.strokeStyle = `hsl(${lineHue}, 80%, ${50 + audioValue * 30}%)`;
+            ctx.lineWidth = lineWidth;
+            ctx.lineCap = 'round';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = `hsl(${lineHue}, 80%, 50%)`;
+
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+
+            // 音声レベルに応じて分岐角度を変化
+            const angleVariation = 0.3 + audioValue * 0.5;
+            const lengthVariation = 0.6 + audioValue * 0.2;
+
+            drawFractalTree(endX, endY, angle - angleVariation, length * lengthVariation, depth - 1, audioValue);
+            drawFractalTree(endX, endY, angle + angleVariation, length * lengthVariation, depth - 1, audioValue);
+        }
+
+        // パーティクルを追加
+        function addParticles(count, audioValue) {
+            for (let i = 0; i < count; i++) {
+                const x = width / 2 + (Math.random() - 0.5) * width * 0.5;
+                const y = height / 2 + (Math.random() - 0.5) * height * 0.5;
+                const particleHue = (hue + Math.random() * 60) % 360;
+                const size = 10 + audioValue * 50 + Math.random() * 20;
+                const speed = 1 + audioValue * 5 + Math.random() * 2;
+                particles.push(new Particle(x, y, particleHue, size, speed));
+            }
+        }
+
+        // メイン描画ループ
+        function draw() {
+            // 半透明の黒でフェード効果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            let audioValue = 0;
+
+            if (isRunning && dataArray) {
+                // 音声データの平均を取得
+                const sum = dataArray.reduce((a, b) => a + b, 0);
+                audioValue = sum / dataArray.length / 255;
+            }
+
+            // 色相をサイクル
+            hue = (hue + 0.5) % 360;
+
+            // 中心からフラクタルツリーを描画
+            const treeCount = 6;
+            for (let i = 0; i < treeCount; i++) {
+                const baseAngle = (Math.PI * 2 / treeCount) * i + hue * 0.01;
+                const treeLength = 80 + audioValue * 100;
+                const treeDepth = 5 + Math.floor(audioValue * 3);
+                drawFractalTree(
+                    width / 2,
+                    height / 2,
+                    baseAngle,
+                    treeLength,
+                    Math.min(treeDepth, 10),
+                    audioValue
+                );
+            }
+
+            // 音声レベルに応じてパーティクルを追加
+            if (audioValue > 0.1) {
+                const particleCount = Math.floor(audioValue * 5);
+                addParticles(particleCount, audioValue);
+            }
+
+            // パーティクルを更新・描画
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw(ctx);
+
+                if (p.life <= 0 || p.size < 0.5) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            // パーティクル数を制限
+            while (particles.length > 500) {
+                particles.shift();
+            }
+
+            // FPS計算
+            frameCount++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+                fpsDisplay.textContent = `FPS: ${fps}`;
+            }
+
+            audioLevelDisplay.textContent = `音量: ${(audioValue * 100).toFixed(1)}%`;
+
+            requestAnimationFrame(draw);
+        }
+
+        // 音声セットアップ
+        async function setupAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                microphone.connect(analyser);
+                isRunning = true;
+                startButton.style.display = 'none';
+            } catch (err) {
+                console.error('音声取得エラー:', err);
+                alert('音声を取得できませんでした。マイクの許可を確認してください。');
+            }
+        }
+
+        // イベントリスナー
+        startButton.addEventListener('click', setupAudio);
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 描画開始
+        draw();
+    </script>
+</body>
+</html>
