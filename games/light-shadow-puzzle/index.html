@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Light and Shadow Puzzle - 光と影のパズル</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            user-select: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .ui h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            color: #f39c12;
+            text-shadow: 0 0 20px rgba(243, 156, 18, 0.5);
+        }
+
+        .ui .info {
+            font-size: 14px;
+            line-height: 1.8;
+            opacity: 0.9;
+        }
+
+        .ui .stats {
+            margin-top: 15px;
+            padding: 10px 15px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 8px;
+            display: inline-block;
+        }
+
+        .ui .level {
+            font-size: 18px;
+            color: #3498db;
+        }
+
+        .ui .moves {
+            font-size: 18px;
+            color: #e74c3c;
+        }
+
+        .message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: #f39c12;
+            padding: 40px 60px;
+            border-radius: 15px;
+            font-size: 32px;
+            font-weight: bold;
+            text-align: center;
+            z-index: 100;
+            display: none;
+            border: 3px solid #f39c12;
+            box-shadow: 0 0 50px rgba(243, 156, 18, 0.3);
+        }
+
+        .message.show {
+            display: block;
+            animation: fadeIn 0.5s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .controls button {
+            padding: 12px 24px;
+            background: rgba(52, 152, 219, 0.3);
+            border: 1px solid rgba(52, 152, 219, 0.5);
+            color: #fff;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .controls button:hover {
+            background: rgba(52, 152, 219, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .controls button:active {
+            transform: translateY(0);
+        }
+
+        .hint {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        @media (max-width: 768px) {
+            .ui h1 {
+                font-size: 20px;
+            }
+
+            .ui .info {
+                font-size: 12px;
+            }
+
+            .message {
+                padding: 30px 40px;
+                font-size: 24px;
+            }
+
+            .controls button {
+                padding: 10px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <h1>Light and Shadow Puzzle</h1>
+        <div class="info">
+            <p>光源をドラッグして、ターゲットに光を届けよう</p>
+        </div>
+        <div class="stats">
+            <div class="level">レベル: <span id="level">1</span></div>
+            <div class="moves">移動回数: <span id="moves">0</span></div>
+        </div>
+    </div>
+
+    <div class="message" id="message">
+        クリア！
+        <div style="font-size: 18px; margin-top: 20px; color: #fff;">タップで次へ</div>
+    </div>
+
+    <div class="controls">
+        <button onclick="resetLevel()">リセット</button>
+        <button onclick="toggleFullscreen()">全画面</button>
+    </div>
+
+    <div class="hint">光源をドラッグして配置</div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let level = 1;
+        let moves = 0;
+        let isDragging = false;
+        let selectedLight = null;
+        let isClear = false;
+
+        // ゲームオブジェクト
+        let lights = [];
+        let obstacles = [];
+        let targets = [];
+
+        // レベルデータ
+        const levels = [
+            {
+                lights: [
+                    { x: 0.15, y: 0.5, intensity: 1 }
+                ],
+                obstacles: [
+                    { x: 0.4, y: 0.2, w: 0.05, h: 0.6 }
+                ],
+                targets: [
+                    { x: 0.85, y: 0.5, size: 40 }
+                ]
+            },
+            {
+                lights: [
+                    { x: 0.1, y: 0.3, intensity: 1 },
+                    { x: 0.1, y: 0.7, intensity: 1 }
+                ],
+                obstacles: [
+                    { x: 0.35, y: 0.1, w: 0.05, h: 0.35 },
+                    { x: 0.35, y: 0.55, w: 0.05, h: 0.35 }
+                ],
+                targets: [
+                    { x: 0.85, y: 0.3, size: 35 },
+                    { x: 0.85, y: 0.7, size: 35 }
+                ]
+            },
+            {
+                lights: [
+                    { x: 0.1, y: 0.5, intensity: 1.2 }
+                ],
+                obstacles: [
+                    { x: 0.3, y: 0.35, w: 0.05, h: 0.3 },
+                    { x: 0.5, y: 0.2, w: 0.05, h: 0.6 },
+                    { x: 0.7, y: 0.35, w: 0.05, h: 0.3 }
+                ],
+                targets: [
+                    { x: 0.9, y: 0.5, size: 30 }
+                ]
+            }
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        function loadLevel(levelNum) {
+            const levelData = levels[(levelNum - 1) % levels.length];
+            lights = [];
+            obstacles = [];
+            targets = [];
+            moves = 0;
+            isClear = false;
+
+            // 光源
+            levelData.lights.forEach(l => {
+                lights.push({
+                    x: l.x * width,
+                    y: l.y * height,
+                    intensity: l.intensity,
+                    radius: 25
+                });
+            });
+
+            // 障害物
+            levelData.obstacles.forEach(o => {
+                obstacles.push({
+                    x: o.x * width,
+                    y: o.y * height,
+                    w: o.w * width,
+                    h: o.h * height
+                });
+            });
+
+            // ターゲット
+            levelData.targets.forEach(t => {
+                targets.push({
+                    x: t.x * width,
+                    y: t.y * height,
+                    size: t.size,
+                    illuminated: false
+                });
+            });
+
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('level').textContent = level;
+            document.getElementById('moves').textContent = moves;
+        }
+
+        // マウス/タッチイベント
+        function getEventPos(e) {
+            if (e.touches) {
+                return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            }
+            return { x: e.clientX, y: e.clientY };
+        }
+
+        function handleStart(e) {
+            if (isClear) {
+                nextLevel();
+                return;
+            }
+
+            const pos = getEventPos(e);
+
+            // 光源チェック
+            lights.forEach(light => {
+                const dx = pos.x - light.x;
+                const dy = pos.y - light.y;
+                if (Math.sqrt(dx * dx + dy * dy) < light.radius) {
+                    isDragging = true;
+                    selectedLight = light;
+                }
+            });
+        }
+
+        function handleMove(e) {
+            if (!isDragging || !selectedLight) return;
+
+            const pos = getEventPos(e);
+
+            // 移動
+            selectedLight.x = pos.x;
+            selectedLight.y = pos.y;
+
+            // 境界
+            selectedLight.x = Math.max(selectedLight.radius, Math.min(width - selectedLight.radius, selectedLight.x));
+            selectedLight.y = Math.max(selectedLight.radius, Math.min(height - selectedLight.radius, selectedLight.y));
+        }
+
+        function handleEnd() {
+            if (isDragging) {
+                moves++;
+                updateUI();
+            }
+            isDragging = false;
+            selectedLight = null;
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('mouseleave', handleEnd);
+
+        canvas.addEventListener('touchstart', handleStart);
+        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e); });
+        canvas.addEventListener('touchend', handleEnd);
+
+        function castLight(light) {
+            const rays = 360;
+            const rayAngle = (Math.PI * 2) / rays;
+
+            // 光線
+            for (let i = 0; i < rays; i++) {
+                const angle = i * rayAngle;
+                let maxDist = Math.max(width, height);
+
+                // 障害物との交差チェック
+                obstacles.forEach(obs => {
+                    const intersections = getRayBoxIntersection(
+                        light.x, light.y,
+                        Math.cos(angle), Math.sin(angle),
+                        obs.x, obs.y, obs.w, obs.h
+                    );
+
+                    intersections.forEach(dist => {
+                        if (dist > 0 && dist < maxDist) {
+                            maxDist = dist;
+                        }
+                    });
+                });
+
+                // 光線の終点
+                const endX = light.x + Math.cos(angle) * maxDist;
+                const endY = light.y + Math.sin(angle) * maxDist;
+
+                // 光線を描画
+                const gradient = ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, maxDist);
+                gradient.addColorStop(0, `rgba(255, 200, 100, ${0.3 * light.intensity})`);
+                gradient.addColorStop(1, 'rgba(255, 200, 100, 0)');
+
+                ctx.beginPath();
+                ctx.moveTo(light.x, light.y);
+                ctx.lineTo(endX, endY);
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // ターゲットチェック
+                targets.forEach(target => {
+                    const dx = target.x - light.x;
+                    const dy = target.y - light.y;
+                    const distToTarget = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distToTarget < maxDist) {
+                        // 光線がターゲットに届くかチェック
+                        const dot = (dx * Math.cos(angle) + dy * Math.sin(angle)) / distToTarget;
+                        if (dot > 0.99) {
+                            target.illuminated = true;
+                        }
+                    }
+                });
+            }
+        }
+
+        function getRayBoxIntersection(rx, ry, rdx, rdy, bx, by, bw, bh) {
+            const intersections = [];
+
+            // 左
+            if (rdx !== 0) {
+                const t = (bx - rx) / rdx;
+                if (t > 0) {
+                    const y = ry + t * rdy;
+                    if (y >= by && y <= by + bh) {
+                        intersections.push(t);
+                    }
+                }
+            }
+
+            // 右
+            if (rdx !== 0) {
+                const t = (bx + bw - rx) / rdx;
+                if (t > 0) {
+                    const y = ry + t * rdy;
+                    if (y >= by && y <= by + bh) {
+                        intersections.push(t);
+                    }
+                }
+            }
+
+            // 上
+            if (rdy !== 0) {
+                const t = (by - ry) / rdy;
+                if (t > 0) {
+                    const x = rx + t * rdx;
+                    if (x >= bx && x <= bx + bw) {
+                        intersections.push(t);
+                    }
+                }
+            }
+
+            // 下
+            if (rdy !== 0) {
+                const t = (by + bh - ry) / rdy;
+                if (t > 0) {
+                    const x = rx + t * rdx;
+                    if (x >= bx && x <= bx + bw) {
+                        intersections.push(t);
+                    }
+                }
+            }
+
+            return intersections;
+        }
+
+        function draw() {
+            // 背景
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, width, height);
+
+            // 光線
+            lights.forEach(light => castLight(light));
+
+            // 障害物
+            ctx.fillStyle = '#2c3e50';
+            obstacles.forEach(obs => {
+                ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+
+                // エッジ
+                ctx.strokeStyle = '#34495e';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
+            });
+
+            // ターゲット
+            targets.forEach(target => {
+                const gradient = ctx.createRadialGradient(
+                    target.x, target.y, 0,
+                    target.x, target.y, target.size
+                );
+
+                if (target.illuminated) {
+                    gradient.addColorStop(0, 'rgba(46, 204, 113, 0.8)');
+                    gradient.addColorStop(0.5, 'rgba(46, 204, 113, 0.4)');
+                    gradient.addColorStop(1, 'rgba(46, 204, 113, 0)');
+
+                    // 発光
+                    ctx.shadowColor = '#2ecc71';
+                    ctx.shadowBlur = 20;
+                } else {
+                    gradient.addColorStop(0, 'rgba(231, 76, 60, 0.5)');
+                    gradient.addColorStop(0.5, 'rgba(231, 76, 60, 0.3)');
+                    gradient.addColorStop(1, 'rgba(231, 76, 60, 0)');
+
+                    ctx.shadowColor = 'transparent';
+                    ctx.shadowBlur = 0;
+                }
+
+                ctx.beginPath();
+                ctx.arc(target.x, target.y, target.size, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // 中心
+                ctx.beginPath();
+                ctx.arc(target.x, target.y, target.size * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = target.illuminated ? '#2ecc71' : '#e74c3c';
+                ctx.fill();
+
+                ctx.shadowBlur = 0;
+            });
+
+            // 光源
+            lights.forEach(light => {
+                // 光源本体
+                const gradient = ctx.createRadialGradient(
+                    light.x, light.y, 0,
+                    light.x, light.y, light.radius * 2
+                );
+                gradient.addColorStop(0, 'rgba(255, 200, 100, 0.8)');
+                gradient.addColorStop(0.5, 'rgba(255, 200, 100, 0.4)');
+                gradient.addColorStop(1, 'rgba(255, 200, 100, 0)');
+
+                ctx.beginPath();
+                ctx.arc(light.x, light.y, light.radius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // 中心
+                ctx.beginPath();
+                ctx.arc(light.x, light.y, light.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#f39c12';
+                ctx.fill();
+
+                // 選択中のハイライト
+                if (light === selectedLight) {
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            });
+
+            // クリアチェック
+            if (!isClear && targets.every(t => t.illuminated)) {
+                isClear = true;
+                showMessage();
+            }
+        }
+
+        function showMessage() {
+            const message = document.getElementById('message');
+            message.classList.add('show');
+        }
+
+        function hideMessage() {
+            const message = document.getElementById('message');
+            message.classList.remove('show');
+        }
+
+        function nextLevel() {
+            hideMessage();
+            level++;
+            loadLevel(level);
+        }
+
+        function resetLevel() {
+            loadLevel(level);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function animate() {
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        // 初期化
+        loadLevel(1);
+        animate();
+
+        // リサイズ時にリロード
+        window.addEventListener('resize', () => {
+            setTimeout(() => {
+                loadLevel(level);
+            }, 100);
+        });
+    </script>
+</body>
+</html>
