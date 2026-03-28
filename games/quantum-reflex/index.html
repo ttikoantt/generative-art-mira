@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Quantum Reflex - 量子反射ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        body {
+            background: #0a0a1a;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+        }
+        #gameCanvas {
+            display: block;
+            background: #0a0a1a;
+        }
+        .ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(10, 10, 26, 0.95);
+            z-index: 100;
+            padding: 20px;
+        }
+        .hidden {
+            display: none !important;
+        }
+        .title {
+            font-size: 48px;
+            color: #00ffff;
+            text-shadow: 0 0 20px #00ffff, 0 0 40px #00ffff;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .subtitle {
+            font-size: 16px;
+            color: #888;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+        .start-btn {
+            background: linear-gradient(135deg, #00ffff, #ff00ff);
+            border: none;
+            color: #000;
+            padding: 20px 60px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 30px;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+            transition: all 0.3s;
+        }
+        .start-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.8);
+        }
+        .game-ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 50;
+            pointer-events: none;
+        }
+        .score-display {
+            font-size: 32px;
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+            font-weight: bold;
+        }
+        .combo-display {
+            font-size: 24px;
+            color: #ff00ff;
+            text-shadow: 0 0 10px #ff00ff;
+            font-weight: bold;
+        }
+        .game-over {
+            text-align: center;
+        }
+        .final-score {
+            font-size: 64px;
+            color: #00ffff;
+            margin: 20px 0;
+            text-shadow: 0 0 30px #00ffff;
+        }
+        .final-combo {
+            font-size: 32px;
+            color: #ff00ff;
+            margin-bottom: 40px;
+        }
+        .instructions {
+            color: #666;
+            font-size: 14px;
+            margin-top: 30px;
+            text-align: center;
+            max-width: 400px;
+        }
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 200;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s;
+        }
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+        @media (max-width: 768px) {
+            .title {
+                font-size: 36px;
+            }
+            .start-btn {
+                padding: 15px 40px;
+                font-size: 18px;
+            }
+            .score-display {
+                font-size: 24px;
+            }
+            .combo-display {
+                font-size: 18px;
+            }
+            .final-score {
+                font-size: 48px;
+            }
+            .instructions {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">🖥️</button>
+    
+    <!-- Start Screen -->
+    <div id="startScreen" class="ui-overlay">
+        <div class="title">QUANTUM REFLEX</div>
+        <div class="subtitle">量子反射ゲー��</div>
+        <button class="start-btn" onclick="startGame()">START</button>
+        <div class="instructions">
+            ターゲットが現れたらタップ！<br>
+            素早い反応で高スコアを目指そう！<br>
+            コンボ続けるとボーナスポイント！
+        </div>
+    </div>
+    
+    <!-- Game UI -->
+    <div id="gameUI" class="game-ui hidden">
+        <div class="score-display">SCORE: <span id="score">0</span></div>
+        <div class="combo-display">COMBO: <span id="combo">0</span>x</div>
+    </div>
+    
+    <!-- Game Over Screen -->
+    <div id="gameOverScreen" class="ui-overlay hidden">
+        <div class="game-over">
+            <div class="title">GAME OVER</div>
+            <div class="final-score" id="finalScore">0</div>
+            <div class="final-combo">MAX COMBO: <span id="maxCombo">0</span>x</div>
+            <button class="start-btn" onclick="startGame()">RETRY</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let gameRunning = false;
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let targets = [];
+        let particles = [];
+        let lastSpawnTime = 0;
+        let spawnInterval = 1500;
+        let difficultyMultiplier = 1;
+        
+        // Target types
+        const targetTypes = {
+            normal: { points: 100, color: '#00ffff', size: 50, lifetime: 2000 },
+            rare: { points: 250, color: '#ff00ff', size: 40, lifetime: 1500 },
+            legendary: { points: 500, color: '#ffff00', size: 30, lifetime: 1000 },
+            decoy: { points: -50, color: '#ff0000', size: 45, lifetime: 2000 }
+        };
+        
+        class Target {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                const rand = Math.random();
+                if (rand < 0.1) {
+                    this.type = 'legendary';
+                } else if (rand < 0.3) {
+                    this.type = 'rare';
+                } else if (rand < 0.4) {
+                    this.type = 'decoy';
+                } else {
+                    this.type = 'normal';
+                }
+                
+                const config = targetTypes[this.type];
+                this.x = Math.random() * (width - config.size * 2) + config.size;
+                this.y = Math.random() * (height - config.size * 2) + config.size;
+                this.size = config.size;
+                this.maxSize = config.size * 1.5;
+                this.color = config.color;
+                this.points = config.points;
+                this.lifetime = config.lifetime / difficultyMultiplier;
+                this.spawnTime = Date.now();
+                this.scale = 0;
+                this.scaleSpeed = 0.05;
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+            }
+            
+            update() {
+                const age = Date.now() - this.spawnTime;
+                const remaining = this.lifetime - age;
+                
+                if (remaining <= 0) {
+                    return false;
+                }
+                
+                // Spawn animation
+                if (this.scale < 1) {
+                    this.scale = Math.min(1, this.scale + this.scaleSpeed);
+                }
+                
+                // Despawn animation
+                if (remaining < 300) {
+                    this.scale = remaining / 300;
+                }
+                
+                // Rotation
+                this.rotation += this.rotationSpeed;
+                
+                // Pulse effect
+                this.pulsePhase += 0.1;
+                
+                return true;
+            }
+            
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.scale(this.scale, this.scale);
+                
+                // Glow effect
+                const pulse = Math.sin(this.pulsePhase) * 0.2 + 1;
+                ctx.shadowBlur = 20 * pulse;
+                ctx.shadowColor = this.color;
+                
+                // Draw quantum particle
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size / 2, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                
+                // Inner glow
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size / 4, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.fill();
+                
+                // Orbiting particles
+                for (let i = 0; i < 3; i++) {
+                    const angle = (Date.now() / 500 + i * Math.PI * 2 / 3) % (Math.PI * 2);
+                    const orbitRadius = this.size * 0.8;
+                    const px = Math.cos(angle) * orbitRadius;
+                    const py = Math.sin(angle) * orbitRadius;
+                    
+                    ctx.beginPath();
+                    ctx.arc(px, py, this.size / 10, 0, Math.PI * 2);
+                    ctx.fillStyle = this.color;
+                    ctx.fill();
+                }
+                
+                // Type indicator
+                if (this.type === 'legendary') {
+                    ctx.font = 'bold 20px Courier New';
+                    ctx.fillStyle = '#000';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('★', 0, 0);
+                } else if (this.type === 'rare') {
+                    ctx.font = 'bold 16px Courier New';
+                    ctx.fillStyle = '#000';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('◆', 0, 0);
+                } else if (this.type === 'decoy') {
+                    ctx.font = 'bold 18px Courier New';
+                    ctx.fillStyle = '#000';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('✖', 0, 0);
+                }
+                
+                ctx.restore();
+            }
+            
+            checkHit(x, y) {
+                const dx = x - this.x;
+                const dy = y - this.y;
+                return Math.sqrt(dx * dx + dy * dy) < this.size * this.scale;
+            }
+        }
+        
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.size = Math.random() * 8 + 4;
+                this.color = color;
+                this.alpha = 1;
+                this.decay = Math.random() * 0.02 + 0.02;
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+                this.alpha -= this.decay;
+                return this.alpha > 0;
+            }
+            
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        function spawnTarget() {
+            if (targets.length < 10) {
+                targets.push(new Target());
+            }
+        }
+        
+        function createParticles(x, y, color, count = 15) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+        
+        function handleTap(x, y) {
+            if (!gameRunning) return;
+            
+            let hit = false;
+            for (let i = targets.length - 1; i >= 0; i--) {
+                if (targets[i].checkHit(x, y)) {
+                    const target = targets[i];
+                    
+                    if (target.type === 'decoy') {
+                        // Penalty for hitting decoy
+                        combo = 0;
+                        createParticles(target.x, target.y, target.color, 20);
+                    } else {
+                        // Score calculation with combo
+                        const comboBonus = Math.min(combo, 10);
+                        const points = target.points * (1 + comboBonus * 0.1);
+                        score += Math.floor(points);
+                        combo++;
+                        maxCombo = Math.max(maxCombo, combo);
+                        
+                        // Particle effects
+                        createParticles(target.x, target.y, target.color, 15);
+                    }
+                    
+                    targets.splice(i, 1);
+                    hit = true;
+                    break;
+                }
+            }
+            
+            if (!hit) {
+                combo = 0;
+            }
+            
+            updateUI();
+        }
+        
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('combo').textContent = combo;
+        }
+        
+        function startGame() {
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            document.getElementById('gameUI').classList.remove('hidden');
+            
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            targets = [];
+            particles = [];
+            difficultyMultiplier = 1;
+            spawnInterval = 1500;
+            lastSpawnTime = Date.now();
+            gameRunning = true;
+            
+            updateUI();
+        }
+        
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('gameUI').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('maxCombo').textContent = maxCombo;
+        }
+        
+        function update() {
+            if (!gameRunning) return;
+            
+            const now = Date.now();
+            
+            // Spawn targets
+            if (now - lastSpawnTime > spawnInterval) {
+                spawnTarget();
+                lastSpawnTime = now;
+                
+                // Increase difficulty
+                difficultyMultiplier = Math.min(2, difficultyMultiplier + 0.01);
+                spawnInterval = Math.max(500, 1500 - score / 100);
+            }
+            
+            // Update targets
+            for (let i = targets.length - 1; i >= 0; i--) {
+                if (!targets[i].update()) {
+                    targets.splice(i, 1);
+                    combo = 0;
+                    updateUI();
+                }
+            }
+            
+            // Update particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                if (!particles[i].update()) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+        
+        function draw() {
+            // Clear with fade effect
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Draw quantum background
+            ctx.globalAlpha = 0.1;
+            for (let i = 0; i < 20; i++) {
+                const x = (Math.sin(Date.now() / 2000 + i) * 0.5 + 0.5) * width;
+                const y = (Math.cos(Date.now() / 2500 + i * 0.5) * 0.5 + 0.5) * height;
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, Math.PI * 2);
+                ctx.fillStyle = '#00ffff';
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            
+            // Draw particles
+            particles.forEach(p => p.draw());
+            
+            // Draw targets
+            targets.forEach(t => t.draw());
+        }
+        
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // Event listeners
+        canvas.addEventListener('click', (e) => {
+            handleTap(e.clientX, e.clientY);
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleTap(touch.clientX, touch.clientY);
+        });
+        
+        window.addEventListener('resize', resize);
+        
+        // Initialize
+        resize();
+        gameLoop();
+    </script>
+</body>
+</html>
