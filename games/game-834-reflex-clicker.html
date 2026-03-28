@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reflex Clicker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: manipulation;
+        }
+
+        #gameCanvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .score {
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        .streak {
+            font-size: 24px;
+            margin-top: 10px;
+            color: #ffd700;
+        }
+
+        .timer {
+            font-size: 20px;
+            margin-top: 10px;
+        }
+
+        .start-screen, .game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: white;
+        }
+
+        .start-screen h1, .game-over-screen h1 {
+            font-size: 64px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.8);
+        }
+
+        .start-screen p, .game-over-screen p {
+            font-size: 24px;
+            margin-bottom: 40px;
+            opacity: 0.8;
+        }
+
+        .start-btn {
+            padding: 20px 60px;
+            font-size: 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .start-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.6);
+        }
+
+        .final-score {
+            font-size: 72px;
+            color: #ffd700;
+            margin: 20px 0;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="score">0</div>
+        <div class="streak"></div>
+        <div class="timer">60s</div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">Fullscreen</button>
+
+    <div class="start-screen" id="startScreen">
+        <h1>Reflex Clicker</h1>
+        <p>Click the targets as fast as you can!</p>
+        <button class="start-btn" onclick="startGame()">Start Game</button>
+    </div>
+
+    <div class="game-over-screen hidden" id="gameOverScreen">
+        <h1>Game Over!</h1>
+        <p>Your Score:</p>
+        <div class="final-score" id="finalScore">0</div>
+        <p id="highScoreText"></p>
+        <button class="start-btn" onclick="startGame()">Play Again</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let score = 0;
+        let streak = 0;
+        let timeLeft = 60;
+        let gameActive = false;
+        let targets = [];
+        let particles = [];
+        let highScore = localStorage.getItem('reflexClickerHighScore') || 0;
+        let gameLoop;
+        let timerInterval;
+        let spawnInterval;
+
+        class Target {
+            constructor() {
+                this.radius = 30 + Math.random() * 20;
+                this.x = this.radius + Math.random() * (width - this.radius * 2);
+                this.y = this.radius + Math.random() * (height - this.radius * 2);
+                this.hue = Math.random() * 360;
+                this.life = 1;
+                this.maxLife = 2000 + Math.random() * 1000;
+                this.created = Date.now();
+                this.pulsePhase = Math.random() * Math.PI * 2;
+                this.points = Math.floor((50 - this.radius) / 5);
+            }
+
+            update() {
+                const age = Date.now() - this.created;
+                this.life = 1 - (age / this.maxLife);
+                this.pulsePhase += 0.1;
+                return this.life > 0;
+            }
+
+            draw() {
+                const pulse = Math.sin(this.pulsePhase) * 0.1 + 1;
+                const currentRadius = this.radius * pulse * this.life;
+
+                // Outer glow
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, currentRadius * 1.5
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 70%, 50%, ${this.life})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 70%, 50%, 0)`);
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentRadius * 1.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Main circle
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 50%, ${this.life})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentRadius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Inner highlight
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 70%, ${this.life * 0.5})`;
+                ctx.beginPath();
+                ctx.arc(this.x - currentRadius * 0.3, this.y - currentRadius * 0.3, currentRadius * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Points indicator
+                ctx.fillStyle = 'white';
+                ctx.font = `bold ${currentRadius * 0.8}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.points, this.x, this.y);
+            }
+
+            contains(x, y) {
+                const dx = x - this.x;
+                const dy = y - this.y;
+                return Math.sqrt(dx * dx + dy * dy) < this.radius;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.hue = hue;
+                this.size = Math.random() * 5 + 2;
+                this.speedX = (Math.random() - 0.5) * 10;
+                this.speedY = (Math.random() - 0.5) * 10;
+                this.life = 1;
+                this.decay = Math.random() * 0.03 + 0.02;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.speedY += 0.2;
+                this.life -= this.decay;
+                return this.life > 0;
+            }
+
+            draw() {
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 50%, ${this.life})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function createExplosion(x, y, hue) {
+            for (let i = 0; i < 20; i++) {
+                particles.push(new Particle(x, y, hue));
+            }
+        }
+
+        function spawnTarget() {
+            if (!gameActive) return;
+            targets.push(new Target());
+        }
+
+        function handleClick(x, y) {
+            if (!gameActive) return;
+
+            let hit = false;
+            targets = targets.filter(target => {
+                if (target.contains(x, y)) {
+                    hit = true;
+                    score += target.points * (1 + streak * 0.1);
+                    streak++;
+                    createExplosion(target.x, target.y, target.hue);
+                    return false;
+                }
+                return true;
+            });
+
+            if (!hit) {
+                streak = 0;
+            }
+
+            updateUI();
+        }
+
+        function updateUI() {
+            document.querySelector('.score').textContent = Math.floor(score);
+            document.querySelector('.streak').textContent = streak > 1 ? `🔥 ${streak}x Streak!` : '';
+            document.querySelector('.timer').textContent = `${timeLeft}s`;
+        }
+
+        function gameUpdate() {
+            if (!gameActive) return;
+
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Update and draw targets
+            targets = targets.filter(target => target.update());
+            targets.forEach(target => target.draw());
+
+            // Update and draw particles
+            particles = particles.filter(p => p.update());
+            particles.forEach(p => p.draw());
+
+            // Spawn new targets
+            if (Math.random() < 0.03 + (score / 10000)) {
+                spawnTarget();
+            }
+
+            requestAnimationFrame(gameUpdate);
+        }
+
+        function startGame() {
+            score = 0;
+            streak = 0;
+            timeLeft = 60;
+            targets = [];
+            particles = [];
+            gameActive = true;
+
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            updateUI();
+
+            // Spawn initial targets
+            for (let i = 0; i < 3; i++) {
+                spawnTarget();
+            }
+
+            // Start game loop
+            gameUpdate();
+
+            // Timer
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateUI();
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+
+            // Spawn targets periodically
+            spawnInterval = setInterval(() => {
+                if (gameActive && targets.length < 10) {
+                    spawnTarget();
+                }
+            }, 500);
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(timerInterval);
+            clearInterval(spawnInterval);
+
+            const finalScore = Math.floor(score);
+            
+            if (finalScore > highScore) {
+                highScore = finalScore;
+                localStorage.setItem('reflexClickerHighScore', highScore);
+            }
+
+            document.getElementById('finalScore').textContent = finalScore;
+            document.getElementById('highScoreText').textContent = `Best: ${highScore}`;
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Event listeners
+        canvas.addEventListener('click', (e) => {
+            handleClick(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleClick(touch.clientX, touch.clientY);
+        });
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+    </script>
+</body>
+</html>
