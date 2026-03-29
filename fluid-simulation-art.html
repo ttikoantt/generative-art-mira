@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fluid Simulation Art | Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            z-index: 100;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .info h1 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            color: #4fc3f7;
+        }
+
+        .info p {
+            margin: 5px 0;
+            opacity: 0.8;
+        }
+
+        .info .highlight {
+            color: #81c784;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .controls button {
+            background: rgba(79, 195, 247, 0.3);
+            color: #fff;
+            border: 1px solid rgba(79, 195, 247, 0.5);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            font-family: 'Courier New', monospace;
+        }
+
+        .controls button:hover {
+            background: rgba(79, 195, 247, 0.5);
+            transform: scale(1.05);
+        }
+
+        .controls button:active {
+            transform: scale(0.95);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                padding: 10px 15px;
+            }
+
+            .info h1 {
+                font-size: 16px;
+            }
+
+            .controls {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .controls button {
+                padding: 8px 15px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="fluidCanvas"></canvas>
+
+    <div class="info">
+        <h1>🌊 Fluid Simulation Art</h1>
+        <p>画面を<span class="highlight">ドラッグ</span>して流体を操作</p>
+        <p>クリックで新しいパーティクル発生</p>
+    </div>
+
+    <div class="controls">
+        <button onclick="changeMode('fire')">🔥 Fire</button>
+        <button onclick="changeMode('water')">💧 Water</button>
+        <button onclick="changeMode('smoke')">💨 Smoke</button>
+        <button onclick="changeMode('rainbow')">🌈 Rainbow</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('fluidCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let particles = [];
+        let mouseX = 0;
+        let mouseY = 0;
+        let isMouseDown = false;
+        let currentMode = 'water';
+
+        // Color palettes for different modes
+        const colorPalettes = {
+            fire: [
+                { r: 255, g: 100, b: 0 },
+                { r: 255, g: 200, b: 0 },
+                { r: 255, g: 50, b: 0 },
+                { r: 200, g: 0, b: 0 }
+            ],
+            water: [
+                { r: 0, g: 150, b: 255 },
+                { r: 0, g: 200, b: 255 },
+                { r: 100, g: 200, b: 255 },
+                { r: 50, g: 150, b: 200 }
+            ],
+            smoke: [
+                { r: 100, g: 100, b: 100 },
+                { r: 150, g: 150, b: 150 },
+                { r: 80, g: 80, b: 80 },
+                { r: 120, g: 120, b: 120 }
+            ],
+            rainbow: [
+                { r: 255, g: 0, b: 0 },
+                { r: 255, g: 127, b: 0 },
+                { r: 255, g: 255, b: 0 },
+                { r: 0, g: 255, b: 0 },
+                { r: 0, g: 0, b: 255 },
+                { r: 75, g: 0, b: 130 },
+                { r: 148, g: 0, b: 211 }
+            ]
+        };
+
+        class Particle {
+            constructor(x, y, mode) {
+                this.x = x;
+                this.y = y;
+                this.life = 1;
+                this.decay = 0.005 + Math.random() * 0.01;
+                this.size = 2 + Math.random() * 3;
+                this.mode = mode;
+
+                const palette = colorPalettes[mode];
+                this.color = palette[Math.floor(Math.random() * palette.length)];
+
+                if (mode === 'fire') {
+                    this.vx = (Math.random() - 0.5) * 2;
+                    this.vy = -1 - Math.random() * 2;
+                } else if (mode === 'water') {
+                    this.vx = (Math.random() - 0.5) * 1;
+                    this.vy = 1 + Math.random() * 2;
+                } else if (mode === 'smoke') {
+                    this.vx = (Math.random() - 0.5) * 1;
+                    this.vy = -0.5 - Math.random();
+                } else {
+                    this.vx = (Math.random() - 0.5) * 3;
+                    this.vy = (Math.random() - 0.5) * 3;
+                }
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+                this.size *= 0.99;
+
+                // Add turbulence
+                this.vx += (Math.random() - 0.5) * 0.1;
+                this.vy += (Math.random() - 0.5) * 0.1;
+            }
+
+            draw() {
+                const alpha = this.life;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        function createParticles(x, y, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, currentMode));
+            }
+        }
+
+        function changeMode(mode) {
+            currentMode = mode;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            createParticles(mouseX, mouseY, 20);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            if (isMouseDown) {
+                createParticles(mouseX, mouseY, 5);
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isMouseDown = false;
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            isMouseDown = true;
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            createParticles(mouseX, mouseY, 20);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            if (isMouseDown) {
+                createParticles(mouseX, mouseY, 5);
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isMouseDown = false;
+        });
+
+        function animate() {
+            // Fade effect for trails
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Update and draw particles
+            particles = particles.filter(p => p.life > 0);
+
+            for (const particle of particles) {
+                particle.update();
+                particle.draw();
+            }
+
+            // Limit particles
+            if (particles.length > 1000) {
+                particles = particles.slice(-1000);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // Start with some initial particles
+        createParticles(width / 2, height / 2, 50);
+
+        animate();
+    </script>
+</body>
+</html>
