@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>動くモザイクアート | Mira's Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 1200px;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 700px;
+            margin: 0 auto 20px;
+            aspect-ratio: 1;
+        }
+
+        #mosaicCanvas {
+            width: 100%;
+            height: 100%;
+            border: 2px solid #333;
+            border-radius: 8px;
+            cursor: crosshair;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .control-group label {
+            color: #aaa;
+            font-size: 0.85rem;
+        }
+
+        input[type="range"] {
+            width: 150px;
+            accent-color: #7c3aed;
+        }
+
+        button {
+            background: linear-gradient(135deg, #7c3aed, #5b21b6);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-family: inherit;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(124, 58, 237, 0.5);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            color: #666;
+            font-size: 0.8rem;
+            margin-top: 15px;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.4rem;
+            }
+
+            .canvas-wrapper {
+                max-width: 100%;
+            }
+
+            input[type="range"] {
+                width: 120px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✨ 動くモザイクアート</h1>
+        <p class="subtitle">Moving Mosaic Art - Interactive Generative Art</p>
+
+        <div class="canvas-wrapper">
+            <canvas id="mosaicCanvas"></canvas>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>タイルサイズ: <span id="tileSizeValue">15</span></label>
+                <input type="range" id="tileSize" min="8" max="30" value="15">
+            </div>
+
+            <div class="control-group">
+                <label>変化速度: <span id="speedValue">1.0</span>x</label>
+                <input type="range" id="speed" min="0.1" max="3" step="0.1" value="1">
+            </div>
+
+            <button id="regenerate">🎨 新しいパターン</button>
+        </div>
+
+        <p class="info">💡 マウスを動かすとタイルが反応します</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mosaicCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let tileSize = 15;
+        let speed = 1;
+        let tiles = [];
+        let mouseX = -1000;
+        let mouseY = -1000;
+        let animationId;
+        let time = 0;
+
+        // タイルクラス
+        class Tile {
+            constructor(x, y, size) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.baseHue = Math.random() * 360;
+                this.hue = this.baseHue;
+                this.saturation = 50 + Math.random() * 50;
+                this.lightness = 30 + Math.random() * 40;
+                this.phase = Math.random() * Math.PI * 2;
+                this.amplitude = 0.5 + Math.random() * 1.5;
+                this.targetLightness = this.lightness;
+            }
+
+            update(time, mouseX, mouseY) {
+                // 基本的な色の変化
+                this.hue = (this.baseHue + time * 10 * speed) % 360;
+
+                // マウスとの距離を計算
+                const dx = mouseX - (this.x + this.size / 2);
+                const dy = mouseY - (this.y + this.size / 2);
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const influenceRadius = 150;
+
+                // マウスの影響
+                if (distance < influenceRadius) {
+                    const influence = 1 - distance / influenceRadius;
+                    this.targetLightness = 60 + influence * 30;
+                    this.targetHue = (this.baseHue + influence * 60) % 360;
+                    this.hue = this.hue * (1 - influence * 0.5) + this.targetHue * influence * 0.5;
+                } else {
+                    this.targetLightness = 30 + Math.sin(time * speed + this.phase) * this.amplitude * 10;
+                }
+
+                // 滑らかな変化
+                this.lightness += (this.targetLightness - this.lightness) * 0.1;
+            }
+
+            draw(ctx) {
+                ctx.fillStyle = `hsl(${this.hue}, ${this.saturation}%, ${this.lightness}%)`;
+                ctx.fillRect(this.x, this.y, this.size - 1, this.size - 1);
+
+                // 輝き効果
+                if (this.lightness > 60) {
+                    const gradient = ctx.createRadialGradient(
+                        this.x + this.size / 2, this.y + this.size / 2, 0,
+                        this.x + this.size / 2, this.y + this.size / 2, this.size
+                    );
+                    gradient.addColorStop(0, `hsla(${this.hue}, ${this.saturation}%, ${this.lightness}%, 0.8)`);
+                    gradient.addColorStop(1, `hsla(${this.hue}, ${this.saturation}%, ${this.lightness}%, 0)`);
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(this.x, this.y, this.size, this.size);
+                }
+            }
+        }
+
+        // タイルを初期化
+        function initTiles() {
+            tiles = [];
+            const cols = Math.floor(canvas.width / tileSize);
+            const rows = Math.floor(canvas.height / tileSize);
+
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const x = col * tileSize;
+                    const y = row * tileSize;
+                    tiles.push(new Tile(x, y, tileSize));
+                }
+            }
+        }
+
+        // 色パレットを生成
+        function generatePalette() {
+            tiles.forEach(tile => {
+                tile.baseHue = Math.random() * 360;
+                tile.phase = Math.random() * Math.PI * 2;
+                tile.amplitude = 0.5 + Math.random() * 1.5;
+            });
+        }
+
+        // キャンバスサイズを設定
+        function resizeCanvas() {
+            const wrapper = canvas.parentElement;
+            const size = Math.min(wrapper.clientWidth, 700);
+            canvas.width = size;
+            canvas.height = size;
+            initTiles();
+        }
+
+        // アニメーションループ
+        function animate() {
+            ctx.fillStyle = 'rgba(10, 10, 15, 1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            time += 0.02;
+
+            tiles.forEach(tile => {
+                tile.update(time, mouseX, mouseY);
+                tile.draw(ctx);
+            });
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            mouseX = (e.clientX - rect.left) * scaleX;
+            mouseY = (e.clientY - rect.top) * scaleY;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        // タッチイベント
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const touch = e.touches[0];
+            mouseX = (touch.clientX - rect.left) * scaleX;
+            mouseY = (touch.clientY - rect.top) * scaleY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        // コントロール
+        document.getElementById('tileSize').addEventListener('input', (e) => {
+            tileSize = parseInt(e.target.value);
+            document.getElementById('tileSizeValue').textContent = tileSize;
+            initTiles();
+        });
+
+        document.getElementById('speed').addEventListener('input', (e) => {
+            speed = parseFloat(e.target.value);
+            document.getElementById('speedValue').textContent = speed.toFixed(1);
+        });
+
+        document.getElementById('regenerate').addEventListener('click', generatePalette);
+
+        // 初期化
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        animate();
+    </script>
+</body>
+</html>
