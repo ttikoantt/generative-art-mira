@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flow Field Particles - フロウフィールドパーティクル</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Flow Field Particles - Mira</title>
     <style>
         * {
             margin: 0;
@@ -12,339 +12,339 @@
         }
 
         body {
-            background: #0a0a0a;
+            background: #000;
             overflow: hidden;
-            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            touch-action: none;
         }
 
-        #canvas {
+        canvas {
             display: block;
-            width: 100vw;
-            height: 100vh;
         }
 
-        #controls {
+        .controls {
             position: fixed;
             top: 20px;
             left: 20px;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(10px);
-            padding: 20px;
-            border-radius: 12px;
-            color: #fff;
             z-index: 100;
-            max-width: 300px;
+            display: flex;
+            gap: 10px;
         }
 
-        #controls h1 {
-            font-size: 18px;
-            margin-bottom: 15px;
-            color: #00ff88;
-        }
-
-        #controls p {
-            font-size: 12px;
-            color: #aaa;
-            margin-bottom: 10px;
-        }
-
-        .btn {
-            background: linear-gradient(135deg, #00ff88, #00ccff);
+        .controls button {
+            padding: 12px 20px;
+            font-size: 16px;
+            font-weight: 600;
             border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            color: #000;
-            font-weight: bold;
+            border-radius: 25px;
             cursor: pointer;
-            margin: 5px 0;
-            width: 100%;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: all 0.2s;
+            backdrop-filter: blur(10px);
         }
 
-        .btn:hover {
+        .controls .primary {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .controls .primary:hover {
+            background: rgba(255, 255, 255, 0.3);
             transform: scale(1.05);
-            box-shadow: 0 5px 20px rgba(0, 255, 136, 0.4);
         }
 
-        .btn:active {
-            transform: scale(0.98);
-        }
-
-        #fullscreen {
+        .info {
             position: fixed;
             bottom: 20px;
+            left: 20px;
+            color: white;
+            font-size: 14px;
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .fullscreen {
+            position: fixed;
+            top: 20px;
             right: 20px;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(10px);
-            padding: 15px;
-            border-radius: 50%;
-            width: 60px;
-            height: 60px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            padding: 12px 20px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 25px;
             cursor: pointer;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
             z-index: 100;
-            transition: transform 0.2s;
         }
 
-        #fullscreen:hover {
-            transform: scale(1.1);
-        }
-
-        #fullscreen svg {
-            width: 30px;
-            height: 30px;
-            fill: #fff;
+        .fullscreen:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
         }
     </style>
 </head>
 <body>
+    <div class="controls">
+        <button class="primary" onclick="reset()">🔄 Reset</button>
+        <button class="primary" onclick="toggleMode()">🎨 Mode</button>
+    </div>
+
+    <button class="fullscreen" onclick="toggleFullscreen()">📺 Fullscreen</button>
+
+    <div class="info">
+        <p>✨ Drag to influence flow • Move to create trails</p>
+    </div>
+
     <canvas id="canvas"></canvas>
-
-    <div id="controls">
-        <h1>🌊 Flow Field Particles</h1>
-        <p>パーティクルがノイズベースのフローに沿って移動し、美しい軌跡を描きます。</p>
-        <button class="btn" id="regenerate">🎨 新しいフローを生成</button>
-        <button class="btn" id="clear">🗑️ クリア</button>
-    </div>
-
-    <div id="fullscreen">
-        <svg viewBox="0 0 24 24">
-            <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
-        </svg>
-    </div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
-        // 設定
-        const CONFIG = {
-            particleCount: 2000,
-            noiseScale: 0.002,
-            particleSpeed: 2,
-            particleSize: 1.5,
-            trailOpacity: 0.05,
-            colorChangeSpeed: 0.001
-        };
+        let width, height;
+        let particles = [];
+        let flowField;
+        let cols, rows;
+        const scale = 20;
+        let mode = 0;
+        let mouseX = 0, mouseY = 0;
+        let isMouseDown = false;
 
-        // キャンバスサイズ
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+        // Color palettes
+        const palettes = [
+            ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff'],
+            ['#00d2d3', '#ff9f43', '#ee5a24', '#009432', '#0652DD'],
+            ['#fd79a8', '#a29bfe', '#74b9ff', '#81ecec', '#ffeaa7'],
+            ['#e17055', '#00b894', '#0984e3', '#6c5ce7', '#fdcb6e']
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.floor(width / scale) + 1;
+            rows = Math.floor(height / scale) + 1;
+            initFlowField();
         }
 
-        // Simplex Noise実装
-        class SimplexNoise {
-            constructor() {
-                this.p = new Uint8Array(256);
-                for (let i = 0; i < 256; i++) {
-                    this.p[i] = i;
+        function initFlowField() {
+            flowField = new Array(cols * rows);
+
+            let yoff = 0;
+            for (let y = 0; y < rows; y++) {
+                let xoff = 0;
+                for (let x = 0; x < cols; x++) {
+                    const index = x + y * cols;
+                    const angle = noise(xoff, yoff) * Math.PI * 4;
+                    flowField[index] = {
+                        angle: angle,
+                        vector: {
+                            x: Math.cos(angle),
+                            y: Math.sin(angle)
+                        }
+                    };
+                    xoff += 0.1;
                 }
-                // シャッフル
-                for (let i = 255; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [this.p[i], this.p[j]] = [this.p[j], this.p[i]];
-                }
-                this.perm = new Uint8Array(512);
-                for (let i = 0; i < 512; i++) {
-                    this.perm[i] = this.p[i & 255];
-                }
-            }
-
-            noise2D(x, y) {
-                const F2 = 0.5 * (Math.sqrt(3) - 1);
-                const G2 = (3 - Math.sqrt(3)) / 6;
-
-                let s = (x + y) * F2;
-                let i = Math.floor(x + s);
-                let j = Math.floor(y + s);
-                let t = (i + j) * G2;
-                let X0 = i - t;
-                let Y0 = j - t;
-                let x0 = x - X0;
-                let y0 = y - Y0;
-
-                let i1, j1;
-                if (x0 > y0) {
-                    i1 = 1;
-                    j1 = 0;
-                } else {
-                    i1 = 0;
-                    j1 = 1;
-                }
-
-                let x1 = x0 - i1 + G2;
-                let y1 = y0 - j1 + G2;
-                let x2 = x0 - 1 + 2 * G2;
-                let y2 = y0 - 1 + 2 * G2;
-
-                let ii = i & 255;
-                let jj = j & 255;
-
-                let n0 = 0, n1 = 0, n2 = 0;
-
-                let t0 = 0.5 - x0 * x0 - y0 * y0;
-                if (t0 >= 0) {
-                    t0 *= t0;
-                    n0 = t0 * t0 * this.grad(this.perm[ii + this.perm[jj]], x0, y0);
-                }
-
-                let t1 = 0.5 - x1 * x1 - y1 * y1;
-                if (t1 >= 0) {
-                    t1 *= t1;
-                    n1 = t1 * t1 * this.grad(this.perm[ii + i1 + this.perm[jj + j1]], x1, y1);
-                }
-
-                let t2 = 0.5 - x2 * x2 - y2 * y2;
-                if (t2 >= 0) {
-                    t2 *= t2;
-                    n2 = t2 * t2 * this.grad(this.perm[ii + 1 + this.perm[jj + 1]], x2, y2);
-                }
-
-                return 70 * (n0 + n1 + n2);
-            }
-
-            grad(hash, x, y) {
-                let h = hash & 7;
-                let u = h < 4 ? x : y;
-                let v = h < 4 ? y : x;
-                return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
+                yoff += 0.1;
             }
         }
 
-        // パーティクルクラス
+        // Simple noise function
+        function noise(x, y) {
+            const sin = Math.sin;
+            return sin(x * 12.9898 + y * 78.233) * 43758.5453 % 1;
+        }
+
         class Particle {
             constructor() {
                 this.reset();
             }
 
             reset() {
-                this.x = Math.random() * canvas.width;
-                this.y = Math.random() * canvas.height;
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
                 this.vx = 0;
                 this.vy = 0;
-                this.life = Math.random() * 200 + 100;
-                this.maxLife = this.life;
-                this.hue = Math.random() * 60 + 120; // 緑〜青系
+                this.ax = 0;
+                this.ay = 0;
+                this.maxSpeed = 2 + Math.random() * 2;
+                this.maxForce = 0.1 + Math.random() * 0.1;
+                this.prevX = this.x;
+                this.prevY = this.y;
+                this.life = 100 + Math.random() * 200;
+                this.hue = Math.random() * 360;
             }
 
-            update(noise) {
-                // ノイズから角度を取得
-                let angle = noise.noise2D(this.x * CONFIG.noiseScale, this.y * CONFIG.noiseScale) * Math.PI * 2;
+            applyForce(force) {
+                this.ax += force.x;
+                this.ay += force.y;
+            }
 
-                // 速度を更新
-                this.vx = Math.cos(angle) * CONFIG.particleSpeed;
-                this.vy = Math.sin(angle) * CONFIG.particleSpeed;
+            update() {
+                this.vx += this.ax;
+                this.vy += this.ay;
 
-                // 位置を更新
+                // Limit speed
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > this.maxSpeed) {
+                    this.vx = (this.vx / speed) * this.maxSpeed;
+                    this.vy = (this.vy / speed) * this.maxSpeed;
+                }
+
+                this.prevX = this.x;
+                this.prevY = this.y;
+
                 this.x += this.vx;
                 this.y += this.vy;
 
-                // ライフを減少
+                this.ax = 0;
+                this.ay = 0;
+
                 this.life--;
 
-                // 色を変化
-                this.hue += 0.1;
+                // Mouse influence
+                if (isMouseDown) {
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 150) {
+                        const force = (150 - dist) / 150;
+                        this.applyForce({
+                            x: (dx / dist) * force * 0.5,
+                            y: (dy / dist) * force * 0.5
+                        });
+                    }
+                }
 
-                // 画面外に出るかライフが尽きたらリセット
-                if (this.x < 0 || this.x > canvas.width ||
-                    this.y < 0 || this.y > canvas.height ||
-                    this.life <= 0) {
+                // Wrap around edges
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+
+                // Reset if dead or stuck
+                if (this.life <= 0 || (Math.abs(this.vx) < 0.1 && Math.abs(this.vy) < 0.1 && this.life < 50)) {
                     this.reset();
                 }
             }
 
             draw() {
-                let alpha = this.life / this.maxLife;
-                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha})`;
+                const palette = palettes[mode];
+                const colorIndex = Math.floor(this.hue / 360 * palette.length) % palette.length;
+
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, CONFIG.particleSize, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.moveTo(this.prevX, this.prevY);
+                ctx.lineTo(this.x, this.y);
+                ctx.strokeStyle = palette[colorIndex];
+                ctx.lineWidth = 1.5;
+                ctx.globalAlpha = this.life / 300;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+
+            follow(flowField) {
+                const x = Math.floor(this.x / scale);
+                const y = Math.floor(this.y / scale);
+                const index = x + y * cols;
+
+                if (index >= 0 && index < flowField.length) {
+                    const force = flowField[index].vector;
+                    this.applyForce({
+                        x: force.x * this.maxForce,
+                        y: force.y * this.maxForce
+                    });
+                }
             }
         }
 
-        // グローバル変数
-        let particles = [];
-        let noise = new SimplexNoise();
-        let animationId;
-        let hueOffset = 0;
-
-        // 初期化
-        function init() {
+        function initParticles() {
             particles = [];
-            for (let i = 0; i < CONFIG.particleCount; i++) {
+            const numParticles = Math.floor((width * height) / 2000);
+
+            for (let i = 0; i < numParticles; i++) {
                 particles.push(new Particle());
             }
-            noise = new SimplexNoise();
-            hueOffset = Math.random() * 360;
         }
 
-        // アニメーション
         function animate() {
-            // トレイル効果
-            ctx.fillStyle = `rgba(10, 10, 10, ${CONFIG.trailOpacity})`;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // Fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
 
-            // パーティクルを更新・描画
-            particles.forEach(p => {
-                p.update(noise);
-                p.draw();
+            particles.forEach(particle => {
+                particle.follow(flowField);
+                particle.update();
+                particle.draw();
             });
 
-            // 色の変化
-            hueOffset += CONFIG.colorChangeSpeed;
-
-            animationId = requestAnimationFrame(animate);
+            requestAnimationFrame(animate);
         }
 
-        // イベントリスナー
-        document.getElementById('regenerate').addEventListener('click', () => {
-            cancelAnimationFrame(animationId);
-            init();
-            animate();
-        });
+        function reset() {
+            initParticles();
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+        }
 
-        document.getElementById('clear').addEventListener('click', () => {
-            ctx.fillStyle = '#0a0a0a';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        });
+        function toggleMode() {
+            mode = (mode + 1) % palettes.length;
+            particles.forEach(p => {
+                p.hue = Math.random() * 360;
+            });
+        }
 
-        document.getElementById('fullscreen').addEventListener('click', () => {
+        function toggleFullscreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
             } else {
                 document.exitFullscreen();
             }
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
         });
 
-        window.addEventListener('resize', () => {
-            resizeCanvas();
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
         });
 
-        // タッチ操作
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isMouseDown = false;
+        });
+
+        // Touch events
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            const touch = e.touches[0];
-            // タッチ位置に新しいパーティクルを追加
-            for (let i = 0; i < 20; i++) {
-                const p = new Particle();
-                p.x = touch.clientX;
-                p.y = touch.clientY;
-                p.life = 100;
-                p.maxLife = 100;
-                particles.push(p);
-            }
-            // パーティクル数を制限
-            if (particles.length > CONFIG.particleCount * 2) {
-                particles = particles.slice(-CONFIG.particleCount * 2);
-            }
+            isMouseDown = true;
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
         });
 
-        // 初期化
-        resizeCanvas();
-        init();
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isMouseDown = false;
+        });
+
+        // Initialize
+        resize();
+        initParticles();
         animate();
     </script>
 </body>

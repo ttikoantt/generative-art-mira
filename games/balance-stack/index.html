@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Balance Stack - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            text-align: center;
+            color: white;
+        }
+
+        .score {
+            font-size: 48px;
+            font-weight: 700;
+            text-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .high-score {
+            font-size: 18px;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        .start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            color: white;
+        }
+
+        .start-screen h1 {
+            font-size: 42px;
+            margin-bottom: 20px;
+            text-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        .start-screen p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            opacity: 0.9;
+            text-align: center;
+            max-width: 80%;
+        }
+
+        .start-btn {
+            padding: 18px 40px;
+            font-size: 22px;
+            font-weight: 600;
+            border: none;
+            border-radius: 30px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(240, 147, 251, 0.4);
+        }
+
+        .start-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(240, 147, 251, 0.6);
+        }
+
+        .fullscreen {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            z-index: 100;
+        }
+
+        .fullscreen:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            color: white;
+            z-index: 300;
+            display: none;
+        }
+
+        .game-over h2 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            color: #f5576c;
+        }
+
+        .game-over p {
+            font-size: 24px;
+            margin-bottom: 30px;
+        }
+
+        .game-over button {
+            padding: 15px 30px;
+            font-size: 20px;
+            font-weight: 600;
+            border: none;
+            border-radius: 25px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="score" id="score">0</div>
+        <div class="high-score">Best: <span id="highScore">0</span></div>
+    </div>
+
+    <button class="fullscreen" onclick="toggleFullscreen()">📺</button>
+
+    <div class="start-screen" id="startScreen">
+        <h1>⚖️ Balance Stack</h1>
+        <p>Tap left or right to balance the stack!<br>Don't let it fall!</p>
+        <button class="start-btn" onclick="startGame()">▶️ Start</button>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <h2>Game Over!</h2>
+        <p>Score: <span id="finalScore">0</span></p>
+        <button onclick="startGame()">🔄 Play Again</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let gameRunning = false;
+        let score = 0;
+        let highScore = localStorage.getItem('balanceStackHighScore') || 0;
+        let blocks = [];
+        let beamAngle = 0;
+        let beamAngularVel = 0;
+        let targetX = 0;
+
+        const BEAM_WIDTH = 300;
+        const BEAM_HEIGHT = 10;
+        const BLOCK_SIZE = 40;
+        const GRAVITY = 0.3;
+        const FRICTION = 0.98;
+
+        document.getElementById('highScore').textContent = highScore;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            targetX = width / 2;
+        }
+
+        class Block {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.width = BLOCK_SIZE - Math.random() * 10;
+                this.height = BLOCK_SIZE - Math.random() * 10;
+                this.color = color;
+                this.falling = false;
+                this.vy = 0;
+                this.rotation = 0;
+                this.rotationVel = 0;
+            }
+
+            update(beamAngle, beamCenterX) {
+                if (!this.falling) {
+                    // Calculate position on beam
+                    const beamRad = beamAngle;
+                    const distFromCenter = this.x - beamCenterX;
+
+                    // Check if block falls off
+                    if (Math.abs(distFromCenter) > BEAM_WIDTH / 2) {
+                        this.falling = true;
+                        this.vy = 2;
+                        this.rotationVel = (Math.random() - 0.5) * 0.2;
+                        return true; // Game over
+                    }
+                } else {
+                    this.y += this.vy;
+                    this.vy += GRAVITY;
+                    this.rotation += this.rotationVel;
+                }
+
+                return false;
+            }
+
+            draw() {
+                ctx.save();
+
+                if (!this.falling) {
+                    // Draw on beam
+                    const beamCenterX = width / 2;
+                    const beamCenterY = height / 2;
+
+                    const beamRad = beamAngle;
+                    const distFromCenter = this.x - beamCenterX;
+
+                    const x = beamCenterX + Math.cos(beamRad) * distFromCenter;
+                    const y = beamCenterY + Math.sin(beamRad) * distFromCenter;
+
+                    ctx.translate(x, y);
+                    ctx.rotate(beamRad);
+                } else {
+                    ctx.translate(this.x, this.y);
+                    ctx.rotate(this.rotation);
+                }
+
+                // Draw block
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+
+                // Draw border
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(-this.width / 2, -this.height / 2, this.width, this.height);
+
+                ctx.restore();
+            }
+        }
+
+        function getRainbowColor(index) {
+            const colors = [
+                '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A',
+                '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2'
+            ];
+            return colors[index % colors.length];
+        }
+
+        function spawnBlock() {
+            const side = Math.random() > 0.5 ? 1 : -1;
+            const x = width / 2 + side * (Math.random() * 100 + 50);
+            const y = height / 2 - 100;
+            const color = getRainbowColor(blocks.length);
+
+            blocks.push(new Block(x, y, color));
+        }
+
+        function updateBeam() {
+            // Calculate moment based on blocks
+            let moment = 0;
+            blocks.forEach(block => {
+                if (!block.falling) {
+                    const dist = block.x - width / 2;
+                    moment += dist * 0.01;
+                }
+            });
+
+            // Add to angular velocity
+            beamAngularVel += moment * 0.001;
+
+            // Apply gravity to beam (it wants to fall)
+            beamAngularVel += Math.sin(beamAngle) * 0.001;
+
+            // Apply friction
+            beamAngularVel *= FRICTION;
+
+            // Update angle
+            beamAngle += beamAngularVel;
+
+            // Clamp angle
+            if (beamAngle > Math.PI / 4) {
+                beamAngle = Math.PI / 4;
+                beamAngularVel = 0;
+            }
+            if (beamAngle < -Math.PI / 4) {
+                beamAngle = -Math.PI / 4;
+                beamAngularVel = 0;
+            }
+        }
+
+        function drawBeam() {
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+            ctx.rotate(beamAngle);
+
+            // Draw beam
+            ctx.fillStyle = '#2d3748';
+            ctx.fillRect(-BEAM_WIDTH / 2, -BEAM_HEIGHT / 2, BEAM_WIDTH, BEAM_HEIGHT);
+
+            // Draw border
+            ctx.strokeStyle = '#f093fb';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-BEAM_WIDTH / 2, -BEAM_HEIGHT / 2, BEAM_WIDTH, BEAM_HEIGHT);
+
+            // Draw center marker
+            ctx.fillStyle = '#f5576c';
+            ctx.beginPath();
+            ctx.arc(0, 0, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function drawBase() {
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+
+            // Draw base
+            ctx.fillStyle = '#1a202c';
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(-30, 150);
+            ctx.lineTo(30, 150);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = '#4a5568';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            updateBeam();
+
+            // Update blocks
+            blocks.forEach(block => {
+                if (block.update(beamAngle, width / 2)) {
+                    gameOver();
+                }
+            });
+
+            // Update score
+            score = blocks.filter(b => !b.falling).length;
+            document.getElementById('score').textContent = score;
+        }
+
+        function draw() {
+            // Clear
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw base
+            drawBase();
+
+            // Draw beam
+            drawBeam();
+
+            // Draw blocks
+            blocks.forEach(block => block.draw());
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+
+            if (gameRunning) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function startGame() {
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('gameOver').style.display = 'none';
+
+            blocks = [];
+            beamAngle = 0;
+            beamAngularVel = 0;
+            score = 0;
+
+            gameRunning = true;
+            spawnBlock();
+            gameLoop();
+
+            // Spawn blocks periodically
+            spawnInterval = setInterval(() => {
+                if (gameRunning && blocks.length < 10) {
+                    spawnBlock();
+                }
+            }, 2000);
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            clearInterval(spawnInterval);
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('balanceStackHighScore', highScore);
+                document.getElementById('highScore').textContent = highScore;
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Controls
+        let spawnInterval;
+
+        canvas.addEventListener('click', (e) => {
+            if (!gameRunning) return;
+
+            const clickX = e.clientX;
+            const pushForce = clickX < width / 2 ? -0.02 : 0.02;
+            beamAngularVel += pushForce;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault();
+
+            const touchX = e.touches[0].clientX;
+            const pushForce = touchX < width / 2 ? -0.02 : 0.02;
+            beamAngularVel += pushForce;
+        });
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (!gameRunning) return;
+
+            if (e.key === 'ArrowLeft' || e.key === 'a') {
+                beamAngularVel -= 0.02;
+            }
+            if (e.key === 'ArrowRight' || e.key === 'd') {
+                beamAngularVel += 0.02;
+            }
+        });
+
+        window.addEventListener('resize', resize);
+
+        // Initialize
+        resize();
+    </script>
+</body>
+</html>
