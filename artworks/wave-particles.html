@@ -2,211 +2,211 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wave Particle Simulation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Wave Particles - Mira</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
-            background: #000;
             overflow: hidden;
-            font-family: 'Courier New', monospace;
+            background: #0a0a0f;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
         }
-        
+
         canvas {
             display: block;
-            touch-action: none;
         }
-        
+
         .info {
             position: fixed;
-            top: 20px;
+            bottom: 20px;
             left: 20px;
-            color: #00ffff;
-            font-size: 14px;
-            text-shadow: 0 0 10px #00ffff;
-            pointer-events: none;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
             z-index: 100;
         }
-        
+
         .fullscreen-btn {
             position: fixed;
             top: 20px;
             right: 20px;
-            background: rgba(0, 255, 255, 0.2);
-            border: 2px solid #00ffff;
-            color: #00ffff;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
             padding: 10px 20px;
+            border-radius: 20px;
             cursor: pointer;
             font-size: 14px;
-            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
             z-index: 100;
         }
-        
+
         .fullscreen-btn:hover {
-            background: rgba(0, 255, 255, 0.4);
-        }
-        
-        @media (max-width: 768px) {
-            .info {
-                font-size: 12px;
-                top: 10px;
-                left: 10px;
-            }
-            
-            .fullscreen-btn {
-                padding: 8px 16px;
-                font-size: 12px;
-                top: 10px;
-                right: 10px;
-            }
+            background: rgba(255, 255, 255, 0.2);
         }
     </style>
 </head>
 <body>
-    <div class="info">クリック or タップで波紋を生成</div>
-    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
     <canvas id="canvas"></canvas>
-    
+    <div class="info">Wave Particles by Mira | Touch or move mouse to create ripples</div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        
-        let width, height;
-        let particles = [];
-        let time = 0;
-        
+
+        let width, height, centerX, centerY;
+        let mouseX = 0, mouseY = 0;
+        let isMouseDown = false;
+
+        const particles = [];
+        const ripples = [];
+
+        // Resize
         function resize() {
-            width = window.innerWidth;
-            height = window.innerHeight;
-            canvas.width = width;
-            canvas.height = height;
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
         }
-        
-        window.addEventListener('resize', resize);
         resize();
-        
-        class Wave {
+        window.addEventListener('resize', resize);
+
+        // Particle class
+        class Particle {
             constructor(x, y) {
                 this.x = x;
                 this.y = y;
-                this.birthTime = time;
-                this.maxRadius = Math.random() * 200 + 100;
-                this.speed = Math.random() * 0.5 + 0.5;
-                this.hue = Math.random() * 60 + 160; // Cyan to Blue
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.life = 1;
+                this.decay = 0.002 + Math.random() * 0.003;
+                this.size = 2 + Math.random() * 3;
+                this.hue = Math.random() * 60 + 180; // Blue-cyan
             }
-            
-            render() {
-                const age = time - this.birthTime;
-                const progress = age / 300;
-                
-                if (progress >= 1) return false;
-                
-                const radius = this.maxRadius * progress;
-                const alpha = 1 - progress;
-                const lineWidth = 3 * (1 - progress) + 0.5;
-                
-                // 主波
+
+            update() {
+                // Follow ripples
+                for (let ripple of ripples) {
+                    const dx = this.x - ripple.x;
+                    const dy = this.y - ripple.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const waveHeight = Math.sin(dist * 0.05 - ripple.age * 0.1) * ripple.strength;
+
+                    if (dist < ripple.radius) {
+                        const angle = Math.atan2(dy, dx);
+                        this.vx += Math.cos(angle) * waveHeight * 0.1;
+                        this.vy += Math.sin(angle) * waveHeight * 0.1;
+                    }
+                }
+
+                // Friction
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Update life
+                this.life -= this.decay;
+            }
+
+            draw() {
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
-                ctx.strokeStyle = `hsla(${this.hue}, 100%, 50%, ${alpha})`;
-                ctx.lineWidth = lineWidth;
-                ctx.shadowBlur = 20;
-                ctx.shadowColor = `hsla(${this.hue}, 100%, 50%, ${alpha})`;
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${this.life * 0.6})`;
+                ctx.fill();
+            }
+        }
+
+        // Ripple class
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = 200 + Math.random() * 100;
+                this.strength = 15;
+                this.age = 0;
+                this.life = 1;
+            }
+
+            update() {
+                this.radius += 3;
+                this.strength *= 0.98;
+                this.age++;
+                this.life = 1 - (this.radius / this.maxRadius);
+            }
+
+            draw() {
+                if (this.life <= 0) return;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(100, 200, 255, ${this.life * 0.3})`;
+                ctx.lineWidth = 2;
                 ctx.stroke();
-                ctx.shadowBlur = 0;
-                
-                // 第二波（遅れて生成）
-                if (age > 30) {
-                    const progress2 = (age - 30) / 300;
-                    if (progress2 < 1) {
-                        const radius2 = this.maxRadius * 0.7 * progress2;
-                        const alpha2 = (1 - progress2) * 0.6;
-                        
-                        ctx.beginPath();
-                        ctx.arc(this.x, this.y, radius2, 0, Math.PI * 2);
-                        ctx.strokeStyle = `hsla(${this.hue + 20}, 100%, 60%, ${alpha2})`;
-                        ctx.lineWidth = lineWidth * 0.7;
-                        ctx.stroke();
-                    }
-                }
-                
-                // 第三波（さらに遅れて生成）
-                if (age > 60) {
-                    const progress3 = (age - 60) / 300;
-                    if (progress3 < 1) {
-                        const radius3 = this.maxRadius * 0.5 * progress3;
-                        const alpha3 = (1 - progress3) * 0.4;
-                        
-                        ctx.beginPath();
-                        ctx.arc(this.x, this.y, radius3, 0, Math.PI * 2);
-                        ctx.strokeStyle = `hsla(${this.hue + 40}, 100%, 70%, ${alpha3})`;
-                        ctx.lineWidth = lineWidth * 0.5;
-                        ctx.stroke();
-                    }
-                }
-                
-                return true;
             }
         }
-        
-        function handleInput(x, y) {
-            // 複数の波を生成（少し位置をずらす）
-            for (let i = 0; i < 3; i++) {
-                const offsetX = (Math.random() - 0.5) * 30;
-                const offsetY = (Math.random() - 0.5) * 30;
-                particles.push(new Wave(x + offsetX, y + offsetY));
-            }
-            
-            // パーティクルを制限
-            if (particles.length > 50) {
-                particles = particles.slice(-50);
+
+        // Initialize particles
+        function initParticles() {
+            const count = Math.min(300, (width * height) / 3000);
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(
+                    Math.random() * width,
+                    Math.random() * height
+                ));
             }
         }
-        
-        function animate() {
-            // 半透明の黒で塗りつぶして残像効果
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
-            ctx.fillRect(0, 0, width, height);
-            
-            // 粒子を更新
-            particles = particles.filter(p => p.render());
-            
-            time++;
-            requestAnimationFrame(animate);
+
+        // Create ripple on click/touch
+        function createRipple(x, y) {
+            ripples.push(new Ripple(x, y));
+            // Limit ripples
+            if (ripples.length > 10) {
+                ripples.shift();
+            }
         }
-        
-        // マウスイベント
-        canvas.addEventListener('click', (e) => {
-            handleInput(e.clientX, e.clientY);
+
+        // Event listeners
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            createRipple(e.clientX, e.clientY);
         });
-        
+
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
         canvas.addEventListener('mousemove', (e) => {
-            if (Math.random() > 0.95) { // 5%の確率で
-                handleInput(e.clientX, e.clientY);
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            if (isMouseDown && Math.random() > 0.8) {
+                createRipple(mouseX, mouseY);
             }
         });
-        
-        // タッチイベント
+
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
-            handleInput(touch.clientX, touch.clientY);
+            createRipple(touch.clientX, touch.clientY);
         });
-        
+
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            if (Math.random() > 0.9) {
-                const touch = e.touches[0];
-                handleInput(touch.clientX, touch.clientY);
+            const touch = e.touches[0];
+            if (Math.random() > 0.8) {
+                createRipple(touch.clientX, touch.clientY);
             }
         });
-        
-        // 全画面切り替え
+
+        // Fullscreen
         function toggleFullscreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
@@ -214,12 +214,49 @@
                 document.exitFullscreen();
             }
         }
-        
-        // 初期波紋
-        setTimeout(() => {
-            handleInput(width / 2, height / 2);
-        }, 500);
-        
+
+        // Animation loop
+        function animate() {
+            // Fade effect
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Update and draw ripples
+            for (let i = ripples.length - 1; i >= 0; i--) {
+                ripples[i].update();
+                ripples[i].draw();
+                if (ripples[i].life <= 0) {
+                    ripples.splice(i, 1);
+                }
+            }
+
+            // Update and draw particles
+            for (let particle of particles) {
+                particle.update();
+                particle.draw();
+            }
+
+            // Draw connections
+            ctx.strokeStyle = 'rgba(100, 200, 255, 0.05)';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i < particles.length; i += 5) {
+                for (let j = i + 1; j < particles.length; j += 10) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 80) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        initParticles();
         animate();
     </script>
 </body>
