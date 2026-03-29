@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Golden Hunter - ゴールデンハンター</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        .container {
+            text-align: center;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #ffd700;
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+        }
+
+        .info {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        .info-item {
+            background: rgba(255, 215, 0, 0.1);
+            padding: 8px 16px;
+            border-radius: 8px;
+            color: #ffd700;
+            font-weight: bold;
+        }
+
+        .subtitle {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+
+        canvas {
+            border: 3px solid #ffd700;
+            border-radius: 12px;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.3);
+            max-width: 100%;
+            cursor: pointer;
+        }
+
+        .game-btn {
+            margin-top: 15px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #ffd700, #ff8c00);
+            color: #1a1a2e;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .game-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+        }
+
+        .game-btn:active {
+            transform: scale(0.95);
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.2rem;
+            }
+
+            .info {
+                gap: 10px;
+            }
+
+            .info-item {
+                padding: 6px 12px;
+                font-size: 0.9rem;
+            }
+
+            .game-btn {
+                padding: 10px 20px;
+                font-size: 0.9rem;
+            }
+        }
+
+        #gameOver {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 16px;
+            text-align: center;
+            z-index: 1000;
+            display: none;
+            border: 2px solid #ffd700;
+        }
+
+        #gameOver h2 {
+            color: #ffd700;
+            font-size: 2rem;
+            margin-bottom: 20px;
+        }
+
+        #gameOver p {
+            color: #fff;
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚡ Golden Hunter</h1>
+        <div class="info">
+            <div class="info-item">スコア: <span id="score">0</span></div>
+            <div class="info-item">時間: <span id="time">30</span>s</div>
+        </div>
+        <p class="subtitle">金色のターゲットをタップして集めよう！</p>
+        <canvas id="canvas"></canvas>
+        <button class="game-btn" onclick="startGame()">スタート</button>
+    </div>
+
+    <div id="gameOver">
+        <h2>🎯 ゲームオーバー！</h2>
+        <p>最終スコア: <span id="finalScore">0</span></p>
+        <button class="game-btn" onclick="startGame()">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let score = 0;
+        let timeLeft = 30;
+        let gameRunning = false;
+        let targets = [];
+        let gameTimer;
+        let spawnTimer;
+        let targetLifetime = 2000;
+
+        // Set canvas size
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 250, 500);
+            canvas.width = size;
+            canvas.height = size;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Target class
+        class Target {
+            constructor() {
+                this.radius = Math.random() * 20 + 25;
+                this.x = Math.random() * (canvas.width - this.radius * 2) + this.radius;
+                this.y = Math.random() * (canvas.height - this.radius * 2) + this.radius;
+                this.creationTime = Date.now();
+                this.baseRadius = this.radius;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+            }
+
+            draw() {
+                const age = Date.now() - this.creationTime;
+                const lifeRatio = 1 - (age / targetLifetime);
+
+                if (lifeRatio <= 0) return false;
+
+                // Pulsing effect
+                this.pulsePhase += 0.1;
+                const pulse = Math.sin(this.pulsePhase) * 3;
+
+                // Outer glow
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius + pulse + 10
+                );
+                gradient.addColorStop(0, `rgba(255, 215, 0, ${lifeRatio * 0.8})`);
+                gradient.addColorStop(0.5, `rgba(255, 165, 0, ${lifeRatio * 0.4})`);
+                gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius + pulse + 10, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Inner circle
+                ctx.save();
+                ctx.globalAlpha = lifeRatio;
+                ctx.fillStyle = '#ffd700';
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#ffd700';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius + pulse, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+
+                // Points indicator
+                const points = Math.floor(lifeRatio * 100) + 10;
+                ctx.fillStyle = '#1a1a2e';
+                ctx.font = `bold ${this.radius * 0.6}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(points, this.x, this.y);
+
+                return true;
+            }
+
+            isClicked(x, y) {
+                const dist = Math.sqrt((x - this.x) ** 2 + (y - this.y) ** 2);
+                return dist < this.radius + 10;
+            }
+
+            getPoints() {
+                const age = Date.now() - this.creationTime;
+                const lifeRatio = 1 - (age / targetLifetime);
+                return Math.floor(lifeRatio * 100) + 10;
+            }
+        }
+
+        function startGame() {
+            score = 0;
+            timeLeft = 30;
+            targets = [];
+            gameRunning = true;
+            targetLifetime = 2000;
+
+            document.getElementById('gameOver').style.display = 'none';
+            document.getElementById('score').textContent = '0';
+            document.getElementById('time').textContent = '30';
+
+            // Spawn initial targets
+            for (let i = 0; i < 3; i++) {
+                targets.push(new Target());
+            }
+
+            // Spawn timer
+            spawnTimer = setInterval(() => {
+                if (gameRunning && targets.length < 8) {
+                    targets.push(new Target());
+                }
+            }, 800);
+
+            // Game timer
+            gameTimer = setInterval(() => {
+                timeLeft--;
+                document.getElementById('time').textContent = timeLeft;
+
+                // Make targets disappear faster over time
+                if (timeLeft % 10 === 0 && targetLifetime > 800) {
+                    targetLifetime -= 300;
+                }
+
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+
+            animate();
+        }
+
+        function endGame() {
+            gameRunning = false;
+            clearInterval(gameTimer);
+            clearInterval(spawnTimer);
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        function handleClick(x, y) {
+            if (!gameRunning) return;
+
+            for (let i = targets.length - 1; i >= 0; i--) {
+                if (targets[i].isClicked(x, y)) {
+                    score += targets[i].getPoints();
+                    document.getElementById('score').textContent = score;
+                    targets.splice(i, 1);
+
+                    // Spawn replacement
+                    if (targets.length < 5) {
+                        targets.push(new Target());
+                    }
+                    break;
+                }
+            }
+        }
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            handleClick(x, y);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!gameRunning) return;
+
+            const rect = canvas.getBoundingClientRect();
+            for (let touch of e.touches) {
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                handleClick(x, y);
+            }
+        });
+
+        function animate() {
+            if (!gameRunning) return;
+
+            // Clear
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw targets
+            targets = targets.filter(t => {
+                const age = Date.now() - t.creationTime;
+                return age < targetLifetime;
+            });
+
+            targets.forEach(t => t.draw());
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initial draw
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    </script>
+</body>
+</html>
