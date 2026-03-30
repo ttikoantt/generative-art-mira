@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>桜の木 - Cherry Blossom Tree</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(to bottom, #ffecd2 0%, #fcb69f 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Hiragino Kaku Gothic Pro', 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        h1 {
+            color: #d4618c;
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .subtitle {
+            color: #8b5a7a;
+            font-size: clamp(0.8rem, 2vw, 1rem);
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(212, 97, 140, 0.3);
+            max-width: 100%;
+            touch-action: none;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            color: #d4618c;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(212, 97, 140, 0.2);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(212, 97, 140, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            margin-top: 15px;
+            color: #8b5a7a;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌸 桜の木</h1>
+        <p class="subtitle">Fractal Tree with Cherry Blossoms</p>
+        <canvas id="canvas"></canvas>
+        <div class="controls">
+            <button onclick="regenerate()">🔄 新しい木</button>
+            <button onclick="toggleWind()">🌬️ 風: <span id="windStatus">ON</span></button>
+        </div>
+        <p class="info">タップ/クリックで桜を舞わす</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvas size
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth * 0.9, 600);
+            canvas.width = size;
+            canvas.height = size * 1.2;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Tree parameters
+        let treeParams = {
+            startX: canvas.width / 2,
+            startY: canvas.height * 0.9,
+            length: canvas.height * 0.25,
+            angle: -Math.PI / 2,
+            branchWidth: 12,
+            color: '#5d4037'
+        };
+
+        // Cherry blossom petals
+        let petals = [];
+        let windEnabled = true;
+
+        class Petal {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 8 + 4;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.speedY = Math.random() * 1 + 0.5;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+                this.opacity = Math.random() * 0.5 + 0.5;
+                this.pink = Math.random() * 50 + 200; // 200-250 (pink range)
+            }
+
+            update() {
+                if (windEnabled) {
+                    this.speedX += Math.sin(Date.now() / 1000 + this.y / 100) * 0.02;
+                }
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.rotation += this.rotationSpeed;
+
+                // Gentle sway
+                this.x += Math.sin(Date.now() / 500 + this.y / 50) * 0.3;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.globalAlpha = this.opacity;
+
+                // Draw petal shape
+                ctx.beginPath();
+                ctx.fillStyle = `rgb(${this.pink}, ${this.pink - 50}, ${this.pink - 30})`;
+                ctx.ellipse(0, 0, this.size, this.size / 2, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            isOffScreen() {
+                return this.y > canvas.height + 20 || this.x < -20 || this.x > canvas.width + 20;
+            }
+        }
+
+        // Draw fractal tree
+        function drawBranch(x, y, length, angle, width, depth) {
+            if (depth === 0 || length < 5) {
+                // Draw flower at end of branch
+                const flowerSize = Math.random() * 6 + 4;
+                const petalCount = Math.floor(Math.random() * 3) + 5;
+
+                for (let i = 0; i < petalCount; i++) {
+                    const petalAngle = (i / petalCount) * Math.PI * 2;
+                    const px = x + Math.cos(petalAngle) * flowerSize * 0.5;
+                    const py = y + Math.sin(petalAngle) * flowerSize * 0.5;
+
+                    ctx.beginPath();
+                    ctx.fillStyle = `rgba(${Math.random() * 30 + 220}, ${Math.random() * 50 + 150}, ${Math.random() * 50 + 170}, 0.8)`;
+                    ctx.ellipse(px, py, flowerSize / 2, flowerSize / 3, petalAngle, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Center of flower
+                ctx.beginPath();
+                ctx.fillStyle = '#ffeb3b';
+                ctx.arc(x, y, 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                return;
+            }
+
+            const endX = x + Math.cos(angle) * length;
+            const endY = y + Math.sin(angle) * length;
+
+            // Draw branch
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(endX, endY);
+            ctx.strokeStyle = treeParams.color;
+            ctx.lineWidth = width;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            // Branch parameters
+            const branchCount = Math.floor(Math.random() * 2) + 2;
+            const lengthDecay = 0.7 + Math.random() * 0.1;
+            const widthDecay = 0.6 + Math.random() * 0.1;
+
+            for (let i = 0; i < branchCount; i++) {
+                const angleOffset = (Math.random() - 0.5) * Math.PI * 0.7;
+                const newLength = length * lengthDecay;
+                const newWidth = width * widthDecay;
+
+                setTimeout(() => {
+                    drawBranch(endX, endY, newLength, angle + angleOffset, newWidth, depth - 1);
+                }, depth * 20);
+            }
+        }
+
+        // Regenerate tree
+        function regenerate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw gradient background
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#ffecd2');
+            gradient.addColorStop(1, '#fcb69f');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw sun
+            ctx.beginPath();
+            const sunGradient = ctx.createRadialGradient(
+                canvas.width * 0.8, canvas.height * 0.15, 0,
+                canvas.width * 0.8, canvas.height * 0.15, 50
+            );
+            sunGradient.addColorStop(0, 'rgba(255, 235, 59, 0.8)');
+            sunGradient.addColorStop(1, 'rgba(255, 235, 59, 0)');
+            ctx.fillStyle = sunGradient;
+            ctx.arc(canvas.width * 0.8, canvas.height * 0.15, 50, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Start tree
+            treeParams.startX = canvas.width / 2;
+            treeParams.startY = canvas.height * 0.9;
+            treeParams.length = canvas.height * 0.2;
+            drawBranch(
+                treeParams.startX,
+                treeParams.startY,
+                treeParams.length,
+                treeParams.angle,
+                treeParams.branchWidth,
+                10
+            );
+        }
+
+        // Toggle wind
+        function toggleWind() {
+            windEnabled = !windEnabled;
+            document.getElementById('windStatus').textContent = windEnabled ? 'ON' : 'OFF';
+        }
+
+        // Add petals on click/tap
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            for (let i = 0; i < 20; i++) {
+                petals.push(new Petal(x + (Math.random() - 0.5) * 50, y + (Math.random() - 0.5) * 50));
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            // Semi-transparent overlay for trail effect
+            ctx.fillStyle = 'rgba(255, 236, 210, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw petals
+            petals = petals.filter(petal => !petal.isOffScreen());
+            petals.forEach(petal => {
+                petal.update();
+                petal.draw();
+            });
+
+            // Occasionally add new petals from tree
+            if (Math.random() < 0.3 && windEnabled) {
+                const treeTopX = canvas.width / 2 + (Math.random() - 0.5) * 100;
+                const treeTopY = canvas.height * 0.3;
+                petals.push(new Petal(treeTopX, treeTopY));
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize
+        regenerate();
+        animate();
+    </script>
+</body>
+</html>
