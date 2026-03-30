@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Drone Navigation - Navigate to the Goal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 4/3;
+            margin: 20px;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            touch-action: none;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        .score-panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 15px;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        #fullscreen-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            padding: 12px 20px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            pointer-events: all;
+        }
+
+        #fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(20px);
+            padding: 40px 60px;
+            border-radius: 30px;
+            text-align: center;
+            color: white;
+            display: none;
+            z-index: 100;
+        }
+
+        #game-over h2 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        #game-over p {
+            font-size: 20px;
+            margin-bottom: 30px;
+        }
+
+        #restart-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        #restart-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 10px 20px;
+            border-radius: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            #game-container {
+                margin: 10px;
+            }
+
+            .score-panel {
+                padding: 10px 15px;
+                font-size: 14px;
+            }
+
+            #fullscreen-btn {
+                padding: 8px 12px;
+                font-size: 12px;
+            }
+
+            #game-over {
+                padding: 30px 40px;
+            }
+
+            #game-over h2 {
+                font-size: 28px;
+            }
+
+            #game-over p {
+                font-size: 16px;
+            }
+
+            #restart-btn {
+                padding: 12px 30px;
+                font-size: 16px;
+            }
+
+            #instructions {
+                font-size: 12px;
+                padding: 8px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="canvas"></canvas>
+
+        <div id="ui">
+            <div class="score-panel">
+                <span id="score">0</span>
+            </div>
+            <button id="fullscreen-btn">全画面</button>
+        </div>
+
+        <div id="instructions">
+            🎮 矢印キー/スワイプで移動 | 🚩 ゴールを目指せ！
+        </div>
+
+        <div id="game-over">
+            <h2>Game Over!</h2>
+            <p>Score: <span id="final-score">0</span></p>
+            <button id="restart-btn">再挑戦</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const gameOverScreen = document.getElementById('game-over');
+        const restartBtn = document.getElementById('restart-btn');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+        let width, height;
+        let drone, goal, obstacles;
+        let score = 0;
+        let gameOver = false;
+        let keys = {};
+
+        // ドローンクラス
+        class Drone {
+            constructor() {
+                this.x = 50;
+                this.y = height / 2;
+                this.vx = 0;
+                this.vy = 0;
+                this.radius = 15;
+                this.acceleration = 0.5;
+                this.maxSpeed = 8;
+                this.friction = 0.98;
+                this.propellerAngle = 0;
+            }
+
+            update() {
+                // 入力に応じて加速
+                if (keys['ArrowUp'] || keys['w']) this.vy -= this.acceleration;
+                if (keys['ArrowDown'] || keys['s']) this.vy += this.acceleration;
+                if (keys['ArrowLeft'] || keys['a']) this.vx -= this.acceleration;
+                if (keys['ArrowRight'] || keys['d']) this.vx += this.acceleration;
+
+                // 最大速度制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > this.maxSpeed) {
+                    this.vx = (this.vx / speed) * this.maxSpeed;
+                    this.vy = (this.vy / speed) * this.maxSpeed;
+                }
+
+                // 摩擦
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+
+                // 位置を更新
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 境界チェック
+                if (this.x < this.radius) { this.x = this.radius; this.vx *= -0.5; }
+                if (this.x > width - this.radius) { this.x = width - this.radius; this.vx *= -0.5; }
+                if (this.y < this.radius) { this.y = this.radius; this.vy *= -0.5; }
+                if (this.y > height - this.radius) { this.y = height - this.radius; this.vy *= -0.5; }
+
+                // プロペラを回転
+                this.propellerAngle += 0.3;
+            }
+
+            draw() {
+                // ドローン本体
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // プロペラ
+                ctx.save();
+                ctx.rotate(this.propellerAngle);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.fillRect(-20, -3, 40, 6);
+                ctx.fillRect(-3, -20, 6, 40);
+                ctx.restore();
+
+                // 本体
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+                gradient.addColorStop(0, '#667eea');
+                gradient.addColorStop(1, '#764ba2');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // 光沢
+                ctx.beginPath();
+                ctx.arc(-3, -3, this.radius / 3, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.fill();
+
+                ctx.restore();
+
+                // 速度のトレイル
+                if (Math.abs(this.vx) > 1 || Math.abs(this.vy) > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y);
+                    ctx.lineTo(this.x - this.vx * 3, this.y - this.vy * 3);
+                    ctx.strokeStyle = 'rgba(102, 126, 234, 0.3)';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // ゴールクラス
+        class Goal {
+            constructor() {
+                this.x = width - 60;
+                this.y = Math.random() * (height - 120) + 60;
+                this.radius = 20;
+                this.pulsePhase = 0;
+            }
+
+            update() {
+                this.pulsePhase += 0.1;
+            }
+
+            draw() {
+                const pulse = Math.sin(this.pulsePhase) * 5;
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // 光のリング
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius + pulse, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(0, 255, 150, 0.5)';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // ゴールマーク
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+                gradient.addColorStop(0, '#00ff96');
+                gradient.addColorStop(1, '#00cc7a');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // フラグ
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius / 2, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // 障害物クラス
+        class Obstacle {
+            constructor() {
+                this.x = 150 + Math.random() * (width - 300);
+                this.y = Math.random() * (height - 80) + 40;
+                this.width = 30 + Math.random() * 40;
+                this.height = 30 + Math.random() * 40;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.05;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+            }
+
+            update() {
+                this.rotation += this.rotationSpeed;
+                this.pulsePhase += 0.05;
+            }
+
+            draw() {
+                const pulse = Math.sin(this.pulsePhase) * 0.2 + 1;
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.scale(pulse, pulse);
+
+                ctx.beginPath();
+                ctx.rect(-this.width / 2, -this.height / 2, this.width, this.height);
+                const gradient = ctx.createLinearGradient(-this.width / 2, 0, this.width / 2, 0);
+                gradient.addColorStop(0, '#ff6b6b');
+                gradient.addColorStop(1, '#ee5a5a');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            checkCollision(drone) {
+                // 回転を考慮した衝突判定
+                const dx = drone.x - this.x;
+                const dy = drone.y - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                return distance < drone.radius + this.width / 2;
+            }
+        }
+
+        // 初期化
+        function init() {
+            resize();
+            drone = new Drone();
+            goal = new Goal();
+            obstacles = [];
+            const obstacleCount = Math.floor((width * height) / 80000);
+            for (let i = 0; i < obstacleCount; i++) {
+                obstacles.push(new Obstacle());
+            }
+            score = 0;
+            gameOver = false;
+            gameOverScreen.style.display = 'none';
+            scoreDisplay.textContent = score;
+        }
+
+        function resize() {
+            const container = document.getElementById('game-container');
+            width = canvas.width = container.clientWidth;
+            height = canvas.height = container.clientHeight;
+        }
+
+        function respawnGoal() {
+            goal = new Goal();
+        }
+
+        function respawnObstacles() {
+            obstacles = [];
+            const obstacleCount = Math.floor((width * height) / 80000) + Math.floor(score / 3);
+            for (let i = 0; i < obstacleCount; i++) {
+                obstacles.push(new Obstacle());
+            }
+        }
+
+        function checkGoalCollision() {
+            const dx = drone.x - goal.x;
+            const dy = drone.y - goal.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < drone.radius + goal.radius) {
+                score++;
+                scoreDisplay.textContent = score;
+                respawnGoal();
+                respawnObstacles();
+            }
+        }
+
+        function checkObstacleCollision() {
+            for (const obstacle of obstacles) {
+                if (obstacle.checkCollision(drone)) {
+                    endGame();
+                    return;
+                }
+            }
+        }
+
+        function endGame() {
+            gameOver = true;
+            finalScoreDisplay.textContent = score;
+            gameOverScreen.style.display = 'block';
+        }
+
+        // ゲームループ
+        function gameLoop() {
+            // 背景
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (!gameOver) {
+                drone.update();
+                goal.update();
+                obstacles.forEach(o => o.update());
+                checkGoalCollision();
+                checkObstacleCollision();
+            }
+
+            goal.draw();
+            obstacles.forEach(o => o.draw());
+            drone.draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', () => {
+            resize();
+        });
+
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // タッチ操作
+        let touchStartX, touchStartY;
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touchX = e.touches[0].clientX;
+            const touchY = e.touches[0].clientY;
+            const dx = touchX - touchStartX;
+            const dy = touchY - touchStartY;
+
+            const sensitivity = 0.5;
+            if (Math.abs(dx) > 10) {
+                keys['ArrowLeft'] = dx < 0;
+                keys['ArrowRight'] = dx > 0;
+            }
+            if (Math.abs(dy) > 10) {
+                keys['ArrowUp'] = dy < 0;
+                keys['ArrowDown'] = dy > 0;
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            keys = {};
+        });
+
+        restartBtn.addEventListener('click', () => {
+            init();
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // 起動
+        init();
+        gameLoop();
+    </script>
+</body>
+</html>
