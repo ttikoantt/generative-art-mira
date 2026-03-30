@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animated Mosaic - 時空間モザイクアート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 1200px;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #ffffff;
+            margin-bottom: 10px;
+            font-size: 1.8em;
+            text-shadow: 0 0 20px rgba(138, 43, 226, 0.5);
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+        }
+
+        #canvas {
+            border: 2px solid #2a2a3e;
+            border-radius: 12px;
+            box-shadow: 0 0 40px rgba(138, 43, 226, 0.3);
+            cursor: crosshair;
+            max-width: 100%;
+            touch-action: none;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            margin-top: 15px;
+            color: #666;
+            font-size: 0.85em;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            padding: 10px 15px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="container">
+        <h1>🎨 Animated Mosaic</h1>
+        <p class="subtitle">時空間モザイクパターン | マウスで波紋を広げよう</p>
+        
+        <canvas id="canvas" width="800" height="600"></canvas>
+        
+        <div class="controls">
+            <button onclick="resetPattern()">リセット</button>
+            <button onclick="changePalette()">カラーパレット変更</button>
+            <button onclick="toggleAnimation()">一時停止/再生</button>
+        </div>
+        
+        <p class="info">クリック・タップで波紋を発生 | マウス移動でトレイル</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // レスポンシブ対応
+        function resizeCanvas() {
+            const maxWidth = Math.min(800, window.innerWidth - 40);
+            const scale = maxWidth / 800;
+            canvas.style.width = maxWidth + 'px';
+            canvas.style.height = (600 * scale) + 'px';
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // タイル設定
+        const TILE_SIZE = 20;
+        const COLS = 40;
+        const ROWS = 30;
+
+        // カラーパレット
+        const palettes = [
+            // パレット1: ネオン
+            ['#0a0a0f', '#1a1a2e', '#16213e', '#0f3460', '#e94560', '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#fd79a8'],
+            // パレット2: サンセット
+            ['#0a0a0f', '#2d132c', '#801336', '#c72c41', '#ee4540', '#f76c6c', '#ffd460', '#ff9f43', '#ee5a24', '#f8c291', '#fad390', '#fff2cc'],
+            // パレット3: オーシャン
+            ['#0a0a0f', '#071e3d', '#0b3d63', '#145a8c', '#1a5f8a', '#1e7fa9', '#2a9d94', '#48cae4', '#90e0ef', '#ade8f4', '#caf0f8', '#e0fbfc'],
+            // パレット4: フォレスト
+            ['#0a0a0f', '#1b4332', '#2d6a4f', '#40916c', '#52b788', '#74c69d', '#95d5b2', '#b7e4c7', '#d8f3dc', '#e8f5e9', '#a3b18a', '#588157'],
+            // パレット5: ギャラクシー
+            ['#0a0a0f', '#1a0a2e', '#2d1b4e', '#452c7a', '#5b3a8f', '#724dc4', '#8b5cf6', '#a78bfa', '#c4b5fd', '#ddc4ff', '#ede9fe', '#f3f0ff']
+        ];
+
+        let currentPalette = 0;
+
+        // タイル状態
+        class Tile {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.colorIndex = 0;
+                this.targetColorIndex = 0;
+                this.brightness = 0;
+                this.targetBrightness = 0;
+                this.rippleStrength = 0;
+                this.lastChangeTime = Date.now();
+            }
+
+            update(time) {
+                // ゆっくり色を変える
+                if (Math.random() < 0.002) {
+                    this.targetColorIndex = Math.floor(Math.random() * palettes[currentPalette].length);
+                }
+
+                // 色の遷移
+                const diff = this.targetColorIndex - this.colorIndex;
+                this.colorIndex += diff * 0.02;
+
+                // 輝度の変化
+                if (Math.random() < 0.005) {
+                    this.targetBrightness = Math.random();
+                }
+                this.brightness += (this.targetBrightness - this.brightness) * 0.05;
+
+                // 波紋の減衰
+                this.rippleStrength *= 0.95;
+            }
+
+            draw(ctx, time) {
+                const palette = palettes[currentPalette];
+                const baseIndex = Math.floor(this.colorIndex) % palette.length;
+                const color = palette[baseIndex];
+
+                // 色を解析
+                const r = parseInt(color.slice(1, 3), 16);
+                const g = parseInt(color.slice(3, 5), 16);
+                const b = parseInt(color.slice(5, 7), 16);
+
+                // 輝度と波紋を適用
+                const brightness = 0.7 + this.brightness * 0.5 + this.rippleStrength * 0.8;
+                const nr = Math.min(255, Math.floor(r * brightness));
+                const ng = Math.min(255, Math.floor(g * brightness));
+                const nb = Math.min(255, Math.floor(b * brightness));
+
+                ctx.fillStyle = `rgb(${nr}, ${ng}, ${nb})`;
+
+                // タイルサイズを波紋に合わせて変化
+                const size = TILE_SIZE + this.rippleStrength * 8;
+                const offset = (TILE_SIZE - size) / 2;
+
+                ctx.fillRect(
+                    this.x * TILE_SIZE + offset,
+                    this.y * TILE_SIZE + offset,
+                    size,
+                    size
+                );
+
+                // 波紋が強い場合ハイライト
+                if (this.rippleStrength > 0.1) {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${this.rippleStrength * 0.5})`;
+                    ctx.fillRect(
+                        this.x * TILE_SIZE + offset,
+                        this.y * TILE_SIZE + offset,
+                        size,
+                        size * 0.1
+                    );
+                }
+            }
+
+            addRipple(strength) {
+                this.rippleStrength = Math.min(1, this.rippleStrength + strength);
+                this.targetBrightness = Math.random();
+            }
+        }
+
+        // タイル配列
+        let tiles = [];
+
+        function initTiles() {
+            tiles = [];
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    tiles.push(new Tile(x, y));
+                }
+            }
+        }
+        initTiles();
+
+        // 波紋エフェクト
+        function createRipple(centerX, centerY, strength = 0.8) {
+            const tileX = Math.floor(centerX / TILE_SIZE);
+            const tileY = Math.floor(centerY / TILE_SIZE);
+
+            const maxDist = 15;
+            tiles.forEach(tile => {
+                const dist = Math.sqrt(
+                    Math.pow(tile.x - tileX, 2) +
+                    Math.pow(tile.y - tileY, 2)
+                );
+                if (dist < maxDist) {
+                    const falloff = 1 - (dist / maxDist);
+                    tile.addRipple(strength * falloff);
+                }
+            });
+        }
+
+        // マウス/タッチ処理
+        let mousePos = { x: 0, y: 0 };
+        let isMouseDown = false;
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            mousePos.x = (e.clientX - rect.left) * scaleX;
+            mousePos.y = (e.clientY - rect.top) * scaleY;
+
+            if (Math.random() < 0.3) {
+                createRipple(mousePos.x, mousePos.y, 0.15);
+            }
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+            createRipple(x, y, 0.9);
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const touch = e.touches[0];
+            const x = (touch.clientX - rect.left) * scaleX;
+            const y = (touch.clientY - rect.top) * scaleY;
+            createRipple(x, y, 0.9);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const touch = e.touches[0];
+            const x = (touch.clientX - rect.left) * scaleX;
+            const y = (touch.clientY - rect.top) * scaleY;
+            if (Math.random() < 0.3) {
+                createRipple(x, y, 0.15);
+            }
+        });
+
+        // アニメーション制御
+        let isAnimating = true;
+        let animationTime = 0;
+
+        function animate() {
+            if (!isAnimating) {
+                requestAnimationFrame(animate);
+                return;
+            }
+
+            animationTime += 0.016;
+
+            tiles.forEach(tile => tile.update(animationTime));
+
+            // 描画
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            tiles.forEach(tile => tile.draw(ctx, animationTime));
+
+            // グリッド線（薄く）
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= COLS; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * TILE_SIZE, 0);
+                ctx.lineTo(i * TILE_SIZE, canvas.height);
+                ctx.stroke();
+            }
+            for (let i = 0; i <= ROWS; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, i * TILE_SIZE);
+                ctx.lineTo(canvas.width, i * TILE_SIZE);
+                ctx.stroke();
+            }
+
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+        // コントロール関数
+        function resetPattern() {
+            tiles.forEach(tile => {
+                tile.colorIndex = 0;
+                tile.targetColorIndex = 0;
+                tile.brightness = 0;
+                tile.targetBrightness = 0;
+                tile.rippleStrength = 0;
+            });
+        }
+
+        function changePalette() {
+            currentPalette = (currentPalette + 1) % palettes.length;
+        }
+
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
