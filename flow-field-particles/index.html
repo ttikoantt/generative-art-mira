@@ -2,298 +2,197 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Flow Field Particles - Mira</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow Field Particles</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
         body {
-            background: #000;
+            background: #0a0a0a;
             overflow: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            touch-action: none;
+            font-family: 'Segoe UI', sans-serif;
         }
-
         canvas {
             display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
         }
-
-        .controls {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 100;
-            display: flex;
-            gap: 10px;
-        }
-
-        .controls button {
-            padding: 12px 20px;
-            font-size: 16px;
-            font-weight: 600;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            transition: all 0.2s;
-            backdrop-filter: blur(10px);
-        }
-
-        .controls .primary {
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-
-        .controls .primary:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: scale(1.05);
-        }
-
         .info {
             position: fixed;
             bottom: 20px;
             left: 20px;
-            color: white;
+            color: rgba(255,255,255,0.6);
             font-size: 14px;
-            opacity: 0.7;
+            z-index: 100;
             pointer-events: none;
         }
-
-        .fullscreen {
+        .fullscreen-btn {
             position: fixed;
             top: 20px;
             right: 20px;
-            padding: 12px 20px;
-            font-size: 16px;
-            font-weight: 600;
-            border: none;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 10px 20px;
             border-radius: 25px;
             cursor: pointer;
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
             z-index: 100;
         }
-
-        .fullscreen:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: scale(1.05);
+        .fullscreen-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .fullscreen-btn:active {
+            transform: scale(0.95);
         }
     </style>
 </head>
 <body>
-    <div class="controls">
-        <button class="primary" onclick="reset()">🔄 Reset</button>
-        <button class="primary" onclick="toggleMode()">🎨 Mode</button>
-    </div>
-
-    <button class="fullscreen" onclick="toggleFullscreen()">📺 Fullscreen</button>
-
-    <div class="info">
-        <p>✨ Drag to influence flow • Move to create trails</p>
-    </div>
-
     <canvas id="canvas"></canvas>
+    <div class="info">Click to regenerate | Move to influence flow</div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-
-        let width, height;
-        let particles = [];
-        let flowField;
-        let cols, rows;
-        const scale = 20;
-        let mode = 0;
-        let mouseX = 0, mouseY = 0;
-        let isMouseDown = false;
-
-        // Color palettes
-        const palettes = [
-            ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff'],
-            ['#00d2d3', '#ff9f43', '#ee5a24', '#009432', '#0652DD'],
-            ['#fd79a8', '#a29bfe', '#74b9ff', '#81ecec', '#ffeaa7'],
-            ['#e17055', '#00b894', '#0984e3', '#6c5ce7', '#fdcb6e']
-        ];
-
-        function resize() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-            cols = Math.floor(width / scale) + 1;
-            rows = Math.floor(height / scale) + 1;
-            initFlowField();
-        }
-
-        function initFlowField() {
-            flowField = new Array(cols * rows);
-
-            let yoff = 0;
-            for (let y = 0; y < rows; y++) {
-                let xoff = 0;
-                for (let x = 0; x < cols; x++) {
-                    const index = x + y * cols;
-                    const angle = noise(xoff, yoff) * Math.PI * 4;
-                    flowField[index] = {
-                        angle: angle,
-                        vector: {
-                            x: Math.cos(angle),
-                            y: Math.sin(angle)
-                        }
-                    };
-                    xoff += 0.1;
-                }
-                yoff += 0.1;
-            }
-        }
-
-        // Simple noise function
-        function noise(x, y) {
-            const sin = Math.sin;
-            return sin(x * 12.9898 + y * 78.233) * 43758.5453 % 1;
-        }
-
+        
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+        
+        const particleCount = 3000;
+        const particles = [];
+        const noiseScale = 0.003;
+        const timeScale = 0.0001;
+        let time = 0;
+        let mouseX = width / 2;
+        let mouseY = height / 2;
+        
         class Particle {
             constructor() {
                 this.reset();
             }
-
+            
             reset() {
                 this.x = Math.random() * width;
                 this.y = Math.random() * height;
                 this.vx = 0;
                 this.vy = 0;
-                this.ax = 0;
-                this.ay = 0;
-                this.maxSpeed = 2 + Math.random() * 2;
-                this.maxForce = 0.1 + Math.random() * 0.1;
-                this.prevX = this.x;
-                this.prevY = this.y;
-                this.life = 100 + Math.random() * 200;
-                this.hue = Math.random() * 360;
+                this.life = Math.random() * 200 + 100;
+                this.maxLife = this.life;
+                this.hue = Math.random() * 60 + 180; // Blue-cyan range
+                this.size = Math.random() * 2 + 1;
             }
-
-            applyForce(force) {
-                this.ax += force.x;
-                this.ay += force.y;
-            }
-
+            
             update() {
-                this.vx += this.ax;
-                this.vy += this.ay;
-
-                // Limit speed
-                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                if (speed > this.maxSpeed) {
-                    this.vx = (this.vx / speed) * this.maxSpeed;
-                    this.vy = (this.vy / speed) * this.maxSpeed;
+                // Flow field based on Perlin-like noise
+                const angle = (noise(this.x * noiseScale, this.y * noiseScale, time) * Math.PI * 4);
+                
+                // Add mouse influence
+                const dx = this.x - mouseX;
+                const dy = this.y - mouseY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 200) {
+                    const force = (200 - dist) / 200;
+                    this.vx += (dx / dist) * force * 0.5;
+                    this.vy += (dy / dist) * force * 0.5;
                 }
-
-                this.prevX = this.x;
-                this.prevY = this.y;
-
+                
+                this.vx += Math.cos(angle) * 0.3;
+                this.vy += Math.sin(angle) * 0.3;
+                
+                // Damping
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+                
                 this.x += this.vx;
                 this.y += this.vy;
-
-                this.ax = 0;
-                this.ay = 0;
-
+                
                 this.life--;
-
-                // Mouse influence
-                if (isMouseDown) {
-                    const dx = mouseX - this.x;
-                    const dy = mouseY - this.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist < 150) {
-                        const force = (150 - dist) / 150;
-                        this.applyForce({
-                            x: (dx / dist) * force * 0.5,
-                            y: (dy / dist) * force * 0.5
-                        });
-                    }
-                }
-
+                
                 // Wrap around edges
                 if (this.x < 0) this.x = width;
                 if (this.x > width) this.x = 0;
                 if (this.y < 0) this.y = height;
                 if (this.y > height) this.y = 0;
-
-                // Reset if dead or stuck
-                if (this.life <= 0 || (Math.abs(this.vx) < 0.1 && Math.abs(this.vy) < 0.1 && this.life < 50)) {
+                
+                // Reset if dead
+                if (this.life <= 0) {
                     this.reset();
                 }
             }
-
+            
             draw() {
-                const palette = palettes[mode];
-                const colorIndex = Math.floor(this.hue / 360 * palette.length) % palette.length;
-
+                const alpha = (this.life / this.maxLife) * 0.8;
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const hueShift = speed * 20;
+                
                 ctx.beginPath();
-                ctx.moveTo(this.prevX, this.prevY);
-                ctx.lineTo(this.x, this.y);
-                ctx.strokeStyle = palette[colorIndex];
-                ctx.lineWidth = 1.5;
-                ctx.globalAlpha = this.life / 300;
-                ctx.stroke();
-                ctx.globalAlpha = 1;
-            }
-
-            follow(flowField) {
-                const x = Math.floor(this.x / scale);
-                const y = Math.floor(this.y / scale);
-                const index = x + y * cols;
-
-                if (index >= 0 && index < flowField.length) {
-                    const force = flowField[index].vector;
-                    this.applyForce({
-                        x: force.x * this.maxForce,
-                        y: force.y * this.maxForce
-                    });
-                }
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue + hueShift}, 80%, 60%, ${alpha})`;
+                ctx.fill();
             }
         }
-
-        function initParticles() {
-            particles = [];
-            const numParticles = Math.floor((width * height) / 2000);
-
-            for (let i = 0; i < numParticles; i++) {
-                particles.push(new Particle());
-            }
+        
+        // Simple noise function
+        function noise(x, y, z) {
+            return (Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453) % 1;
         }
-
+        
+        // Initialize particles
+        for (let i = 0; i < particleCount; i++) {
+            particles.push(new Particle());
+        }
+        
         function animate() {
-            // Fade effect
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            // Fade effect for trails
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
             ctx.fillRect(0, 0, width, height);
-
-            particles.forEach(particle => {
-                particle.follow(flowField);
-                particle.update();
-                particle.draw();
+            
+            time += timeScale;
+            
+            particles.forEach(p => {
+                p.update();
+                p.draw();
             });
-
+            
             requestAnimationFrame(animate);
         }
-
-        function reset() {
-            initParticles();
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, width, height);
-        }
-
-        function toggleMode() {
-            mode = (mode + 1) % palettes.length;
-            particles.forEach(p => {
-                p.hue = Math.random() * 360;
-            });
-        }
-
+        
+        // Mouse move
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+        
+        // Click to regenerate
+        canvas.addEventListener('click', () => {
+            particles.forEach(p => p.reset());
+        });
+        
+        // Touch
+        canvas.addEventListener('touchstart', () => {
+            particles.forEach(p => p.reset());
+        });
+        
+        // Resize
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+        
+        // Fullscreen
         function toggleFullscreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
@@ -301,50 +200,7 @@
                 document.exitFullscreen();
             }
         }
-
-        // Event listeners
-        window.addEventListener('resize', resize);
-
-        canvas.addEventListener('mousedown', (e) => {
-            isMouseDown = true;
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-        });
-
-        canvas.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-        });
-
-        canvas.addEventListener('mouseup', () => {
-            isMouseDown = false;
-        });
-
-        canvas.addEventListener('mouseleave', () => {
-            isMouseDown = false;
-        });
-
-        // Touch events
-        canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            isMouseDown = true;
-            mouseX = e.touches[0].clientX;
-            mouseY = e.touches[0].clientY;
-        });
-
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            mouseX = e.touches[0].clientX;
-            mouseY = e.touches[0].clientY;
-        });
-
-        canvas.addEventListener('touchend', () => {
-            isMouseDown = false;
-        });
-
-        // Initialize
-        resize();
-        initParticles();
+        
         animate();
     </script>
 </body>
