@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>粒子の軌跡 - Interactive Particle Trails</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+        button {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+        button:hover {
+            background: rgba(255,255,255,0.2);
+            transform: scale(1.05);
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+        #fullscreen {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+        }
+        #title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="title">粒子の軌跡 - スワイプして描く</div>
+    <button id="fullscreen" onclick="toggleFullscreen()">全画面</button>
+    <div id="controls">
+        <button onclick="resetCanvas()">リセット</button>
+        <button onclick="changeMode()">モード変更</button>
+        <button onclick="toggleTrails()">軌跡切替</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let particles = [];
+        let mouseX = 0, mouseY = 0;
+        let isTouching = false;
+        let hue = 0;
+        let mode = 0;
+        let showTrails = true;
+
+        const modes = [
+            { name: ' flowing', particleCount: 5, speed: 2, size: 3 },
+            { name: 'explosive', particleCount: 15, speed: 4, size: 2 },
+            { name: 'gentle', particleCount: 3, speed: 1, size: 5 }
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * modes[mode].speed * 2;
+                this.vy = (Math.random() - 0.5) * modes[mode].speed * 2;
+                this.life = 1;
+                this.decay = 0.005 + Math.random() * 0.01;
+                this.hue = hue;
+                this.size = modes[mode].size + Math.random() * 3;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+                this.life -= this.decay;
+                this.hue += 0.5;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${this.life})`;
+                ctx.fill();
+                
+                // グロー効果
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsla(${this.hue}, 100%, 60%, ${this.life})`;
+            }
+        }
+
+        function createParticles(x, y) {
+            for (let i = 0; i < modes[mode].particleCount; i++) {
+                particles.push(new Particle(x, y));
+            }
+        }
+
+        function animate() {
+            // 背景を薄く描画して軌跡効果
+            if (showTrails) {
+                ctx.fillStyle = 'rgba(10, 10, 15, 0.05)';
+            } else {
+                ctx.fillStyle = 'rgba(10, 10, 15, 1)';
+            }
+            ctx.fillRect(0, 0, width, height);
+
+            hue = (hue + 0.5) % 360;
+
+            if (isTouching) {
+                createParticles(mouseX, mouseY);
+            }
+
+            particles = particles.filter(p => p.life > 0);
+            
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // パーティクル同士の距離によるライン描画（フローモードのみ）
+            if (mode === 0 && particles.length > 1) {
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+                ctx.lineWidth = 0.5;
+                for (let i = 0; i < particles.length; i++) {
+                    for (let j = i + 1; j < particles.length; j++) {
+                        const dx = particles[i].x - particles[j].x;
+                        const dy = particles[i].y - particles[j].y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < 50) {
+                            ctx.beginPath();
+                            ctx.moveTo(particles[i].x, particles[i].y);
+                            ctx.lineTo(particles[j].x, particles[j].y);
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('mousedown', (e) => {
+            isTouching = true;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isTouching = false;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isTouching = true;
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isTouching = false;
+        });
+
+        window.addEventListener('resize', resize);
+
+        function resetCanvas() {
+            particles = [];
+            ctx.fillStyle = 'rgba(10, 10, 15, 1)';
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        function changeMode() {
+            mode = (mode + 1) % modes.length;
+        }
+
+        function toggleTrails() {
+            showTrails = !showTrails;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        resize();
+        animate();
+    </script>
+</body>
+</html>
