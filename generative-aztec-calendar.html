@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generative Aztec Calendar</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        h1 {
+            color: #ffd700;
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+            letter-spacing: 2px;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        canvas {
+            border-radius: 50%;
+            box-shadow: 0 0 60px rgba(255, 215, 0, 0.3),
+                        inset 0 0 60px rgba(255, 215, 0, 0.1);
+            background: radial-gradient(circle, #1a1a2e 0%, #0c0c0c 100%);
+        }
+
+        .controls {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%);
+            color: #0c0c0c;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 215, 0, 0.5);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(255, 215, 0, 0.2);
+            color: #ffd700;
+            border: 1px solid #ffd700;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 215, 0, 0.3);
+        }
+
+        .info {
+            color: #888;
+            font-size: 0.9rem;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="container">
+        <h1>🌞 Generative Aztec Calendar</h1>
+
+        <div class="canvas-wrapper">
+            <canvas id="calendarCanvas"></canvas>
+        </div>
+
+        <div class="controls">
+            <button onclick="generateNew()">新しいカレンダー</button>
+            <button onclick="toggleAnimation()">一時停止/再生</button>
+            <button onclick="changeSpeed()">速度変更</button>
+        </div>
+
+        <p class="info">古代の知恵を現代のアートに</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('calendarCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvasサイズ設定
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 200, 500);
+            canvas.width = size;
+            canvas.height = size;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            draw();
+        });
+
+        // アニメーション状態
+        let isAnimating = true;
+        let animationSpeed = 1;
+        let rotation = 0;
+
+        // パターン設定
+        let patternConfig = {};
+
+        // アステカ風の色パレット
+        const aztecColors = [
+            { primary: '#ffd700', secondary: '#ff8c00', accent: '#ff4500' },
+            { primary: '#4169e1', secondary: '#1e90ff', accent: '#00bfff' },
+            { primary: '#dc143c', secondary: '#ff1493', accent: '#ff69b4' },
+            { primary: '#32cd32', secondary: '#00ff00', accent: '#7fff00' },
+            { primary: '#9932cc', secondary: '#8b008b', accent: '#ba55d3' },
+            { primary: '#ff6347', secondary: '#ff4500', accent: '#ff0000' }
+        ];
+
+        // 新しいパターンを生成
+        function generateNew() {
+            const colorScheme = aztecColors[Math.floor(Math.random() * aztecColors.length)];
+            
+            patternConfig = {
+                numRings: 3 + Math.floor(Math.random() * 4), // 3-6 rings
+                segmentsPerRing: [],
+                rotationSpeeds: [],
+                directions: [],
+                patternTypes: [],
+                colors: colorScheme
+            };
+
+            // 各リングの設定
+            for (let i = 0; i < patternConfig.numRings; i++) {
+                patternConfig.segmentsPerRing.push(
+                    4 + Math.floor(Math.random() * 8) * 2 // 4, 6, 8, ... 18
+                );
+                patternConfig.rotationSpeeds.push(
+                    (0.001 + Math.random() * 0.003) * (Math.random() > 0.5 ? 1 : -1)
+                );
+                patternConfig.directions.push(Math.random() > 0.5 ? 1 : -1);
+                patternConfig.patternTypes.push(Math.floor(Math.random() * 4));
+            }
+
+            rotation = 0;
+        }
+
+        // 幾何学模様を描画
+        function drawPattern(type, x, y, size, color, time) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            switch(type) {
+                case 0: // 三角形パターン
+                    for (let i = 0; i < 6; i++) {
+                        ctx.save();
+                        ctx.rotate((Math.PI / 3) * i + time * 0.5);
+                        ctx.beginPath();
+                        ctx.moveTo(0, -size);
+                        ctx.lineTo(-size * 0.5, -size * 0.13);
+                        ctx.lineTo(size * 0.5, -size * 0.13);
+                        ctx.closePath();
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                    break;
+
+                case 1: // 菱形パターン
+                    for (let i = 0; i < 4; i++) {
+                        ctx.save();
+                        ctx.rotate((Math.PI / 2) * i + time * 0.3);
+                        ctx.beginPath();
+                        ctx.moveTo(0, -size);
+                        ctx.lineTo(size * 0.4, -size * 0.4);
+                        ctx.lineTo(0, -size * 0.8);
+                        ctx.lineTo(-size * 0.4, -size * 0.4);
+                        ctx.closePath();
+                        ctx.fillStyle = color;
+                        ctx.globalAlpha = 0.6;
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                    break;
+
+                case 2: // 放射線パターン
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    for (let i = 0; i < 12; i++) {
+                        ctx.save();
+                        ctx.rotate((Math.PI / 6) * i);
+                        ctx.beginPath();
+                        ctx.moveTo(0, -size * 0.3);
+                        ctx.lineTo(0, -size);
+                        ctx.stroke();
+                        
+                        // 装飾
+                        ctx.beginPath();
+                        ctx.arc(0, -size * 0.6, size * 0.08, 0, Math.PI * 2);
+                        ctx.fillStyle = color;
+                        ctx.globalAlpha = 0.8;
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                    break;
+
+                case 3: // 波状パターン
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    for (let i = 0; i < 8; i++) {
+                        ctx.save();
+                        ctx.rotate((Math.PI / 4) * i);
+                        ctx.beginPath();
+                        ctx.moveTo(0, -size * 0.2);
+                        for (let t = 0; t < 1; t += 0.1) {
+                            const y = -size * (0.2 + t * 0.8);
+                            const x = Math.sin(t * Math.PI * 4 + time * 2) * size * 0.15;
+                            ctx.lineTo(x, y);
+                        }
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                    break;
+            }
+
+            ctx.restore();
+        }
+
+        // メイン描画関数
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const maxRadius = Math.min(centerX, centerY) - 20;
+
+            // 背景の光沢
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, maxRadius
+            );
+            gradient.addColorStop(0, 'rgba(255, 215, 0, 0.05)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // リングを描画
+            const ringWidth = (maxRadius - 30) / patternConfig.numRings;
+
+            for (let ring = 0; ring < patternConfig.numRings; ring++) {
+                const innerRadius = 30 + ring * ringWidth;
+                const outerRadius = innerRadius + ringWidth - 5;
+                const ringRotation = rotation * patternConfig.rotationSpeeds[ring] * 500;
+
+                // 外枠
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, outerRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = patternConfig.colors.primary;
+                ctx.lineWidth = 2;
+                ctx.globalAlpha = 0.6;
+                ctx.stroke();
+
+                // セグメントを描画
+                const segments = patternConfig.segmentsPerRing[ring];
+                const segmentAngle = (Math.PI * 2) / segments;
+
+                for (let seg = 0; seg < segments; seg++) {
+                    const angle = segmentAngle * seg + ringRotation;
+                    const midRadius = (innerRadius + outerRadius) / 2;
+
+                    // セグメントの背景
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, midRadius, 
+                            angle - segmentAngle * 0.4, 
+                            angle + segmentAngle * 0.4);
+                    ctx.strokeStyle = patternConfig.colors.secondary;
+                    ctx.lineWidth = ringWidth * 0.7;
+                    ctx.globalAlpha = 0.3;
+                    ctx.stroke();
+
+                    // パターンを描画
+                    const patternX = centerX + Math.cos(angle) * midRadius;
+                    const patternY = centerY + Math.sin(angle) * midRadius;
+                    const patternSize = ringWidth * 0.35;
+
+                    drawPattern(
+                        patternConfig.patternTypes[ring],
+                        patternX, patternY,
+                        patternSize,
+                        seg % 2 === 0 ? patternConfig.colors.accent : patternConfig.colors.primary,
+                        rotation + seg
+                    );
+                }
+            }
+
+            // 中心の太陽
+            const sunRadius = 25;
+            const sunGradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, sunRadius
+            );
+            sunGradient.addColorStop(0, patternConfig.colors.primary);
+            sunGradient.addColorStop(1, patternConfig.colors.accent);
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, sunRadius, 0, Math.PI * 2);
+            ctx.fillStyle = sunGradient;
+            ctx.globalAlpha = 0.9;
+            ctx.fill();
+
+            // 太陽の光芒
+            ctx.strokeStyle = patternConfig.colors.primary;
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.7;
+            for (let i = 0; i < 16; i++) {
+                const angle = (Math.PI / 8) * i + rotation * 0.5;
+                ctx.beginPath();
+                ctx.moveTo(
+                    centerX + Math.cos(angle) * sunRadius,
+                    centerY + Math.sin(angle) * sunRadius
+                );
+                ctx.lineTo(
+                    centerX + Math.cos(angle) * (sunRadius + 8),
+                    centerY + Math.sin(angle) * (sunRadius + 8)
+                );
+                ctx.stroke();
+            }
+
+            ctx.globalAlpha = 1;
+        }
+
+        // アニメーションループ
+        function animate() {
+            if (isAnimating) {
+                rotation += 0.016 * animationSpeed;
+            }
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        // コントロール関数
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+        }
+
+        function changeSpeed() {
+            animationSpeed = animationSpeed === 1 ? 2 : animationSpeed === 2 ? 0.5 : 1;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        generateNew();
+        animate();
+    </script>
+</body>
+</html>
