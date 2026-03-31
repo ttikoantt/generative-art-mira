@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rhythm Matrix - オーディオ・ビジュアル・インスタレーション</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 100;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        #start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            cursor: pointer;
+        }
+
+        #start-overlay h1 {
+            color: #fff;
+            font-size: 24px;
+            text-align: center;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        #info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div id="info">Click or tap to change colors and patterns</div>
+
+    <div id="controls">
+        <button id="fullscreen-btn">⛶ Fullscreen</button>
+        <button id="mute-btn">🔊 Mute</button>
+    </div>
+
+    <div id="start-overlay">
+        <h1>🎵 Click or tap to start<br>Rhythm Matrix Experience</h1>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startOverlay = document.getElementById('start-overlay');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const muteBtn = document.getElementById('mute-btn');
+
+        let audioContext;
+        let isPlaying = false;
+        let isMuted = false;
+        let animationId;
+        let startTime;
+
+        // Canvas size
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Color palettes
+        const palettes = [
+            ['#00ffff', '#ff00ff', '#ffff00', '#00ff00'], // Cyberpunk
+            ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3'], // Sunset
+            ['#00d2d3', '#54a0ff', '#5f27cd', '#009432'], // Ocean
+            ['#ff4757', '#ffa502', '#ff6348', '#ffa07a'], // Fire
+            ['#a29bfe', '#fd79a8', '#00cec9', '#fdcb6e'], // Pastel
+            ['#00ff87', '#60efff', '#ff6b6b', '#ffd93d'], // Neon
+            ['#e056fd', '#686ae0', '#30336b', '#130f40'], // Purple
+            ['#20bf6b', '#0fb9b1', '#4b7bec', '#a55eea'], // Vibrant
+            ['#ff9f43', '#ee5a24', '#009432', '#0652dd'], // Bold
+            ['#f8c291', '#e55039', '#1e3799', '#0c2461'], // Warm
+            ['#b8e994', '#78e08f', '#38ada9', '#079992'], // Fresh
+            ['#d6a2e8', '#e77f67', '#778beb', '#f8a5c2']  // Soft
+        ];
+
+        let currentPalette = 0;
+        let currentMode = 0; // 0: pulse, 1: wave, 2: spiral, 3: expand
+
+        // Rhythm channels
+        const rhythms = [
+            { name: 'kick', bpm: 120, beat: 0, color: 0 },
+            { name: 'snare', bpm: 60, beat: 0, color: 1 },
+            { name: 'hihat', bpm: 180, beat: 0, color: 2 },
+            { name: 'perc', bpm: 90, beat: 0, color: 3 },
+            { name: 'bass', bpm: 60, beat: 0, color: 0 },
+            { name: 'melody', bpm: 240, beat: 0, color: 1 }
+        ];
+
+        // Matrix layers
+        const matrices = [];
+        const matrixSizes = [8, 12, 16];
+        const layerCount = 9;
+
+        for (let i = 0; i < layerCount; i++) {
+            matrices.push({
+                size: matrixSizes[i % matrixSizes.length],
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.002,
+                scale: 1,
+                scaleSpeed: 0,
+                color: i % 4,
+                opacity: 0.6 - i * 0.05,
+                pattern: Math.floor(Math.random() * 5)
+            });
+        }
+
+        // Audio setup
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            startTime = audioContext.currentTime;
+
+            // Create rhythm tracks
+            rhythms.forEach((rhythm, i) => {
+                scheduleRhythm(rhythm, i);
+            });
+        }
+
+        function scheduleRhythm(rhythm, index) {
+            const beatDuration = 60 / rhythm.bpm;
+            const beatTime = startTime + (beatDuration * rhythm.beat);
+
+            // Play rhythm
+            playRhythmSound(rhythm.name, beatTime);
+
+            // Trigger visual effect
+            setTimeout(() => {
+                triggerRhythmEffect(rhythm);
+            }, (beatTime - audioContext.currentTime) * 1000);
+
+            // Schedule next beat
+            rhythm.beat++;
+            const nextBeatTime = beatTime + beatDuration;
+            const delay = (nextBeatTime - audioContext.currentTime) * 1000;
+
+            setTimeout(() => scheduleRhythm(rhythm, index), Math.max(0, delay));
+        }
+
+        function playRhythmSound(type, time) {
+            if (isMuted) return;
+
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            const filter = audioContext.createBiquadFilter();
+
+            switch (type) {
+                case 'kick':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(150, time);
+                    osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.5);
+                    gain.gain.setValueAtTime(1, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.5);
+                    filter.type = 'lowpass';
+                    filter.frequency.value = 200;
+                    break;
+
+                case 'snare':
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(200, time);
+                    osc.frequency.exponentialRampToValueAtTime(100, time + 0.2);
+                    gain.gain.setValueAtTime(0.5, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+                    filter.type = 'highpass';
+                    filter.frequency.value = 1000;
+                    break;
+
+                case 'hihat':
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(8000, time);
+                    gain.gain.setValueAtTime(0.1, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
+                    filter.type = 'highpass';
+                    filter.frequency.value = 5000;
+                    break;
+
+                case 'perc':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(800, time);
+                    gain.gain.setValueAtTime(0.3, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+                    break;
+
+                case 'bass':
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(55, time);
+                    osc.frequency.setValueAtTime(82, time + 0.25);
+                    gain.gain.setValueAtTime(0.4, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.5);
+                    filter.type = 'lowpass';
+                    filter.frequency.value = 800;
+                    break;
+
+                case 'melody':
+                    const notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00];
+                    const note = notes[Math.floor(Math.random() * notes.length)];
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(note, time);
+                    gain.gain.setValueAtTime(0.15, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+                    break;
+            }
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioContext.destination);
+
+            osc.start(time);
+            osc.stop(time + 0.5);
+        }
+
+        function triggerRhythmEffect(rhythm) {
+            // Find matrices with matching color
+            matrices.forEach(m => {
+                if (m.color === rhythm.color) {
+                    // Trigger effect based on mode
+                    switch (currentMode) {
+                        case 0: // pulse
+                            m.scale = 1.3;
+                            m.scaleSpeed = 0.03;
+                            break;
+                        case 1: // wave
+                            m.rotationSpeed = (Math.random() - 0.5) * 0.01;
+                            break;
+                        case 2: // spiral
+                            m.rotation += Math.PI / 8;
+                            break;
+                        case 3: // expand
+                            m.scale = 1.5;
+                            m.scaleSpeed = 0.02;
+                            break;
+                    }
+                }
+            });
+        }
+
+        // Draw
+        function draw() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const palette = palettes[currentPalette];
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const baseSize = Math.min(canvas.width, canvas.height) * 0.4;
+
+            matrices.forEach((m, i) => {
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(m.rotation);
+                ctx.scale(m.scale, m.scale);
+
+                const cellSize = baseSize / m.size;
+                const offset = (m.size * cellSize) / 2;
+
+                for (let x = 0; x < m.size; x++) {
+                    for (let y = 0; y < m.size; y++) {
+                        const px = x * cellSize - offset;
+                        const py = y * cellSize - offset;
+
+                        // Pattern
+                        let shouldDraw = false;
+                        switch (m.pattern) {
+                            case 0: // checker
+                                shouldDraw = (x + y) % 2 === 0;
+                                break;
+                            case 1: // cross
+                                shouldDraw = x === Math.floor(m.size / 2) || y === Math.floor(m.size / 2);
+                                break;
+                            case 2: // diagonal
+                                shouldDraw = x === y || x + y === m.size - 1;
+                                break;
+                            case 3: // corners
+                                shouldDraw = x < 2 || x > m.size - 3 || y < 2 || y > m.size - 3;
+                                break;
+                            case 4: // random
+                                shouldDraw = Math.sin(x * y + i) > 0;
+                                break;
+                        }
+
+                        if (shouldDraw) {
+                            ctx.fillStyle = palette[m.color];
+                            ctx.globalAlpha = m.opacity;
+                            ctx.fillRect(px, py, cellSize - 1, cellSize - 1);
+                        }
+                    }
+                }
+
+                ctx.restore();
+
+                // Update
+                m.rotation += m.rotationSpeed;
+                m.scaleSpeed *= 0.95;
+                m.scale = 1 + m.scaleSpeed;
+                if (m.scale < 0.8) m.scale = 0.8;
+                if (m.scale > 1.5) m.scale = 1.5;
+            });
+
+            animationId = requestAnimationFrame(draw);
+        }
+
+        // Controls
+        function changePalette() {
+            currentPalette = (currentPalette + 1) % palettes.length;
+        }
+
+        function changeMode() {
+            currentMode = (currentMode + 1) % 4;
+        }
+
+        // Event listeners
+        startOverlay.addEventListener('click', () => {
+            if (!isPlaying) {
+                initAudio();
+                isPlaying = true;
+                startOverlay.style.display = 'none';
+                draw();
+            }
+        });
+
+        canvas.addEventListener('click', () => {
+            changePalette();
+            changeMode();
+        });
+
+        canvas.addEventListener('touchend', () => {
+            changePalette();
+            changeMode();
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        muteBtn.addEventListener('click', () => {
+            isMuted = !isMuted;
+            muteBtn.textContent = isMuted ? '🔇 Unmute' : '🔊 Mute';
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                changePalette();
+                changeMode();
+            } else if (e.code === 'KeyM') {
+                isMuted = !isMuted;
+                muteBtn.textContent = isMuted ? '🔇 Unmute' : '🔊 Mute';
+            }
+        });
+    </script>
+</body>
+</html>
