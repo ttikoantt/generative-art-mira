@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Rhythm Maze - 音楽反応型迷路</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .container {
+            text-align: center;
+            padding: 10px;
+        }
+
+        h1 {
+            color: #00d4ff;
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+        }
+
+        .subtitle {
+            color: #a0a0a0;
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+        }
+
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 10px;
+            justify-content: center;
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px 16px;
+            border-radius: 20px;
+            color: #00d4ff;
+            font-size: 0.9rem;
+        }
+
+        #maze {
+            border: 3px solid #00d4ff;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 212, 255, 0.5);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            color: #a0a0a0;
+            font-size: 0.75rem;
+            margin-top: 10px;
+            line-height: 1.5;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 212, 255, 0.8);
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .rhythm-indicator {
+            width: 100%;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .rhythm-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #00d4ff, #ff00ff);
+            transition: width 0.1s ease;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.2rem;
+            }
+
+            .subtitle {
+                font-size: 0.7rem;
+            }
+
+            .stat {
+                padding: 6px 12px;
+                font-size: 0.8rem;
+            }
+
+            button {
+                padding: 8px 16px;
+                font-size: 0.8rem;
+            }
+
+            .info {
+                font-size: 0.7rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <div class="container">
+        <h1>🎵 Rhythm Maze</h1>
+        <p class="subtitle">音楽に合わせて変形する迷路を攻略</p>
+
+        <div class="stats">
+            <div class="stat">⭐ スコア: <span id="score">0</span></div>
+            <div class="stat">🏆 レベル: <span id="level">1</span></div>
+            <div class="stat">⏱️ 時間: <span id="time">0</span>s</div>
+        </div>
+
+        <div class="rhythm-indicator">
+            <div class="rhythm-bar" id="rhythmBar"></div>
+        </div>
+
+        <canvas id="maze" width="400" height="400"></canvas>
+
+        <div class="controls">
+            <button onclick="startGame()">▶️ スタート</button>
+            <button onclick="toggleMusic()">🎵 音楽: <span id="musicStatus">ON</span></button>
+        </div>
+
+        <p class="info">
+            矢印キーまたはスワイプで移動<br>
+            音楽に合わせて迷路が変形します！<br>
+            ゴール（緑）を目指してください
+        </p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('maze');
+        const ctx = canvas.getContext('2d');
+
+        // ゲーム状態
+        let gameState = {
+            running: false,
+            score: 0,
+            level: 1,
+            time: 0,
+            musicEnabled: true,
+            rhythmPhase: 0
+        };
+
+        // 迷路設定
+        const MAZE_SIZE = 15;
+        let CELL_SIZE = canvas.width / MAZE_SIZE;
+        let maze = [];
+        let player = { x: 1, y: 1 };
+        let goal = { x: MAZE_SIZE - 2, y: MAZE_SIZE - 2 };
+
+        // オーディオコンテキスト
+        let audioCtx = null;
+        let analyser = null;
+        let dataArray = null;
+
+        // 初期化
+        function init() {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            setupControls();
+            drawMaze();
+        }
+
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 400);
+            const maxHeight = Math.min(window.innerHeight - 350, 400);
+            const size = Math.min(maxWidth, maxHeight);
+
+            canvas.width = size;
+            canvas.height = size;
+            CELL_SIZE = size / MAZE_SIZE;
+            drawMaze();
+        }
+
+        // 迷路生成
+        function generateMaze() {
+            // 迷路初期化（すべて壁）
+            maze = [];
+            for (let y = 0; y < MAZE_SIZE; y++) {
+                maze[y] = [];
+                for (let x = 0; x < MAZE_SIZE; x++) {
+                    maze[y][x] = 1; // 1 = 壁
+                }
+            }
+
+            // 深さ優先探索で迷路生成
+            function carve(x, y) {
+                maze[y][x] = 0; // 0 = 通路
+
+                const directions = [
+                    [0, -2], [0, 2], [-2, 0], [2, 0]
+                ];
+
+                // シャッフル
+                for (let i = directions.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [directions[i], directions[j]] = [directions[j], directions[i]];
+                }
+
+                for (const [dx, dy] of directions) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+
+                    if (nx > 0 && nx < MAZE_SIZE - 1 && ny > 0 && ny < MAZE_SIZE - 1 && maze[ny][nx] === 1) {
+                        maze[y + dy / 2][x + dx / 2] = 0;
+                        carve(nx, ny);
+                    }
+                }
+            }
+
+            carve(1, 1);
+
+            // ゴール設定
+            maze[MAZE_SIZE - 2][MAZE_SIZE - 2] = 0;
+        }
+
+        // 迷路描画
+        function drawMaze() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 背景
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            for (let y = 0; y < MAZE_SIZE; y++) {
+                for (let x = 0; x < MAZE_SIZE; x++) {
+                    if (maze[y][x] === 1) {
+                        // 壁
+                        const gradient = ctx.createLinearGradient(
+                            x * CELL_SIZE, y * CELL_SIZE,
+                            (x + 1) * CELL_SIZE, (y + 1) * CELL_SIZE
+                        );
+                        gradient.addColorStop(0, '#00d4ff');
+                        gradient.addColorStop(1, '#0099cc');
+                        ctx.fillStyle = gradient;
+                        ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+
+                        // 光沢効果
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                        ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, 3);
+                    } else {
+                        // 通路
+                        ctx.fillStyle = '#0a0a1e';
+                        ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                    }
+                }
+            }
+
+            // ゴール
+            const goalGradient = ctx.createRadialGradient(
+                goal.x * CELL_SIZE + CELL_SIZE / 2,
+                goal.y * CELL_SIZE + CELL_SIZE / 2,
+                0,
+                goal.x * CELL_SIZE + CELL_SIZE / 2,
+                goal.y * CELL_SIZE + CELL_SIZE / 2,
+                CELL_SIZE
+            );
+            goalGradient.addColorStop(0, '#00ff00');
+            goalGradient.addColorStop(1, '#00aa00');
+            ctx.fillStyle = goalGradient;
+            ctx.beginPath();
+            ctx.arc(
+                goal.x * CELL_SIZE + CELL_SIZE / 2,
+                goal.y * CELL_SIZE + CELL_SIZE / 2,
+                CELL_SIZE / 2 - 2,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+
+            // プレイヤー
+            const playerGradient = ctx.createRadialGradient(
+                player.x * CELL_SIZE + CELL_SIZE / 2,
+                player.y * CELL_SIZE + CELL_SIZE / 2,
+                0,
+                player.x * CELL_SIZE + CELL_SIZE / 2,
+                player.y * CELL_SIZE + CELL_SIZE / 2,
+                CELL_SIZE
+            );
+            playerGradient.addColorStop(0, '#ff00ff');
+            playerGradient.addColorStop(1, '#cc00cc');
+            ctx.fillStyle = playerGradient;
+            ctx.beginPath();
+            ctx.arc(
+                player.x * CELL_SIZE + CELL_SIZE / 2,
+                player.y * CELL_SIZE + CELL_SIZE / 2,
+                CELL_SIZE / 2 - 2,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+
+            // 光輝効果
+            ctx.shadowColor = '#ff00ff';
+            ctx.shadowBlur = 10;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        // プレイヤー移動
+        function movePlayer(dx, dy) {
+            if (!gameState.running) return;
+
+            const newX = player.x + dx;
+            const newY = player.y + dy;
+
+            if (newX >= 0 && newX < MAZE_SIZE && newY >= 0 && newY < MAZE_SIZE && maze[newY][newX] === 0) {
+                player.x = newX;
+                player.y = newY;
+                drawMaze();
+
+                // ゴール判定
+                if (player.x === goal.x && player.y === goal.y) {
+                    levelUp();
+                }
+            }
+        }
+
+        // レベルアップ
+        function levelUp() {
+            gameState.score += 100 * gameState.level;
+            gameState.level++;
+
+            document.getElementById('score').textContent = gameState.score;
+            document.getElementById('level').textContent = gameState.level;
+
+            // 新しい迷路生成
+            generateMaze();
+            player = { x: 1, y: 1 };
+
+            // 装飾効果
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            setTimeout(drawMaze, 100);
+        }
+
+        // ゲーム開始
+        function startGame() {
+            gameState = {
+                running: true,
+                score: 0,
+                level: 1,
+                time: 0,
+                musicEnabled: gameState.musicEnabled,
+                rhythmPhase: 0
+            };
+
+            document.getElementById('score').textContent = '0';
+            document.getElementById('level').textContent = '1';
+            document.getElementById('time').textContent = '0';
+
+            generateMaze();
+            player = { x: 1, y: 1 };
+            drawMaze();
+
+            // タイマー開始
+            setInterval(() => {
+                if (gameState.running) {
+                    gameState.time++;
+                    document.getElementById('time').textContent = gameState.time;
+
+                    // リズム更新
+                    gameState.rhythmPhase += 0.1;
+                    updateRhythmIndicator();
+
+                    // 音楽に合わせて迷路変形
+                    if (gameState.musicEnabled && gameState.time % 5 === 0) {
+                        morphMaze();
+                    }
+                }
+            }, 1000);
+        }
+
+        // 迷路変形
+        function morphMaze() {
+            // ランダムな壁を追加・削除
+            const changes = 3 + Math.floor(gameState.level / 2);
+
+            for (let i = 0; i < changes; i++) {
+                const x = Math.floor(Math.random() * (MAZE_SIZE - 2)) + 1;
+                const y = Math.floor(Math.random() * (MAZE_SIZE - 2)) + 1;
+
+                // プレイヤーとゴールの周辺は変更しない
+                if (Math.abs(x - player.x) < 2 && Math.abs(y - player.y) < 2) continue;
+                if (Math.abs(x - goal.x) < 2 && Math.abs(y - goal.y) < 2) continue;
+
+                maze[y][x] = maze[y][x] === 0 ? 1 : 0;
+            }
+
+            drawMaze();
+        }
+
+        // リズムインジケーター更新
+        function updateRhythmIndicator() {
+            const bar = document.getElementById('rhythmBar');
+            const intensity = (Math.sin(gameState.rhythmPhase) + 1) * 50;
+            bar.style.width = intensity + '%';
+        }
+
+        // 音楽トグル
+        function toggleMusic() {
+            gameState.musicEnabled = !gameState.musicEnabled;
+            document.getElementById('musicStatus').textContent = gameState.musicEnabled ? 'ON' : 'OFF';
+        }
+
+        // コントロール設定
+        function setupControls() {
+            // キーボード
+            document.addEventListener('keydown', (e) => {
+                switch (e.key) {
+                    case 'ArrowUp': movePlayer(0, -1); break;
+                    case 'ArrowDown': movePlayer(0, 1); break;
+                    case 'ArrowLeft': movePlayer(-1, 0); break;
+                    case 'ArrowRight': movePlayer(1, 0); break;
+                }
+            });
+
+            // タッチ（スワイプ）
+            let touchStartX = 0;
+            let touchStartY = 0;
+
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+            });
+
+            canvas.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                const touchEndX = e.changedTouches[0].clientX;
+                const touchEndY = e.changedTouches[0].clientY;
+
+                const dx = touchEndX - touchStartX;
+                const dy = touchEndY - touchStartY;
+
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    movePlayer(dx > 0 ? 1 : -1, 0);
+                } else {
+                    movePlayer(0, dy > 0 ? 1 : -1);
+                }
+            });
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化実行
+        init();
+    </script>
+</body>
+</html>
