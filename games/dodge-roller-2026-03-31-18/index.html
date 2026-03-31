@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Dodge Roller - アクションゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            display: block;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+        }
+
+        .ui {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .score {
+            font-size: 32px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+        }
+
+        .high-score {
+            font-size: 14px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            color: white;
+            display: none;
+            border: 2px solid rgba(0, 255, 255, 0.5);
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+        }
+
+        .game-over.active {
+            display: block;
+        }
+
+        .game-over h2 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            color: #0ff;
+        }
+
+        .game-over p {
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+
+        .restart-btn {
+            background: linear-gradient(135deg, #0ff 0%, #00f 100%);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            pointer-events: all;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            pointer-events: all;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        @media (max-width: 768px) {
+            .score {
+                font-size: 24px;
+            }
+
+            .game-over h2 {
+                font-size: 28px;
+            }
+
+            .game-over p {
+                font-size: 16px;
+            }
+
+            .restart-btn {
+                padding: 12px 30px;
+                font-size: 16px;
+            }
+
+            .fullscreen-btn {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="canvas"></canvas>
+        <div class="ui">
+            <div class="score" id="score">0</div>
+            <div class="high-score">ハイスコア: <span id="highScore">0</span></div>
+        </div>
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+        <div class="game-over" id="gameOver">
+            <h2>ゲームオーバー</h2>
+            <p>スコア: <span id="finalScore">0</span></p>
+            <button class="restart-btn" onclick="restartGame()">再プレイ</button>
+        </div>
+        <div class="instructions">左右にタップ/ドラッグして移動</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // キャンバスサイズ設定
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 600);
+            const maxHeight = Math.min(window.innerHeight - 200, 800);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ゲーム変数
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('dodgeRollerHighScore')) || 0;
+        let gameRunning = true;
+        let gameSpeed = 3;
+
+        // プレイヤー
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height - 80,
+            radius: 20,
+            speed: 8,
+            dx: 0,
+            color: '#0ff',
+            trail: []
+        };
+
+        // 障害物
+        let obstacles = [];
+        let obstacleTimer = 0;
+        let obstacleInterval = 60;
+
+        // エフェクト
+        let particles = [];
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = Math.random() * 3 + 1;
+                this.color = color;
+                this.velocity = {
+                    x: (Math.random() - 0.5) * 8,
+                    y: (Math.random() - 0.5) * 8
+                };
+                this.alpha = 1;
+                this.decay = Math.random() * 0.03 + 0.02;
+            }
+
+            update() {
+                this.x += this.velocity.x;
+                this.y += this.velocity.y;
+                this.alpha -= this.decay;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // 障害物クラス
+        class Obstacle {
+            constructor() {
+                this.radius = Math.random() * 20 + 15;
+                this.x = Math.random() * (canvas.width - this.radius * 2) + this.radius;
+                this.y = -this.radius;
+                this.speed = gameSpeed + Math.random() * 2;
+                this.color = `hsl(${Math.random() * 60 + 300}, 80%, 60%)`;
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+            }
+
+            update() {
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // 光る効果
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+
+                ctx.beginPath();
+                // 星型の障害物
+                for (let i = 0; i < 5; i++) {
+                    const angle = (i * Math.PI * 2) / 5 - Math.PI / 2;
+                    const x = Math.cos(angle) * this.radius;
+                    const y = Math.sin(angle) * this.radius;
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+
+                    const innerAngle = angle + Math.PI / 5;
+                    const innerX = Math.cos(innerAngle) * (this.radius * 0.4);
+                    const innerY = Math.sin(innerAngle) * (this.radius * 0.4);
+                    ctx.lineTo(innerX, innerY);
+                }
+                ctx.closePath();
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // プレイヤー更新
+        function updatePlayer() {
+            player.x += player.dx;
+
+            // 壁との衝突
+            if (player.x - player.radius < 0) {
+                player.x = player.radius;
+            }
+            if (player.x + player.radius > canvas.width) {
+                player.x = canvas.width - player.radius;
+            }
+
+            // トレイル更新
+            player.trail.unshift({ x: player.x, y: player.y });
+            if (player.trail.length > 10) {
+                player.trail.pop();
+            }
+        }
+
+        // プレイヤー描画
+        function drawPlayer() {
+            // トレイル描画
+            player.trail.forEach((pos, index) => {
+                const alpha = (1 - index / player.trail.length) * 0.3;
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, player.radius * (1 - index / player.trail.length), 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(0, 255, 255, ${alpha})`;
+                ctx.fill();
+            });
+
+            // プレイヤー本体
+            ctx.save();
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = player.color;
+
+            const gradient = ctx.createRadialGradient(
+                player.x, player.y, 0,
+                player.x, player.y, player.radius
+            );
+            gradient.addColorStop(0, '#0ff');
+            gradient.addColorStop(0.5, '#08f');
+            gradient.addColorStop(1, '#00f');
+
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // 爆発エフェクト
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 30; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        // 衝突判定
+        function checkCollision(p, o) {
+            const dx = p.x - o.x;
+            const dy = p.y - o.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance < p.radius + o.radius;
+        }
+
+        // ゲーム更新
+        function update() {
+            if (!gameRunning) return;
+
+            // スコア更新
+            score++;
+            document.getElementById('score').textContent = score;
+
+            // 難易度上昇
+            if (score % 500 === 0) {
+                gameSpeed += 0.5;
+                obstacleInterval = Math.max(30, obstacleInterval - 5);
+            }
+
+            // プレイヤー更新
+            updatePlayer();
+
+            // 障害物生成
+            obstacleTimer++;
+            if (obstacleTimer >= obstacleInterval) {
+                obstacles.push(new Obstacle());
+                obstacleTimer = 0;
+            }
+
+            // 障害物更新
+            obstacles.forEach((obstacle, index) => {
+                obstacle.update();
+
+                // 衝突判定
+                if (checkCollision(player, obstacle)) {
+                    gameOver();
+                }
+
+                // 画面外に出たら削除
+                if (obstacle.y - obstacle.radius > canvas.height) {
+                    obstacles.splice(index, 1);
+                }
+            });
+
+            // パーティクル更新
+            particles.forEach((particle, index) => {
+                particle.update();
+                if (particle.alpha <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+        }
+
+        // 描画
+        function draw() {
+            // 背景クリア
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // パーティクル描画
+            particles.forEach(particle => particle.draw());
+
+            // 障害物描画
+            obstacles.forEach(obstacle => obstacle.draw());
+
+            // プレイヤー描画
+            drawPlayer();
+        }
+
+        // ゲームオーバー
+        function gameOver() {
+            gameRunning = false;
+            createExplosion(player.x, player.y, player.color);
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('dodgeRollerHighScore', highScore);
+                document.getElementById('highScore').textContent = highScore;
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').classList.add('active');
+        }
+
+        // 再スタート
+        function restartGame() {
+            score = 0;
+            gameSpeed = 3;
+            obstacleInterval = 60;
+            obstacles = [];
+            particles = [];
+            player.x = canvas.width / 2;
+            player.trail = [];
+            gameRunning = true;
+            document.getElementById('score').textContent = '0';
+            document.getElementById('gameOver').classList.remove('active');
+        }
+
+        // ゲームループ
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 入力制御
+        let isDragging = false;
+        let startX = 0;
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - startX;
+                player.dx = deltaX * 0.15;
+                startX = e.clientX;
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+            player.dx = 0;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+            player.dx = 0;
+        });
+
+        // タッチ制御
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isDragging = true;
+            startX = e.touches[0].clientX;
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isDragging) {
+                const deltaX = e.touches[0].clientX - startX;
+                player.dx = deltaX * 0.15;
+                startX = e.touches[0].clientX;
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+            player.dx = 0;
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        document.getElementById('highScore').textContent = highScore;
+        gameLoop();
+    </script>
+</body>
+</html>
