@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音波パーティクルアート | Sound Wave Particle Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+            width: 100%;
+            height: 100vh;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .title {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-size: 1.5rem;
+            text-shadow: 0 0 20px rgba(138, 43, 226, 0.8);
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            background: rgba(138, 43, 226, 0.3);
+            border: 2px solid rgba(138, 43, 226, 0.6);
+            color: #fff;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+        }
+
+        .btn:hover {
+            background: rgba(138, 43, 226, 0.5);
+            box-shadow: 0 0 20px rgba(138, 43, 226, 0.6);
+        }
+
+        .info {
+            position: absolute;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.8rem;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        @media (max-width: 768px) {
+            .title {
+                font-size: 1rem;
+            }
+
+            .btn {
+                padding: 10px 18px;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">🎵 音波パーティクルアート</h1>
+        <p class="info">クリックで波を変更 | スペースで一時停止</p>
+        <canvas id="canvas"></canvas>
+        <div class="controls">
+            <button class="btn" onclick="changeWaveType('sine')">サイン波</button>
+            <button class="btn" onclick="changeWaveType('square')">矩形波</button>
+            <button class="btn" onclick="changeWaveType('sawtooth')">のこぎり波</button>
+            <button class="btn" onclick="changeWaveType('noise')">ノイズ</button>
+            <button class="btn" onclick="togglePause()">一時停止</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let time = 0;
+        let waveType = 'sine';
+        let isPaused = false;
+        let hue = 0;
+
+        // キャンバスサイズ設定
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y, size, color, speedX, speedY) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.color = color;
+                this.speedX = speedX;
+                this.speedY = speedY;
+                this.life = 1;
+                this.decay = 0.005 + Math.random() * 0.005;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= this.decay;
+                this.size *= 0.99;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // 波形の値を取得
+        function getWaveValue(t) {
+            switch (waveType) {
+                case 'sine':
+                    return Math.sin(t);
+                case 'square':
+                    return Math.sin(t) >= 0 ? 1 : -1;
+                case 'sawtooth':
+                    return (t % (Math.PI * 2)) / Math.PI - 1;
+                case 'noise':
+                    return Math.random() * 2 - 1;
+                default:
+                    return Math.sin(t);
+            }
+        }
+
+        // 粒子を追加
+        function addParticle(x, y) {
+            const particleCount = 3;
+            for (let i = 0; i < particleCount; i++) {
+                const size = 2 + Math.random() * 4;
+                const speedX = (Math.random() - 0.5) * 2;
+                const speedY = (Math.random() - 0.5) * 2;
+                const color = `hsl(${hue + Math.random() * 60}, 80%, 60%)`;
+                particles.push(new Particle(x, y, size, color, speedX, speedY));
+            }
+        }
+
+        // 波形を描画
+        function drawWave() {
+            const centerY = height / 2;
+            const amplitude = height * 0.3;
+            const frequency = 0.02;
+
+            ctx.beginPath();
+            ctx.strokeStyle = `hsl(${hue}, 80%, 50%)`;
+            ctx.lineWidth = 3;
+
+            for (let x = 0; x < width; x++) {
+                const t = x * frequency + time;
+                const y = centerY + getWaveValue(t) * amplitude;
+
+                if (x === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+
+                // 粒子を追加
+                if (Math.random() < 0.1) {
+                    addParticle(x, y);
+                }
+            }
+
+            ctx.stroke();
+
+            // 第2波形（オクターブ上）
+            ctx.beginPath();
+            ctx.strokeStyle = `hsl(${hue + 60}, 70%, 40%)`;
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.6;
+
+            for (let x = 0; x < width; x++) {
+                const t = x * frequency * 2 + time * 1.5;
+                const y = centerY + getWaveValue(t) * amplitude * 0.5;
+
+                if (x === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+
+            // 第3波形（低音）
+            ctx.beginPath();
+            ctx.strokeStyle = `hsl(${hue - 30}, 90%, 60%)`;
+            ctx.lineWidth = 4;
+            ctx.globalAlpha = 0.4;
+
+            for (let x = 0; x < width; x++) {
+                const t = x * frequency * 0.5 + time * 0.8;
+                const y = centerY + getWaveValue(t) * amplitude * 0.8;
+
+                if (x === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
+
+        // 背景を描画
+        function drawBackground() {
+            // グラデーション背景
+            const gradient = ctx.createRadialGradient(
+                width / 2, height / 2, 0,
+                width / 2, height / 2, height
+            );
+            gradient.addColorStop(0, `hsla(${hue}, 30%, 10%, 0.1)`);
+            gradient.addColorStop(1, 'rgba(10, 10, 15, 0.1)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        // メインループ
+        function animate() {
+            if (!isPaused) {
+                drawBackground();
+                drawWave();
+
+                // 粒子の更新と描画
+                particles = particles.filter(p => p.life > 0);
+                particles.forEach(p => {
+                    p.update();
+                    p.draw();
+                });
+
+                time += 0.1;
+                hue = (hue + 0.5) % 360;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // 波形タイプを変更
+        function changeWaveType(type) {
+            waveType = type;
+        }
+
+        // 一時停止切り替え
+        function togglePause() {
+            isPaused = !isPaused;
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', resize);
+        canvas.addEventListener('click', () => {
+            const types = ['sine', 'square', 'sawtooth', 'noise'];
+            const currentIndex = types.indexOf(waveType);
+            const nextIndex = (currentIndex + 1) % types.length;
+            changeWaveType(types[nextIndex]);
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                togglePause();
+            }
+        });
+
+        // タッチ操作
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const types = ['sine', 'square', 'sawtooth', 'noise'];
+            const currentIndex = types.indexOf(waveType);
+            const nextIndex = (currentIndex + 1) % types.length;
+            changeWaveType(types[nextIndex]);
+        });
+
+        // 初期化
+        resize();
+        animate();
+    </script>
+</body>
+</html>
