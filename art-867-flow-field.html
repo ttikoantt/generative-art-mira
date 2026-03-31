@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow Field Art #867</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+            width: 100%;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 30px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+            background: linear-gradient(90deg, #ff6b6b, #4ecdc4, #45b7d1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Courier New', monospace;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.2rem;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="overlay">
+            <h1>Flow Field Art</h1>
+            <div class="subtitle">#867 | Click to regenerate</div>
+        </div>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="controls">
+            <button id="regenerate">Regenerate</button>
+            <button id="clear">Clear</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let particles = [];
+        let animationId;
+        let hue = 0;
+        let scale = 0.01;
+        let rows, cols;
+
+        // Simplex noise implementation
+        class SimplexNoise {
+            constructor() {
+                this.p = new Uint8Array(256);
+                for (let i = 0; i < 256; i++) {
+                    this.p[i] = i;
+                }
+                for (let i = 255; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [this.p[i], this.p[j]] = [this.p[j], this.p[i]];
+                }
+                this.perm = new Uint8Array(512);
+                for (let i = 0; i < 512; i++) {
+                    this.perm[i] = this.p[i & 255];
+                }
+            }
+
+            noise2D(x, y) {
+                const F2 = 0.5 * (Math.sqrt(3) - 1);
+                const G2 = (3 - Math.sqrt(3)) / 6;
+
+                let s = (x + y) * F2;
+                let i = Math.floor(x + s);
+                let j = Math.floor(y + s);
+                let t = (i + j) * G2;
+                let X0 = i - t;
+                let Y0 = j - t;
+                let x0 = x - X0;
+                let y0 = y - Y0;
+
+                let i1, j1;
+                if (x0 > y0) {
+                    i1 = 1;
+                    j1 = 0;
+                } else {
+                    i1 = 0;
+                    j1 = 1;
+                }
+                let x1 = x0 - i1 + G2;
+                let y1 = y0 - j1 + G2;
+                let x2 = x0 - 1 + 2 * G2;
+                let y2 = y0 - 1 + 2 * G2;
+
+                let ii = i & 255;
+                let jj = j & 255;
+
+                let grad = (hash, x, y) => {
+                    let h = hash & 7;
+                    let u = h < 4 ? x : y;
+                    let v = h < 4 ? y : x;
+                    return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
+                };
+
+                let n0 = 0, n1 = 0, n2 = 0;
+
+                let t0 = 0.5 - x0 * x0 - y0 * y0;
+                if (t0 >= 0) {
+                    t0 *= t0;
+                    n0 = t0 * t0 * grad(this.perm[ii + this.perm[jj]], x0, y0);
+                }
+
+                let t1 = 0.5 - x1 * x1 - y1 * y1;
+                if (t1 >= 0) {
+                    t1 *= t1;
+                    n1 = t1 * t1 * grad(this.perm[ii + i1 + this.perm[jj + j1]], x1, y1);
+                }
+
+                let t2 = 0.5 - x2 * x2 - y2 * y2;
+                if (t2 >= 0) {
+                    t2 *= t2;
+                    n2 = t2 * t2 * grad(this.perm[ii + 1 + this.perm[jj + 1]], x2, y2);
+                }
+
+                return 70 * (n0 + n1 + n2);
+            }
+        }
+
+        const simplex = new SimplexNoise();
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            cols = Math.floor(canvas.width / 20);
+            rows = Math.floor(canvas.height / 20);
+        }
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = 0;
+                this.vy = 0;
+                this.history = [];
+                this.maxHistory = 50;
+                this.speed = Math.random() * 2 + 1;
+                this.hueOffset = Math.random() * 60;
+            }
+
+            update() {
+                // Get angle from noise
+                let angle = simplex.noise2D(this.x * scale, this.y * scale) * Math.PI * 4;
+
+                this.vx = Math.cos(angle) * this.speed;
+                this.vy = Math.sin(angle) * this.speed;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Wrap around edges
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y < 0) this.y = canvas.height;
+                if (this.y > canvas.height) this.y = 0;
+
+                // Store history
+                this.history.push({ x: this.x, y: this.y });
+                if (this.history.length > this.maxHistory) {
+                    this.history.shift();
+                }
+            }
+
+            draw() {
+                if (this.history.length < 2) return;
+
+                ctx.beginPath();
+                ctx.moveTo(this.history[0].x, this.history[0].y);
+
+                for (let i = 1; i < this.history.length; i++) {
+                    ctx.lineTo(this.history[i].x, this.history[i].y);
+                }
+
+                let h = (hue + this.hueOffset + this.x / canvas.width * 60) % 360;
+                ctx.strokeStyle = `hsla(${h}, 70%, 60%, ${this.history.length / this.maxHistory})`;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+        }
+
+        function init() {
+            particles = [];
+            let numParticles = Math.floor((canvas.width * canvas.height) / 4000);
+            for (let i = 0; i < numParticles; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function animate() {
+            // Fade effect
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            hue += 0.5;
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function clearCanvas() {
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function regenerate() {
+            cancelAnimationFrame(animationId);
+            clearCanvas();
+            scale = 0.005 + Math.random() * 0.02;
+            hue = Math.random() * 360;
+            init();
+            animate();
+        }
+
+        // Event listeners
+        window.addEventListener('resize', () => {
+            resize();
+            clearCanvas();
+            init();
+        });
+
+        canvas.addEventListener('click', regenerate);
+
+        document.getElementById('regenerate').addEventListener('click', regenerate);
+        document.getElementById('clear').addEventListener('click', () => {
+            clearCanvas();
+            particles = [];
+            setTimeout(() => {
+                init();
+            }, 100);
+        });
+
+        // Initialize
+        resize();
+        clearCanvas();
+        init();
+        animate();
+    </script>
+</body>
+</html>
