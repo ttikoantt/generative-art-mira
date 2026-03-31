@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Bounce Reflex - Reaction Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            height: 100vh;
+            max-height: 800px;
+        }
+        
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+        
+        .score {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            z-index: 10;
+        }
+        
+        .high-score {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 18px;
+            z-index: 10;
+        }
+        
+        .start-screen, .game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+        }
+        
+        .start-screen h1, .game-over-screen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.5);
+        }
+        
+        .start-screen p, .game-over-screen p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            opacity: 0.8;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.6);
+        }
+        
+        .btn:active {
+            transform: translateY(-1px);
+        }
+        
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+        
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="canvas"></canvas>
+        <div class="score" id="score">0</div>
+        <div class="high-score" id="highScore">Best: 0</div>
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+        
+        <div class="start-screen" id="startScreen">
+            <h1>BOUNCE REFLEX</h1>
+            <p>Move the paddle to bounce the ball</p>
+            <button class="btn" onclick="startGame()">START</button>
+        </div>
+        
+        <div class="game-over-screen hidden" id="gameOverScreen">
+            <h1>GAME OVER</h1>
+            <p>Score: <span id="finalScore">0</span></p>
+            <button class="btn" onclick="startGame()">RETRY</button>
+        </div>
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('highScore');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreEl = document.getElementById('finalScore');
+        
+        let width, height;
+        let animationId;
+        let score = 0;
+        let highScore = localStorage.getItem('bounceReflexHighScore') || 0;
+        highScoreEl.textContent = `Best: ${highScore}`;
+        
+        // Game objects
+        let paddle, ball;
+        let gameRunning = false;
+        
+        function resize() {
+            const container = document.getElementById('gameContainer');
+            width = canvas.width = container.clientWidth;
+            height = canvas.height = container.clientHeight;
+        }
+        
+        function init() {
+            resize();
+            
+            // Paddle
+            paddle = {
+                width: 100,
+                height: 15,
+                x: width / 2 - 50,
+                y: height - 50,
+                speed: 0,
+                maxSpeed: 12
+            };
+            
+            // Ball
+            resetBall();
+        }
+        
+        function resetBall() {
+            const angle = (Math.random() * 60 + 60) * Math.PI / 180; // 60-120 degrees
+            const speed = 6;
+            
+            ball = {
+                x: width / 2,
+                y: height / 2,
+                radius: 10,
+                vx: Math.cos(angle) * speed * (Math.random() > 0.5 ? 1 : -1),
+                vy: -Math.abs(Math.sin(angle) * speed),
+                speed: speed
+            };
+        }
+        
+        function startGame() {
+            init();
+            score = 0;
+            scoreEl.textContent = '0';
+            gameRunning = true;
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            cancelAnimationFrame(animationId);
+            animate();
+        }
+        
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+            
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('bounceReflexHighScore', highScore);
+                highScoreEl.textContent = `Best: ${highScore}`;
+            }
+            
+            finalScoreEl.textContent = score;
+            gameOverScreen.classList.remove('hidden');
+        }
+        
+        function update() {
+            // Move paddle
+            paddle.x += paddle.speed;
+            paddle.x = Math.max(0, Math.min(width - paddle.width, paddle.x));
+            
+            // Move ball
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+            
+            // Wall collision
+            if (ball.x - ball.radius < 0 || ball.x + ball.radius > width) {
+                ball.vx *= -1;
+                ball.x = ball.x - ball.radius < 0 ? ball.radius : width - ball.radius;
+            }
+            
+            if (ball.y - ball.radius < 0) {
+                ball.vy *= -1;
+                ball.y = ball.radius;
+            }
+            
+            // Paddle collision
+            if (ball.y + ball.radius > paddle.y &&
+                ball.y - ball.radius < paddle.y + paddle.height &&
+                ball.x > paddle.x &&
+                ball.x < paddle.x + paddle.width) {
+                
+                // Calculate hit position (-1 to 1)
+                const hitPos = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
+                
+                // Calculate new angle based on hit position
+                const maxAngle = 60 * Math.PI / 180;
+                const angle = hitPos * maxAngle;
+                
+                // Increase speed slightly
+                ball.speed = Math.min(ball.speed * 1.02, 15);
+                
+                // Set new velocity
+                ball.vx = Math.sin(angle) * ball.speed;
+                ball.vy = -Math.abs(Math.cos(angle) * ball.speed);
+                
+                ball.y = paddle.y - ball.radius;
+                
+                // Increase score
+                score++;
+                scoreEl.textContent = score;
+            }
+            
+            // Game over
+            if (ball.y - ball.radius > height) {
+                gameOver();
+            }
+        }
+        
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Draw paddle
+            const gradient = ctx.createLinearGradient(paddle.x, paddle.y, paddle.x + paddle.width, paddle.y);
+            gradient.addColorStop(0, '#667eea');
+            gradient.addColorStop(1, '#764ba2');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.roundRect(paddle.x, paddle.y, paddle.width, paddle.height, 8);
+            ctx.fill();
+            
+            // Draw paddle glow
+            ctx.shadowColor = '#667eea';
+            ctx.shadowBlur = 20;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            // Draw ball
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            
+            // Ball glow
+            ctx.shadowColor = '#fff';
+            ctx.shadowBlur = 20;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+        
+        function animate() {
+            if (!gameRunning) return;
+            
+            update();
+            draw();
+            animationId = requestAnimationFrame(animate);
+        }
+        
+        // Controls
+        let touchStartX = 0;
+        
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touchX = e.touches[0].clientX;
+            const diff = touchX - touchStartX;
+            paddle.speed = diff * 0.3;
+            paddle.speed = Math.max(-paddle.maxSpeed, Math.min(paddle.maxSpeed, paddle.speed));
+        });
+        
+        canvas.addEventListener('touchend', () => {
+            paddle.speed = 0;
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            paddle.x = mouseX - paddle.width / 2;
+        });
+        
+        window.addEventListener('resize', () => {
+            resize();
+            if (paddle) {
+                paddle.y = height - 50;
+            }
+        });
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // Initial setup
+        resize();
+    </script>
+</body>
+</html>
