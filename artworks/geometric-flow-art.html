@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geometric Flow Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        canvas {
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            box-shadow: 0 0 40px rgba(100, 200, 255, 0.2);
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 10px;
+            background: rgba(10, 10, 15, 0.9);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        button {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 768px) {
+            canvas {
+                max-width: 95vw;
+                max-height: 60vh;
+            }
+
+            .controls {
+                bottom: 10px;
+                padding: 8px;
+                gap: 6px;
+            }
+
+            button {
+                padding: 8px 14px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ 全画面</button>
+    <div class="controls">
+        <button onclick="changePattern()">🔄 パターン変更</button>
+        <button onclick="changeSpeed()">⚡ 速度変更</button>
+        <button onclick="togglePause()">⏸️ 一時停止</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvas size
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.7, 700);
+            canvas.width = size;
+            canvas.height = size;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // State
+        let shapes = [];
+        let patternIndex = 0;
+        let speedMultiplier = 1;
+        let isPaused = false;
+        let hueOffset = 0;
+
+        // Patterns
+        const patterns = ['spiral', 'wave', 'mandala', 'tunnel', 'galaxy'];
+
+        // Shape class
+        class Shape {
+            constructor(pattern) {
+                this.pattern = pattern;
+                this.reset();
+            }
+
+            reset() {
+                this.angle = Math.random() * Math.PI * 2;
+                this.radius = Math.random() * 200 + 50;
+                this.size = Math.random() * 20 + 5;
+                this.speed = (Math.random() * 0.02 + 0.01) * speedMultiplier;
+                this.hue = Math.random() * 360;
+                this.opacity = Math.random() * 0.5 + 0.3;
+                this.x = canvas.width / 2;
+                this.y = canvas.height / 2;
+                this.layer = Math.floor(Math.random() * 3);
+            }
+
+            update() {
+                this.angle += this.speed;
+                this.hue += 0.5;
+
+                switch(this.pattern) {
+                    case 'spiral':
+                        this.radius = 50 + (this.angle * 30) % 250;
+                        this.x = canvas.width / 2 + Math.cos(this.angle) * this.radius;
+                        this.y = canvas.height / 2 + Math.sin(this.angle) * this.radius * 0.6;
+                        break;
+
+                    case 'wave':
+                        this.x = (this.angle * 100) % (canvas.width + 100) - 50;
+                        this.y = canvas.height / 2 + Math.sin(this.angle * 3) * 100;
+                        break;
+
+                    case 'mandala':
+                        const petals = 8;
+                        const petalAngle = (Math.floor(this.angle * 10) % petals) * (Math.PI * 2 / petals);
+                        const petalRadius = 50 + (this.angle * 20) % 200;
+                        this.x = canvas.width / 2 + Math.cos(petalAngle) * petalRadius;
+                        this.y = canvas.height / 2 + Math.sin(petalAngle) * petalRadius;
+                        break;
+
+                    case 'tunnel':
+                        this.radius = (this.angle * 50) % 300 + 20;
+                        this.x = canvas.width / 2 + Math.cos(this.angle * 5) * this.radius;
+                        this.y = canvas.height / 2 + Math.sin(this.angle * 5) * this.radius;
+                        this.size = this.radius / 20;
+                        break;
+
+                    case 'galaxy':
+                        const armOffset = (this.layer % 3) * (Math.PI * 2 / 3);
+                        const spiralFactor = 0.3;
+                        const galaxyRadius = (this.angle * 40) % 280 + 30;
+                        const galaxyAngle = this.angle + (galaxyRadius * spiralFactor);
+                        this.x = canvas.width / 2 + Math.cos(galaxyAngle + armOffset) * galaxyRadius;
+                        this.y = canvas.height / 2 + Math.sin(galaxyAngle + armOffset) * galaxyRadius;
+                        break;
+                }
+
+                // Reset if out of bounds
+                if (this.x < -100 || this.x > canvas.width + 100 ||
+                    this.y < -100 || this.y > canvas.height + 100) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+                ctx.fillStyle = `hsl(${(this.hue + hueOffset) % 360}, 70%, 60%)`;
+                ctx.shadowColor = `hsl(${(this.hue + hueOffset) % 360}, 70%, 60%)`;
+                ctx.shadowBlur = 15;
+
+                // Draw different shapes based on pattern
+                ctx.beginPath();
+                if (this.pattern === 'mandala' || this.pattern === 'galaxy') {
+                    // Star shape
+                    this.drawStar(this.x, this.y, 5, this.size, this.size / 2);
+                } else if (this.pattern === 'tunnel') {
+                    // Circle
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                } else if (this.pattern === 'wave') {
+                    // Diamond
+                    ctx.moveTo(this.x, this.y - this.size);
+                    ctx.lineTo(this.x + this.size, this.y);
+                    ctx.lineTo(this.x, this.y + this.size);
+                    ctx.lineTo(this.x - this.size, this.y);
+                } else {
+                    // Hexagon
+                    this.drawPolygon(this.x, this.y, this.size, 6);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+
+            drawStar(x, y, points, outer, inner) {
+                ctx.beginPath();
+                for (let i = 0; i < points * 2; i++) {
+                    const radius = i % 2 === 0 ? outer : inner;
+                    const angle = (i * Math.PI) / points - Math.PI / 2;
+                    const px = x + Math.cos(angle) * radius;
+                    const py = y + Math.sin(angle) * radius;
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+            }
+
+            drawPolygon(x, y, radius, sides) {
+                ctx.beginPath();
+                for (let i = 0; i < sides; i++) {
+                    const angle = (i * 2 * Math.PI) / sides - Math.PI / 2;
+                    const px = x + Math.cos(angle) * radius;
+                    const py = y + Math.sin(angle) * radius;
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+            }
+        }
+
+        // Initialize shapes
+        function initShapes() {
+            shapes = [];
+            const count = 80;
+            for (let i = 0; i < count; i++) {
+                shapes.push(new Shape(patterns[patternIndex]));
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            if (!isPaused) {
+                // Semi-transparent background for trail effect
+                ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Update and draw shapes
+                shapes.forEach(shape => {
+                    shape.speed = (Math.abs(shape.speed) / speedMultiplier) * speedMultiplier;
+                    shape.update();
+                    shape.draw();
+                });
+
+                hueOffset += 0.2;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Controls
+        function changePattern() {
+            patternIndex = (patternIndex + 1) % patterns.length;
+            initShapes();
+        }
+
+        function changeSpeed() {
+            const speeds = [0.5, 1, 1.5, 2];
+            const currentIndex = speeds.indexOf(speedMultiplier);
+            speedMultiplier = speeds[(currentIndex + 1) % speeds.length];
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            const btn = event.target;
+            btn.textContent = isPaused ? '▶️ 再開' : '⏸️ 一時停止';
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Start
+        initShapes();
+        animate();
+    </script>
+</body>
+</html>
