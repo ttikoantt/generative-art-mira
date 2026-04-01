@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>動くモザイクアート - Moving Mosaic Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0a0f;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        canvas {
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            box-shadow: 0 0 40px rgba(100, 200, 255, 0.2);
+        }
+
+        .title {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.5rem;
+            font-weight: 300;
+            color: rgba(255, 255, 255, 0.8);
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 0 20px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            font-size: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .info {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.5);
+            text-align: center;
+            pointer-events: none;
+        }
+
+        @media (max-width: 600px) {
+            .title {
+                font-size: 1.2rem;
+                top: 15px;
+            }
+
+            .controls {
+                bottom: 20px;
+                gap: 10px;
+            }
+
+            .btn {
+                padding: 10px 18px;
+                font-size: 0.8rem;
+            }
+
+            .info {
+                font-size: 0.75rem;
+                bottom: 70px;
+            }
+
+            .fullscreen-btn {
+                width: 45px;
+                height: 45px;
+                top: 15px;
+                right: 15px;
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">🎨 動くモザイクアート</h1>
+        <canvas id="canvas"></canvas>
+        <p class="info">色のタイルが動き、交差すると混ざり合います</p>
+        <div class="controls">
+            <button class="btn" onclick="reset()">🔄 リセット</button>
+            <button class="btn" onclick="toggleSpeed()">⚡ 速度変更</button>
+            <button class="btn" onclick="changePalette()">🎨 パレット変更</button>
+        </div>
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // キャンバスサイズ設定
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 200, 600);
+            canvas.width = size;
+            canvas.height = size;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            initTiles();
+        });
+
+        // グリッド設定
+        const GRID_SIZE = 20;
+        const TILE_COUNT = 15;
+
+        // カラーパレット
+        const PALETTES = [
+            ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8'],
+            ['#A78BFA', '#F472B6', '#34D399', '#60A5FA', '#FBBF24'],
+            ['#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'],
+            ['#FECACA', '#FED7AA', '#D9F99D', '#BAE6FD', '#E9D5FF'],
+            ['#0EA5E9', '#EC4899', '#8B5CF6', '#14B8A6', '#F97316']
+        ];
+
+        let currentPalette = 0;
+        let speedMultiplier = 1;
+
+        // タイルクラス
+        class Tile {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.gridX = Math.floor(Math.random() * GRID_SIZE);
+                this.gridY = Math.floor(Math.random() * GRID_SIZE);
+                this.targetX = this.gridX;
+                this.targetY = this.gridY;
+                this.color = PALETTES[currentPalette][Math.floor(Math.random() * PALETTES[currentPalette].length)];
+                this.dx = (Math.random() - 0.5) * 2;
+                this.dy = (Math.random() - 0.5) * 2;
+                this.size = (canvas.width / GRID_SIZE) * 0.8;
+                this.alpha = 0.7 + Math.random() * 0.3;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.02;
+            }
+
+            update() {
+                // グリッド上の位置を更新
+                this.targetX += this.dx * speedMultiplier;
+                this.targetY += this.dy * speedMultiplier;
+
+                // グリッド境界で跳ね返る
+                if (this.targetX < 0 || this.targetX >= GRID_SIZE) {
+                    this.dx *= -1;
+                    this.targetX = Math.max(0, Math.min(GRID_SIZE - 1, this.targetX));
+                }
+                if (this.targetY < 0 || this.targetY >= GRID_SIZE) {
+                    this.dy *= -1;
+                    this.targetY = Math.max(0, Math.min(GRID_SIZE - 1, this.targetY));
+                }
+
+                // グリッド位置にスムーズに移動
+                this.gridX += (this.targetX - this.gridX) * 0.1;
+                this.gridY += (this.targetY - this.gridY) * 0.1;
+
+                this.rotation += this.rotationSpeed * speedMultiplier;
+            }
+
+            draw() {
+                const x = (this.gridX / GRID_SIZE) * canvas.width;
+                const y = (this.gridY / GRID_SIZE) * canvas.height;
+                const tileSize = canvas.width / GRID_SIZE;
+
+                ctx.save();
+                ctx.translate(x + tileSize / 2, y + tileSize / 2);
+                ctx.rotate(this.rotation);
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+
+                // 菱形を描画
+                ctx.beginPath();
+                ctx.moveTo(0, -this.size / 2);
+                ctx.lineTo(this.size / 2, 0);
+                ctx.lineTo(0, this.size / 2);
+                ctx.lineTo(-this.size / 2, 0);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // タイル配列
+        let tiles = [];
+
+        function initTiles() {
+            tiles = [];
+            for (let i = 0; i < TILE_COUNT; i++) {
+                tiles.push(new Tile());
+            }
+        }
+
+        // 色を混ぜる
+        function blendColors(color1, color2, ratio) {
+            const r1 = parseInt(color1.slice(1, 3), 16);
+            const g1 = parseInt(color1.slice(3, 5), 16);
+            const b1 = parseInt(color1.slice(5, 7), 16);
+
+            const r2 = parseInt(color2.slice(1, 3), 16);
+            const g2 = parseInt(color2.slice(3, 5), 16);
+            const b2 = parseInt(color2.slice(5, 7), 16);
+
+            const r = Math.round(r1 + (r2 - r1) * ratio);
+            const g = Math.round(g1 + (g2 - g1) * ratio);
+            const b = Math.round(b1 + (b2 - b1) * ratio);
+
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        // グリッドを描画
+        function drawGrid() {
+            const tileSize = canvas.width / GRID_SIZE;
+
+            // 各グリッドセルの色を計算
+            for (let x = 0; x < GRID_SIZE; x++) {
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    let totalAlpha = 0;
+                    let blendedColor = { r: 10, g: 10, b: 15 }; // 背景色
+
+                    // このセルに影響を与えるタイルを収集
+                    for (const tile of tiles) {
+                        const dist = Math.sqrt(
+                            Math.pow(tile.gridX - x, 2) +
+                            Math.pow(tile.gridY - y, 2)
+                        );
+
+                        if (dist < 2) {
+                            const influence = 1 - (dist / 2);
+                            const alpha = tile.alpha * influence * influence;
+
+                            // 色を取得
+                            const color = tile.color;
+                            const r = parseInt(color.slice(1, 3), 16);
+                            const g = parseInt(color.slice(3, 5), 16);
+                            const b = parseInt(color.slice(5, 7), 16);
+
+                            blendedColor.r += r * alpha;
+                            blendedColor.g += g * alpha;
+                            blendedColor.b += b * alpha;
+                            totalAlpha += alpha;
+                        }
+                    }
+
+                    if (totalAlpha > 0) {
+                        blendedColor.r /= totalAlpha;
+                        blendedColor.g /= totalAlpha;
+                        blendedColor.b /= totalAlpha;
+                    }
+
+                    // セルを描画
+                    ctx.fillStyle = `rgb(${Math.round(blendedColor.r)}, ${Math.round(blendedColor.g)}, ${Math.round(blendedColor.b)})`;
+                    ctx.fillRect(x * tileSize, y * tileSize, tileSize + 1, tileSize + 1);
+                }
+            }
+        }
+
+        // アニメーション
+        function animate() {
+            // 背景をクリア
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // タイルを更新
+            for (const tile of tiles) {
+                tile.update();
+            }
+
+            // グリッドを描画（色が混ざり合う）
+            drawGrid();
+
+            // タイルを描画
+            for (const tile of tiles) {
+                tile.draw();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // リセット
+        function reset() {
+            initTiles();
+        }
+
+        // 速度変更
+        function toggleSpeed() {
+            if (speedMultiplier === 1) {
+                speedMultiplier = 2;
+            } else if (speedMultiplier === 2) {
+                speedMultiplier = 0.5;
+            } else {
+                speedMultiplier = 1;
+            }
+        }
+
+        // パレット変更
+        function changePalette() {
+            currentPalette = (currentPalette + 1) % PALETTES.length;
+            for (const tile of tiles) {
+                tile.color = PALETTES[currentPalette][Math.floor(Math.random() * PALETTES[currentPalette].length)];
+            }
+        }
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 初期化
+        initTiles();
+        animate();
+    </script>
+</body>
+</html>
