@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Geometric Animations - Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        header {
+            padding: 10px 15px;
+            background: rgba(0,0,0,0.8);
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 {
+            font-size: 18px;
+            font-weight: 600;
+            background: linear-gradient(45deg, #ff6b9d, #c44ce3, #6b9dff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .info {
+            font-size: 11px;
+            color: #888;
+        }
+        #canvas-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        canvas {
+            border-radius: 8px;
+            box-shadow: 0 0 40px rgba(107, 157, 255, 0.3);
+        }
+        .controls {
+            padding: 12px 15px;
+            background: rgba(0,0,0,0.8);
+            border-top: 1px solid #333;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .btn-primary {
+            background: linear-gradient(45deg, #ff6b9d, #c44ce3);
+            color: white;
+        }
+        .btn-primary:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(196, 76, 227, 0.5);
+        }
+        .btn-secondary {
+            background: #2a2a2a;
+            color: #fff;
+            border: 1px solid #444;
+        }
+        .btn-secondary:hover {
+            background: #3a3a3a;
+        }
+        .stats {
+            display: flex;
+            gap: 15px;
+            font-size: 11px;
+            color: #888;
+        }
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .stat-value {
+            color: #6b9dff;
+            font-weight: 600;
+        }
+        #fullscreen-btn {
+            padding: 6px 12px;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🌀 Geometric Animations</h1>
+        <div class="stats">
+            <div class="stat">
+                <span>図形:</span>
+                <span class="stat-value" id="shape-count">0</span>
+            </div>
+            <div class="stat">
+                <span>FPS:</span>
+                <span class="stat-value" id="fps">0</span>
+            </div>
+        </div>
+        <button id="fullscreen-btn" class="btn-secondary">📺 全画面</button>
+    </header>
+
+    <div id="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="controls">
+        <button class="btn-primary" onclick="changePattern()">🔄 パターン変更</button>
+        <button class="btn-secondary" onclick="toggleAutoRotate()">⚡ 自動回転</button>
+        <button class="btn-secondary" onclick="addShapes()">➕ 図形追加</button>
+        <button class="btn-secondary" onclick="resetShapes()">🔄 リセット</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 設定
+        let width, height;
+        let shapes = [];
+        let autoRotate = true;
+        let patternIndex = 0;
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 0;
+
+        // パターン定義
+        const patterns = [
+            'spiral',          // スパイラル
+            'concentric',      // 同心円
+            'grid',            // グリッド
+            'wave',            // 波
+            'flower',          // 花
+            'cosmic'           // 宇宙的
+        ];
+
+        // 色パレット
+        const palettes = [
+            ['#ff6b9d', '#c44ce3', '#6b9dff', '#4ecdc4'],
+            ['#f72585', '#7209b7', '#3a0ca3', '#4361ee'],
+            ['#ffbe0b', '#fb5607', '#ff006e', '#8338ec'],
+            ['#00f5d4', '#00bbf9', '#00a6fb', '#0582ca'],
+            ['#ff595e', '#ffca3a', '#8ac926', '#1982c4']
+        ];
+        let currentPalette = palettes[0];
+
+        // 図形クラス
+        class GeometricShape {
+            constructor(x, y, size, color) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.baseSize = size;
+                this.color = color;
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.05;
+                this.pulseSpeed = 0.02 + Math.random() * 0.02;
+                this.pulseOffset = Math.random() * Math.PI * 2;
+                this.vertices = 3 + Math.floor(Math.random() * 5); // 3-7角形
+                this.opacity = 0.6 + Math.random() * 0.4;
+                this.hueOffset = Math.random() * 30 - 15;
+            }
+
+            update(time) {
+                // 回転
+                if (autoRotate) {
+                    this.rotation += this.rotationSpeed;
+                }
+
+                // パルス（拡大・縮小）
+                const pulse = Math.sin(time * this.pulseSpeed + this.pulseOffset);
+                this.size = this.baseSize * (1 + pulse * 0.3);
+
+                // 色の変化
+                const hue = (time * 10 + this.hueOffset) % 360;
+                this.currentColor = this.adjustHue(this.color, this.hueOffset);
+            }
+
+            adjustHue(hex, offset) {
+                // HSLで色相を調整
+                let r = parseInt(hex.slice(1,3), 16) / 255;
+                let g = parseInt(hex.slice(3,5), 16) / 255;
+                let b = parseInt(hex.slice(5,7), 16) / 255;
+
+                let max = Math.max(r, g, b);
+                let min = Math.min(r, g, b);
+                let h, s, l = (max + min) / 2;
+
+                if (max === min) {
+                    h = s = 0;
+                } else {
+                    let d = max - min;
+                    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                    switch (max) {
+                        case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+                        case g: h = ((b - r) / d + 2) / 6; break;
+                        case b: h = ((r - g) / d + 4) / 6; break;
+                    }
+                }
+
+                h = (h * 360 + offset) % 360;
+                return `hsla(${h}, ${s * 100}%, ${l * 100}%, ${this.opacity})`;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                ctx.beginPath();
+                for (let i = 0; i < this.vertices; i++) {
+                    const angle = (i / this.vertices) * Math.PI * 2 - Math.PI / 2;
+                    const x = Math.cos(angle) * this.size;
+                    const y = Math.sin(angle) * this.size;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+
+                // 塗りつぶし
+                ctx.fillStyle = this.currentColor;
+                ctx.fill();
+
+                // 枠線
+                ctx.strokeStyle = `rgba(255,255,255,${this.opacity * 0.5})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.restore();
+            }
+        }
+
+        // 初期化
+        function init() {
+            resizeCanvas();
+            createShapes();
+            requestAnimationFrame(animate);
+        }
+
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container');
+            const size = Math.min(container.clientWidth - 40, container.clientHeight - 40, 600);
+            width = size;
+            height = size;
+
+            // 高DPI対応
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+            ctx.scale(dpr, dpr);
+        }
+
+        function createShapes() {
+            shapes = [];
+            const pattern = patterns[patternIndex];
+
+            switch (pattern) {
+                case 'spiral':
+                    createSpiral();
+                    break;
+                case 'concentric':
+                    createConcentric();
+                    break;
+                case 'grid':
+                    createGrid();
+                    break;
+                case 'wave':
+                    createWave();
+                    break;
+                case 'flower':
+                    createFlower();
+                    break;
+                case 'cosmic':
+                    createCosmic();
+                    break;
+            }
+
+            updateStats();
+        }
+
+        function createSpiral() {
+            const count = 30;
+            for (let i = 0; i < count; i++) {
+                const angle = (i / count) * Math.PI * 6;
+                const radius = (i / count) * (width / 2 - 30);
+                const x = width / 2 + Math.cos(angle) * radius;
+                const y = height / 2 + Math.sin(angle) * radius;
+                const size = 10 + (i / count) * 40;
+                const color = currentPalette[i % currentPalette.length];
+                shapes.push(new GeometricShape(x, y, size, color));
+            }
+        }
+
+        function createConcentric() {
+            const count = 15;
+            for (let i = 0; i < count; i++) {
+                const size = 20 + (i / count) * (width / 2 - 30);
+                const color = currentPalette[i % currentPalette.length];
+                const shape = new GeometricShape(width / 2, height / 2, size, color);
+                shape.vertices = 6; // 六角形
+                shape.rotationSpeed = (i % 2 === 0 ? 1 : -1) * 0.01;
+                shapes.push(shape);
+            }
+        }
+
+        function createGrid() {
+            const gridSize = 5;
+            const spacing = width / (gridSize + 1);
+            for (let i = 0; i < gridSize; i++) {
+                for (let j = 0; j < gridSize; j++) {
+                    const x = spacing * (i + 1);
+                    const y = spacing * (j + 1);
+                    const size = 20 + Math.random() * 30;
+                    const color = currentPalette[(i + j) % currentPalette.length];
+                    shapes.push(new GeometricShape(x, y, size, color));
+                }
+            }
+        }
+
+        function createWave() {
+            const count = 25;
+            for (let i = 0; i < count; i++) {
+                const x = (i / (count - 1)) * width;
+                const y = height / 2 + Math.sin((i / count) * Math.PI * 4) * (height / 4);
+                const size = 15 + Math.random() * 25;
+                const color = currentPalette[i % currentPalette.length];
+                shapes.push(new GeometricShape(x, y, size, color));
+            }
+        }
+
+        function createFlower() {
+            const petals = 8;
+            const layers = 5;
+            for (let l = 0; l < layers; l++) {
+                for (let p = 0; p < petals; p++) {
+                    const angle = (p / petals) * Math.PI * 2;
+                    const radius = 50 + l * 40;
+                    const x = width / 2 + Math.cos(angle) * radius;
+                    const y = height / 2 + Math.sin(angle) * radius;
+                    const size = 20 + l * 10;
+                    const color = currentPalette[(l + p) % currentPalette.length];
+                    const shape = new GeometricShape(x, y, size, color);
+                    shape.vertices = 5;
+                    shapes.push(shape);
+                }
+            }
+        }
+
+        function createCosmic() {
+            const count = 50;
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = Math.random() * (width / 2 - 40);
+                const x = width / 2 + Math.cos(angle) * radius;
+                const y = height / 2 + Math.sin(angle) * radius;
+                const size = 10 + Math.random() * 30;
+                const color = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+                shapes.push(new GeometricShape(x, y, size, color));
+            }
+        }
+
+        // アニメーション
+        function animate(currentTime) {
+            const time = currentTime / 1000;
+            const deltaTime = currentTime - lastTime;
+
+            // FPS計算
+            frameCount++;
+            if (deltaTime >= 1000) {
+                fps = Math.round(frameCount / (deltaTime / 1000));
+                frameCount = 0;
+                lastTime = currentTime;
+                document.getElementById('fps').textContent = fps;
+            }
+
+            // 背景をクリア
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 図形を更新・描画
+            shapes.forEach(shape => {
+                shape.update(time);
+                shape.draw(ctx);
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // コントロール
+        function changePattern() {
+            patternIndex = (patternIndex + 1) % patterns.length;
+            currentPalette = palettes[Math.floor(Math.random() * palettes.length)];
+            createShapes();
+        }
+
+        function toggleAutoRotate() {
+            autoRotate = !autoRotate;
+        }
+
+        function addShapes() {
+            const count = 5;
+            for (let i = 0; i < count; i++) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                const size = 15 + Math.random() * 25;
+                const color = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+                shapes.push(new GeometricShape(x, y, size, color));
+            }
+            updateStats();
+        }
+
+        function resetShapes() {
+            createShapes();
+        }
+
+        function updateStats() {
+            document.getElementById('shape-count').textContent = shapes.length;
+        }
+
+        // 全画面切り替え
+        document.getElementById('fullscreen-btn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // タッチ/クリックで追加
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (width / rect.width);
+            const y = (e.clientY - rect.top) * (height / rect.height);
+            const size = 20 + Math.random() * 30;
+            const color = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+            shapes.push(new GeometricShape(x, y, size, color));
+            updateStats();
+        });
+
+        // ウィンドウリサイズ対応
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            createShapes();
+        });
+
+        // 初期化実行
+        init();
+    </script>
+</body>
+</html>
