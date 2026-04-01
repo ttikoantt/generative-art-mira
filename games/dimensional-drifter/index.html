@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Dimensional Drifter - 次元を超える冒険</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            overflow: hidden;
+            background: #0a0a0a;
+            font-family: 'Courier New', monospace;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .score {
+            color: white;
+            font-size: 24px;
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        .dimension-indicator {
+            display: flex;
+            gap: 8px;
+            pointer-events: auto;
+        }
+
+        .dimension-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .dimension-dot.active {
+            transform: scale(1.3);
+            box-shadow: 0 0 20px currentColor;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            z-index: 100;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 100px;
+            right: 20px;
+            z-index: 100;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            padding: 0;
+            font-size: 20px;
+        }
+
+        .game-over, .start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .game-over h1, .start-screen h1 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px currentColor;
+        }
+
+        .game-over p, .start-screen p {
+            font-size: 16px;
+            margin-bottom: 30px;
+            opacity: 0.8;
+            max-width: 400px;
+            line-height: 1.6;
+        }
+
+        .final-score {
+            font-size: 48px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .dimension-name {
+            position: fixed;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 18px;
+            opacity: 0.8;
+            z-index: 100;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="ui">
+        <div class="score">Score: <span id="scoreValue">0</span></div>
+        <div class="dimension-indicator" id="dimensionIndicator"></div>
+    </div>
+
+    <div class="dimension-name" id="dimensionName">Normal Dimension</div>
+
+    <div class="controls" id="gameControls">
+        <button class="btn" id="jumpBtn">JUMP</button>
+        <button class="btn" id="dimensionBtn">DIMENSION</button>
+    </div>
+
+    <button class="btn fullscreen-btn" id="fullscreenBtn">⛶</button>
+
+    <div class="start-screen" id="startScreen">
+        <h1>🌌 Dimensional Drifter</h1>
+        <p>
+            5つの次元を切り替えながら、障害物を避けて進もう！<br><br>
+            • JUMP: ジャンプ<br>
+            • DIMENSION: 次元を切り替え<br>
+            • 各次元には違う色と特性がある<br><br>
+            できるだけ遠くまで進んでハイスコアを目指せ！
+        </p>
+        <button class="btn" id="startBtn">START</button>
+    </div>
+
+    <div class="game-over hidden" id="gameOver">
+        <h1>💀 Game Over</h1>
+        <div class="final-score" id="finalScore">0</div>
+        <p>次元を超えた冒険は終わった...</p>
+        <button class="btn" id="restartBtn">RETRY</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // Game state
+        let gameState = 'start'; // start, playing, gameover
+        let score = 0;
+        let gameSpeed = 5;
+        let currentDimension = 0;
+        let dimensionCooldown = 0;
+
+        // Dimensions
+        const dimensions = [
+            {
+                name: 'Normal Dimension',
+                colors: { bg: '#1a1a2e', primary: '#4a90e2', obstacle: '#e74c3c' },
+                gravity: 0.6,
+                jumpForce: -12
+            },
+            {
+                name: 'Inferno Dimension',
+                colors: { bg: '#2d1f1f', primary: '#e74c3c', obstacle: '#f39c12' },
+                gravity: 0.8,
+                jumpForce: -14
+            },
+            {
+                name: 'Frost Dimension',
+                colors: { bg: '#1f2d2d', primary: '#74b9ff', obstacle: '#a8e6cf' },
+                gravity: 0.4,
+                jumpForce: -10
+            },
+            {
+                name: 'Toxic Dimension',
+                colors: { bg: '#1f2d1f', primary: '#2ecc71', obstacle: '#9b59b6' },
+                gravity: 0.7,
+                jumpForce: -13
+            },
+            {
+                name: 'Void Dimension',
+                colors: { bg: '#0a0a0a', primary: '#9b59b6', obstacle: '#3498db' },
+                gravity: 0.5,
+                jumpForce: -11
+            }
+        ];
+
+        // Player
+        const player = {
+            x: width * 0.2,
+            y: height - 100,
+            width: 40,
+            height: 40,
+            vy: 0,
+            onGround: true,
+            trail: []
+        };
+
+        // Obstacles
+        let obstacles = [];
+        let obstacleTimer = 0;
+
+        // Particles
+        let particles = [];
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 6;
+                this.vy = (Math.random() - 0.5) * 6;
+                this.size = Math.random() * 5 + 2;
+                this.color = color;
+                this.life = 1;
+                this.decay = 0.02;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+            }
+
+            draw() {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function createParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function spawnObstacle() {
+            const dim = dimensions[currentDimension];
+            const types = ['ground', 'air', 'tall'];
+
+            const type = types[Math.floor(Math.random() * types.length)];
+            let obstacle = {
+                x: width + 50,
+                type: type,
+                dimension: Math.floor(Math.random() * 5)
+            };
+
+            switch(type) {
+                case 'ground':
+                    obstacle.width = 30 + Math.random() * 30;
+                    obstacle.height = 40 + Math.random() * 30;
+                    obstacle.y = height - obstacle.height;
+                    break;
+                case 'air':
+                    obstacle.width = 40 + Math.random() * 40;
+                    obstacle.height = 30;
+                    obstacle.y = height - 150 - Math.random() * 100;
+                    break;
+                case 'tall':
+                    obstacle.width = 25;
+                    obstacle.height = 100 + Math.random() * 50;
+                    obstacle.y = height - obstacle.height;
+                    break;
+            }
+
+            obstacles.push(obstacle);
+        }
+
+        function jump() {
+            if (gameState !== 'playing') return;
+
+            const dim = dimensions[currentDimension];
+            if (player.onGround) {
+                player.vy = dim.jumpForce;
+                player.onGround = false;
+                createParticles(player.x, player.y + player.height / 2, dim.colors.primary, 15);
+            }
+        }
+
+        function switchDimension() {
+            if (gameState !== 'playing' || dimensionCooldown > 0) return;
+
+            currentDimension = (currentDimension + 1) % 5;
+            dimensionCooldown = 30;
+
+            // Visual feedback
+            createParticles(player.x, player.y + player.height / 2, dimensions[currentDimension].colors.primary, 20);
+
+            updateDimensionIndicator();
+        }
+
+        function updateDimensionIndicator() {
+            const indicator = document.getElementById('dimensionIndicator');
+            indicator.innerHTML = '';
+
+            for (let i = 0; i < 5; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'dimension-dot' + (i === currentDimension ? ' active' : '');
+                dot.style.background = dimensions[i].colors.primary;
+                dot.onclick = () => {
+                    if (gameState === 'playing' && dimensionCooldown <= 0) {
+                        currentDimension = i;
+                        dimensionCooldown = 30;
+                        createParticles(player.x, player.y + player.height / 2, dimensions[i].colors.primary, 20);
+                        updateDimensionIndicator();
+                    }
+                };
+                indicator.appendChild(dot);
+            }
+
+            document.getElementById('dimensionName').textContent = dimensions[currentDimension].name;
+        }
+
+        function resetGame() {
+            score = 0;
+            gameSpeed = 5;
+            currentDimension = 0;
+            obstacles = [];
+            particles = [];
+            player.y = height - 100;
+            player.vy = 0;
+            player.onGround = true;
+            player.trail = [];
+            obstacleTimer = 0;
+            dimensionCooldown = 0;
+
+            document.getElementById('scoreValue').textContent = '0';
+            updateDimensionIndicator();
+        }
+
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        function update() {
+            if (gameState !== 'playing') return;
+
+            const dim = dimensions[currentDimension];
+
+            // Update player
+            player.vy += dim.gravity;
+            player.y += player.vy;
+
+            // Ground collision
+            if (player.y + player.height > height) {
+                player.y = height - player.height;
+                player.vy = 0;
+                player.onGround = true;
+            }
+
+            // Trail
+            player.trail.push({ x: player.x, y: player.y });
+            if (player.trail.length > 10) player.trail.shift();
+
+            // Dimension cooldown
+            if (dimensionCooldown > 0) dimensionCooldown--;
+
+            // Spawn obstacles
+            obstacleTimer++;
+            if (obstacleTimer > 60 - Math.min(score / 100, 40)) {
+                spawnObstacle();
+                obstacleTimer = 0;
+            }
+
+            // Update obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.x -= gameSpeed;
+
+                // Collision detection
+                // Only collide if obstacle is in current dimension
+                if (obs.dimension === currentDimension) {
+                    if (checkCollision(player, obs)) {
+                        gameState = 'gameover';
+                        document.getElementById('gameOver').classList.remove('hidden');
+                        document.getElementById('finalScore').textContent = score;
+                        createParticles(player.x + player.width / 2, player.y + player.height / 2, dim.colors.obstacle, 30);
+                        return;
+                    }
+                }
+
+                // Score
+                if (obs.x + obs.width < player.x && !obs.passed) {
+                    obs.passed = true;
+                    score += 10;
+                    document.getElementById('scoreValue').textContent = score;
+
+                    // Increase difficulty
+                    if (score % 100 === 0) {
+                        gameSpeed += 0.5;
+                    }
+                }
+
+                // Remove off-screen obstacles
+                if (obs.x + obs.width < 0) {
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // Update particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function draw() {
+            const dim = dimensions[currentDimension];
+
+            // Background gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, dim.colors.bg);
+            gradient.addColorStop(1, dim.colors.bg + '44');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // Grid effect
+            ctx.strokeStyle = dim.colors.primary + '22';
+            ctx.lineWidth = 1;
+            const gridSize = 50;
+            const offset = (Date.now() / 50) % gridSize;
+
+            for (let x = -offset; x < width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+
+            for (let y = 0; y < height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            // Player trail
+            for (let i = 0; i < player.trail.length; i++) {
+                const alpha = i / player.trail.length * 0.5;
+                const size = player.width * (i / player.trail.length);
+                ctx.fillStyle = dim.colors.primary + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+                ctx.beginPath();
+                ctx.arc(
+                    player.trail[i].x + player.width / 2,
+                    player.trail[i].y + player.height / 2,
+                    size / 2,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+            }
+
+            // Player
+            ctx.fillStyle = dim.colors.primary;
+            ctx.shadowColor = dim.colors.primary;
+            ctx.shadowBlur = 20;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.shadowBlur = 0;
+
+            // Draw obstacles
+            for (let obs of obstacles) {
+                const obsDim = dimensions[obs.dimension];
+
+                if (obs.dimension === currentDimension) {
+                    ctx.fillStyle = obsDim.colors.obstacle;
+                    ctx.shadowColor = obsDim.colors.obstacle;
+                    ctx.shadowBlur = 15;
+                } else {
+                    ctx.fillStyle = obsDim.colors.obstacle + '44';
+                    ctx.shadowBlur = 0;
+                }
+
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                ctx.shadowBlur = 0;
+
+                // Dimension indicator on obstacle
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(obs.dimension + 1, obs.x + obs.width / 2, obs.y - 5);
+            }
+
+            // Particles
+            for (let p of particles) {
+                p.draw();
+            }
+
+            // Ground
+            ctx.fillStyle = dim.colors.primary + '44';
+            ctx.fillRect(0, height - 5, width, 5);
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Event listeners
+        document.getElementById('startBtn').addEventListener('click', () => {
+            document.getElementById('startScreen').classList.add('hidden');
+            gameState = 'playing';
+            resetGame();
+        });
+
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            document.getElementById('gameOver').classList.add('hidden');
+            gameState = 'playing';
+            resetGame();
+        });
+
+        document.getElementById('jumpBtn').addEventListener('click', jump);
+        document.getElementById('dimensionBtn').addEventListener('click', switchDimension);
+
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                e.preventDefault();
+                jump();
+            } else if (e.code === 'KeyD' || e.code === 'ShiftLeft') {
+                e.preventDefault();
+                switchDimension();
+            }
+        });
+
+        // Touch controls
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+            const dx = touchEndX - touchStartX;
+            const dy = touchEndY - touchStartY;
+
+            if (Math.abs(dx) < 30 && Math.abs(dy) < 30) {
+                // Tap - jump
+                jump();
+            } else if (Math.abs(dx) > Math.abs(dy)) {
+                // Horizontal swipe - dimension
+                switchDimension();
+            }
+        });
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            player.y = Math.min(player.y, height - player.height);
+        });
+
+        // Initialize
+        updateDimensionIndicator();
+        gameLoop();
+    </script>
+</body>
+</html>

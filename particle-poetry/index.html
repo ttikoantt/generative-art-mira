@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Poetry - 文字が舞う詩的なアート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: 'Hiragino Mincho ProN', serif;
+            touch-action: none;
+        }
+
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <button class="btn" onclick="changePoem()">詩を変える</button>
+        <button class="btn" onclick="toggleRainbow()">レインボー</button>
+    </div>
+
+    <button class="btn fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="info">マウスや指で文字を動かせる</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        const poems = [
+            { ja: "夢の中で　星が舞う", en: "Stars dance in dreams" },
+            { ja: "時の流れ　止まりて", en: "Time stands still" },
+            { ja: "風の歌　聞こゆ", en: "Wind's song echoes" },
+            { ja: "光の中　希望あり", en: "Hope lives in light" },
+            { ja: "海の底　星降る", en: "Stars fall to sea" },
+            { ja: "闇夜に　月光耀く", en: "Moonlight shines in darkness" },
+            { ja: "春の風　心吹く", en: "Spring wind touches heart" },
+            { ja: "蝉時雨　夏の音", en: "Cicadas sing summer" },
+            { ja: "紅葉舞う　秋の空", en: "Red leaves dance autumn" },
+            { ja: "雪の音　静寂に", en: "Snow whispers silence" }
+        ];
+
+        let currentPoem = poems[0];
+        let particles = [];
+        let mouse = { x: width / 2, y: height / 2 };
+        let isRainbow = false;
+        let hueOffset = 0;
+
+        class Particle {
+            constructor(char, x, y, targetX, targetY) {
+                this.char = char;
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.targetX = targetX;
+                this.targetY = targetY;
+                this.vx = 0;
+                this.vy = 0;
+                this.size = 20 + Math.random() * 20;
+                this.baseSize = this.size;
+                this.hue = Math.random() * 60 + 200; // Blue to purple range
+                this.alpha = 0.5 + Math.random() * 0.5;
+                this.angle = Math.random() * Math.PI * 2;
+                this.angularVelocity = (Math.random() - 0.5) * 0.02;
+                this.floatOffset = Math.random() * Math.PI * 2;
+                this.floatSpeed = 0.01 + Math.random() * 0.02;
+            }
+
+            update(mouseX, mouseY, time) {
+                // Calculate distance to mouse
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                // Mouse interaction - push away
+                const interactionRadius = 150;
+                if (distance < interactionRadius) {
+                    const force = (interactionRadius - distance) / interactionRadius;
+                    const angle = Math.atan2(dy, dx);
+                    this.vx -= Math.cos(angle) * force * 2;
+                    this.vy -= Math.sin(angle) * force * 2;
+                }
+
+                // Attraction to target position
+                const tdx = this.targetX - this.x;
+                const tdy = this.targetY - this.y;
+                this.vx += tdx * 0.02;
+                this.vy += tdy * 0.02;
+
+                // Floating motion
+                this.floatOffset += this.floatSpeed;
+                this.targetY += Math.sin(this.floatOffset) * 0.5;
+
+                // Damping
+                this.vx *= 0.92;
+                this.vy *= 0.92;
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Update angle
+                this.angle += this.angularVelocity;
+
+                // Update color
+                if (isRainbow) {
+                    this.hue = (hueOffset + this.x / width * 360 + this.y / height * 360) % 360;
+                }
+
+                // Pulse size
+                this.size = this.baseSize + Math.sin(time * 0.002 + this.floatOffset) * 5;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                // Glow effect
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size * 2);
+                gradient.addColorStop(0, `hsla(${this.hue}, 80%, 70%, ${this.alpha})`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 80%, 60%, ${this.alpha * 0.5})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 80%, 50%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size * 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Text character
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 80%, ${this.alpha + 0.3})`;
+                ctx.font = `${this.size}px 'Hiragino Mincho ProN', serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.char, 0, 0);
+
+                ctx.restore();
+            }
+        }
+
+        function createParticles() {
+            particles = [];
+            const text = currentPoem.ja + ' ' + currentPoem.en;
+
+            // Calculate layout
+            const fontSize = Math.min(width / 15, 60);
+            ctx.font = `${fontSize}px 'Hiragino Mincho ProN', serif`;
+
+            let totalWidth = 0;
+            const chars = [];
+
+            // Measure characters
+            for (let char of text) {
+                if (char === ' ') {
+                    totalWidth += fontSize * 0.3;
+                    chars.push({ char: ' ', width: fontSize * 0.3 });
+                } else {
+                    const metrics = ctx.measureText(char);
+                    const charWidth = metrics.width;
+                    totalWidth += charWidth;
+                    chars.push({ char, width: charWidth });
+                }
+            }
+
+            // Calculate starting position
+            let startX = (width - totalWidth) / 2;
+            let startY = height / 2;
+
+            // Create particles
+            for (let item of chars) {
+                if (item.char !== ' ') {
+                    const p = new Particle(
+                        item.char,
+                        startX,
+                        startY,
+                        startX + item.width / 2,
+                        startY
+                    );
+                    particles.push(p);
+                }
+                startX += item.width;
+            }
+        }
+
+        function changePoem() {
+            const currentIndex = poems.indexOf(currentPoem);
+            const nextIndex = (currentIndex + 1) % poems.length;
+            currentPoem = poems[nextIndex];
+
+            // Animate transition - explode existing particles
+            for (let p of particles) {
+                p.vx += (Math.random() - 0.5) * 30;
+                p.vy += (Math.random() - 0.5) * 30;
+            }
+
+            setTimeout(() => {
+                createParticles();
+            }, 300);
+        }
+
+        function toggleRainbow() {
+            isRainbow = !isRainbow;
+        }
+
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        // Mouse/Touch handlers
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        });
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            createParticles();
+        });
+
+        // Animation loop
+        let startTime = Date.now();
+
+        function animate() {
+            const time = Date.now() - startTime;
+            hueOffset += 0.5;
+
+            // Clear with fade effect for trails
+            ctx.fillStyle = 'rgba(15, 20, 40, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Update and draw particles
+            for (let p of particles) {
+                p.update(mouse.x, mouse.y, time);
+                p.draw();
+            }
+
+            // Draw subtle connections between nearby particles
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < 100) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize
+        createParticles();
+        animate();
+
+        // Auto-change poem every 15 seconds
+        setInterval(changePoem, 15000);
+    </script>
+</body>
+</html>
