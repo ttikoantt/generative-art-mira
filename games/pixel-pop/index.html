@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Pixel Pop - ピクセルポップ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: #1a1a2e;
+            overflow: hidden;
+            font-family: 'Press Start 2P', 'Courier New', monospace;
+            touch-action: manipulation;
+        }
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+            image-rendering: pixelated;
+            cursor: pointer;
+        }
+        .ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 15px;
+            background: rgba(26, 26, 46, 0.95);
+            border-bottom: 3px solid #ff6b6b;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+        }
+        .score {
+            font-size: 20px;
+            color: #ff6b6b;
+            text-shadow: 2px 2px 0 #000;
+        }
+        .timer {
+            font-size: 20px;
+            color: #4ecdc4;
+            text-shadow: 2px 2px 0 #000;
+        }
+        .combo {
+            font-size: 16px;
+            color: #ffe66d;
+            text-shadow: 2px 2px 0 #000;
+        }
+        #startScreen, #endScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(26, 26, 46, 0.98);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            color: #fff;
+        }
+        #startScreen h1, #endScreen h1 {
+            font-size: 32px;
+            margin-bottom: 20px;
+            background: linear-gradient(90deg, #ff6b6b, #4ecdc4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+        }
+        #startScreen p, #endScreen p {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 30px;
+            text-align: center;
+            line-height: 1.8;
+        }
+        .btn {
+            background: linear-gradient(90deg, #ff6b6b, #4ecdc4);
+            border: none;
+            padding: 15px 40px;
+            border-radius: 10px;
+            color: #1a1a2e;
+            font-size: 16px;
+            font-weight: bold;
+            font-family: inherit;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 0 #000;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 0 #000;
+        }
+        .btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #000;
+        }
+        #finalScore {
+            font-size: 48px;
+            color: #ffe66d;
+            margin: 20px 0;
+            text-shadow: 3px 3px 0 #000;
+        }
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            padding: 12px 18px;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 12px;
+            font-family: inherit;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.3s;
+        }
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .hidden {
+            display: none !important;
+        }
+        #particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 150;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="score">SCORE: <span id="score">0</span></div>
+        <div class="combo" id="combo"></div>
+        <div class="timer">TIME: <span id="timer">30</span></div>
+    </div>
+    
+    <canvas id="gameCanvas"></canvas>
+    <canvas id="particles"></canvas>
+    
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    
+    <div id="startScreen">
+        <h1>🎮 PIXEL POP</h1>
+        <p>
+            同じ色のピクセルをタップして消そう！<br>
+            連鎖でコンボボーナス！<br>
+            30秒でハイスコアを目指せ！
+        </p>
+        <button class="btn" onclick="startGame()">START</button>
+    </div>
+    
+    <div id="endScreen" class="hidden">
+        <h1>TIME UP!</h1>
+        <div id="finalScore">0</div>
+        <p>素晴らしい！</p>
+        <button class="btn" onclick="startGame()">REPLAY</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const particleCanvas = document.getElementById('particles');
+        const particleCtx = particleCanvas.getContext('2d');
+        
+        const GRID_SIZE = 12;
+        const PIXEL_SIZE = 28;
+        const COLORS = [
+            '#ff6b6b', // Red
+            '#4ecdc4', // Cyan
+            '#ffe66d', // Yellow
+            '#95e1d3', // Mint
+            '#f38181', // Pink
+            '#aa96da', // Purple
+            '#fcbad3'  // Light Pink
+        ];
+        
+        let grid = [];
+        let particles = [];
+        let score = 0;
+        let combo = 0;
+        let timeLeft = 30;
+        let gameRunning = false;
+        let gameTimer;
+        let comboTimeout;
+        
+        function resize() {
+            const maxWidth = Math.min(window.innerWidth - 30, 400);
+            const maxHeight = window.innerHeight - 100;
+            
+            const cols = Math.floor(maxWidth / PIXEL_SIZE);
+            const rows = Math.floor(maxHeight / PIXEL_SIZE);
+            
+            canvas.width = cols * PIXEL_SIZE;
+            canvas.height = rows * PIXEL_SIZE;
+            
+            particleCanvas.width = window.innerWidth;
+            particleCanvas.height = window.innerHeight;
+            
+            canvas.style.marginTop = '70px';
+            
+            initGrid(cols, rows);
+        }
+        
+        function initGrid(cols, rows) {
+            grid = [];
+            for (let x = 0; x < cols; x++) {
+                grid[x] = [];
+                for (let y = 0; y < rows; y++) {
+                    grid[x][y] = {
+                        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+                        scale: 1,
+                        alpha: 1
+                    };
+                }
+            }
+        }
+        
+        function startGame() {
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('endScreen').classList.add('hidden');
+            
+            score = 0;
+            combo = 0;
+            timeLeft = 30;
+            gameRunning = true;
+            
+            updateScore();
+            updateCombo();
+            updateTimer();
+            
+            resize();
+            
+            gameTimer = setInterval(() => {
+                timeLeft--;
+                updateTimer();
+                
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+            
+            animate();
+        }
+        
+        function endGame() {
+            gameRunning = false;
+            clearInterval(gameTimer);
+            
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('endScreen').classList.remove('hidden');
+        }
+        
+        function updateScore() {
+            document.getElementById('score').textContent = score;
+        }
+        
+        function updateCombo() {
+            const comboEl = document.getElementById('combo');
+            if (combo > 1) {
+                comboEl.textContent = `COMBO x${combo}!`;
+                comboEl.style.transform = 'scale(1.2)';
+                setTimeout(() => comboEl.style.transform = 'scale(1)', 100);
+            } else {
+                comboEl.textContent = '';
+            }
+        }
+        
+        function updateTimer() {
+            document.getElementById('timer').textContent = timeLeft;
+        }
+        
+        function handleClick(e) {
+            if (!gameRunning) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            
+            const x = Math.floor((clientX - rect.left) / PIXEL_SIZE);
+            const y = Math.floor((clientY - rect.top) / PIXEL_SIZE);
+            
+            if (x >= 0 && x < grid.length && y >= 0 && y < grid[0].length) {
+                popPixels(x, y, grid[x][y].color);
+            }
+        }
+        
+        function popPixels(x, y, color) {
+            const visited = new Set();
+            const toPop = [{x, y}];
+            let count = 0;
+            
+            while (toPop.length > 0) {
+                const {x: cx, y: cy} = toPop.pop();
+                const key = `${cx},${cy}`;
+                
+                if (visited.has(key)) continue;
+                if (cx < 0 || cx >= grid.length || cy < 0 || cy >= grid[0].length) continue;
+                if (grid[cx][cy].color !== color || grid[cx][cy].alpha < 1) continue;
+                
+                visited.add(key);
+                count++;
+                
+                // パーティクルを作成
+                createParticles(
+                    canvas.offsetLeft + cx * PIXEL_SIZE + PIXEL_SIZE / 2,
+                    70 + cy * PIXEL_SIZE + PIXEL_SIZE / 2,
+                    color
+                );
+                
+                // ピクセルを消す
+                grid[cx][cy].alpha = 0;
+                
+                // 隣接ピクセルを追加
+                toPop.push({x: cx + 1, y: cy});
+                toPop.push({x: cx - 1, y: cy});
+                toPop.push({x: cx, y: cy + 1});
+                toPop.push({x: cx, y: cy - 1});
+            }
+            
+            if (count > 0) {
+                // コンボ更新
+                combo++;
+                clearTimeout(comboTimeout);
+                comboTimeout = setTimeout(() => {
+                    combo = 0;
+                    updateCombo();
+                }, 2000);
+                
+                // スコア計算（コンボボーナス付き）
+                const baseScore = count * 10;
+                const comboBonus = Math.floor(baseScore * (combo - 1) * 0.5);
+                score += baseScore + comboBonus;
+                
+                updateScore();
+                updateCombo();
+                
+                // 消えたピクセルを補充
+                setTimeout(() => {
+                    refillPixels();
+                }, 300);
+            }
+        }
+        
+        function refillPixels() {
+            for (let x = 0; x < grid.length; x++) {
+                for (let y = 0; y < grid[0].length; y++) {
+                    if (grid[x][y].alpha < 1) {
+                        grid[x][y] = {
+                            color: COLORS[Math.floor(Math.random() * COLORS.length)],
+                            scale: 0,
+                            alpha: 1
+                        };
+                    }
+                }
+            }
+        }
+        
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 8; i++) {
+                const angle = (Math.PI * 2 / 8) * i + Math.random() * 0.5;
+                const speed = 2 + Math.random() * 4;
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    color: color,
+                    life: 1,
+                    size: 3 + Math.random() * 4
+                });
+            }
+        }
+        
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            for (let x = 0; x < grid.length; x++) {
+                for (let y = 0; y < grid[0].length; y++) {
+                    const pixel = grid[x][y];
+                    
+                    if (pixel.alpha < 1) {
+                        pixel.scale = Math.max(0, pixel.scale - 0.1);
+                        continue;
+                    }
+                    
+                    if (pixel.scale < 1) {
+                        pixel.scale = Math.min(1, pixel.scale + 0.1);
+                    }
+                    
+                    const size = PIXEL_SIZE * pixel.scale - 2;
+                    const offsetX = (PIXEL_SIZE - size) / 2;
+                    const offsetY = (PIXEL_SIZE - size) / 2;
+                    
+                    ctx.fillStyle = pixel.color;
+                    ctx.shadowColor = pixel.color;
+                    ctx.shadowBlur = 5;
+                    ctx.fillRect(
+                        x * PIXEL_SIZE + offsetX + 1,
+                        y * PIXEL_SIZE + offsetY + 1,
+                        size,
+                        size
+                    );
+                    ctx.shadowBlur = 0;
+                }
+            }
+        }
+        
+        function drawParticles() {
+            particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+            
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                p.size *= 0.95;
+                
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+                
+                particleCtx.fillStyle = p.color;
+                particleCtx.globalAlpha = p.life;
+                particleCtx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+            }
+            
+            particleCtx.globalAlpha = 1;
+        }
+        
+        function animate() {
+            if (!gameRunning) return;
+            
+            draw();
+            drawParticles();
+            requestAnimationFrame(animate);
+        }
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // イベントリスナー
+        canvas.addEventListener('mousedown', handleClick);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleClick(e);
+        });
+        
+        window.addEventListener('resize', () => {
+            if (gameRunning) {
+                resize();
+            }
+        });
+        
+        // 初期サイズ設定
+        resize();
+    </script>
+</body>
+</html>

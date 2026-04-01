@@ -2,158 +2,157 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Harmonic Waves - Mira's Generative Art</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Harmonic Waves - 調和する波紋</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
         body {
-            background: #000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
+            background: #0a0a0a;
             overflow: hidden;
             font-family: 'Courier New', monospace;
         }
-
         canvas {
             display: block;
-            cursor: pointer;
+            cursor: crosshair;
         }
-
-        .info {
+        .controls {
             position: fixed;
-            bottom: 20px;
+            top: 20px;
             left: 20px;
-            color: #0ff;
-            font-size: 12px;
-            text-shadow: 0 0 10px #0ff;
-            pointer-events: none;
-            opacity: 0.8;
+            background: rgba(10, 10, 10, 0.9);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            z-index: 100;
         }
-
+        .controls h1 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00ffaa, #00aaff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .controls p {
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+        .controls button {
+            background: linear-gradient(90deg, #00ffaa, #00aaff);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            color: #0a0a0a;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .controls button:hover {
+            transform: scale(1.05);
+        }
+        .controls button:active {
+            transform: scale(0.95);
+        }
         .fullscreen-btn {
             position: fixed;
             top: 20px;
             right: 20px;
-            background: rgba(0, 255, 255, 0.1);
-            border: 1px solid #0ff;
-            color: #0ff;
-            padding: 10px 20px;
-            font-size: 14px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 10px 15px;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 12px;
             cursor: pointer;
-            font-family: 'Courier New', monospace;
+            z-index: 100;
             transition: all 0.3s;
         }
-
         .fullscreen-btn:hover {
-            background: rgba(0, 255, 255, 0.3);
-            box-shadow: 0 0 20px #0ff;
-        }
-
-        @media (max-width: 768px) {
-            .info {
-                font-size: 10px;
-                bottom: 10px;
-                left: 10px;
-            }
-
-            .fullscreen-btn {
-                top: 10px;
-                right: 10px;
-                padding: 8px 16px;
-                font-size: 12px;
-            }
+            background: rgba(255, 255, 255, 0.2);
         }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
-    <div class="info">Click to regenerate • Move to disturb</div>
-    <button class="fullscreen-btn" onclick="toggleFullscreen()">Fullscreen</button>
+    
+    <div class="controls">
+        <h1>🌊 Harmonic Waves</h1>
+        <p>クリック/タップで波紋を追加</p>
+        <p>ドラッグで連続的に生成</p>
+        <button onclick="clearWaves()">クリア</button>
+    </div>
+    
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-
+        
         let width, height;
-        let time = 0;
-        let mouseX = 0;
-        let mouseY = 0;
         let waves = [];
-
+        let time = 0;
+        let isMouseDown = false;
+        
         function resize() {
             width = canvas.width = window.innerWidth;
             height = canvas.height = window.innerHeight;
         }
-
-        function initWaves() {
-            waves = [];
-            const numWaves = 7 + Math.floor(Math.random() * 5);
-
-            for (let i = 0; i < numWaves; i++) {
-                waves.push({
-                    amplitude: 20 + Math.random() * 80,
-                    frequency: 0.002 + Math.random() * 0.008,
-                    phase: Math.random() * Math.PI * 2,
-                    speed: 0.02 + Math.random() * 0.05,
-                    color: `hsl(${180 + Math.random() * 60}, 100%, ${50 + Math.random() * 30}%)`,
-                    lineWidth: 1 + Math.random() * 3
-                });
+        
+        window.addEventListener('resize', resize);
+        resize();
+        
+        class Wave {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.startTime = time;
+                this.frequency = 0.02 + Math.random() * 0.03;
+                this.amplitude = 50 + Math.random() * 100;
+                this.phase = Math.random() * Math.PI * 2;
+                this.hue = Math.random() * 60 + 150; // 青～紫〜水色
+            }
+            
+            getIntensity(px, py, t) {
+                const dx = px - this.x;
+                const dy = py - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const elapsed = t - this.startTime;
+                
+                // 波の伝播
+                const wavePosition = elapsed * 100;
+                const waveDistance = Math.abs(distance - wavePosition);
+                
+                // 波の強度（ガウス関数的に減衰）
+                let intensity = Math.exp(-waveDistance * waveDistance / 10000);
+                
+                // 時間による減衰
+                intensity *= Math.exp(-elapsed * 0.0003);
+                
+                // 距離による減衰
+                intensity *= Math.exp(-distance * 0.001);
+                
+                return intensity * this.amplitude * Math.sin(distance * this.frequency - elapsed * 0.1 + this.phase);
             }
         }
-
-        function draw() {
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-            ctx.fillRect(0, 0, width, height);
-
-            const centerY = height / 2;
-            const mouseInfluence = 0.3 + (mouseY / height) * 0.5;
-
-            waves.forEach((wave, index) => {
-                ctx.beginPath();
-                ctx.strokeStyle = wave.color;
-                ctx.lineWidth = wave.lineWidth;
-
-                for (let x = 0; x < width; x += 2) {
-                    const distFromMouse = Math.abs(x - mouseX);
-                    const mouseEffect = Math.max(0, 1 - distFromMouse / 200);
-
-                    const y = centerY +
-                        wave.amplitude * Math.sin(x * wave.frequency + time * wave.speed + wave.phase) +
-                        wave.amplitude * 0.3 * Math.sin(x * wave.frequency * 2 + time * wave.speed * 1.5) +
-                        (mouseEffect * mouseInfluence * 50 * Math.sin(x * 0.05 + time * 0.1));
-
-                    if (x === 0) {
-                        ctx.moveTo(x, y);
-                    } else {
-                        ctx.lineTo(x, y);
-                    }
-                }
-
-                ctx.stroke();
-            });
-
-            // Draw center glow
-            const gradient = ctx.createRadialGradient(
-                width / 2, height / 2, 0,
-                width / 2, height / 2, 300
-            );
-            gradient.addColorStop(0, 'rgba(0, 255, 255, 0.05)');
-            gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
-
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, width, height);
-
-            time += 1;
-            requestAnimationFrame(draw);
+        
+        function addWave(x, y) {
+            waves.push(new Wave(x, y));
+            // 最大50個まで
+            if (waves.length > 50) {
+                waves.shift();
+            }
         }
-
+        
+        function clearWaves() {
+            waves = [];
+        }
+        
         function toggleFullscreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
@@ -161,29 +160,82 @@
                 document.exitFullscreen();
             }
         }
-
-        canvas.addEventListener('click', initWaves);
-        canvas.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
+        
+        // マウスイベント
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            addWave(e.clientX, e.clientY);
         });
-
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (isMouseDown && Math.random() > 0.7) {
+                addWave(e.clientX, e.clientY);
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => isMouseDown = false);
+        canvas.addEventListener('mouseleave', () => isMouseDown = false);
+        
+        // タッチイベント
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            initWaves();
+            const touch = e.touches[0];
+            addWave(touch.clientX, touch.clientY);
         });
-
+        
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            mouseX = e.touches[0].clientX;
-            mouseY = e.touches[0].clientY;
+            const touch = e.touches[0];
+            if (Math.random() > 0.7) {
+                addWave(touch.clientX, touch.clientY);
+            }
         });
-
-        window.addEventListener('resize', resize);
-        window.addEventListener('fullscreenchange', resize);
-
-        resize();
-        initWaves();
+        
+        function draw() {
+            // 半透明の黒でフェード
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // ピクセル単位で描画（パフォーマンスのためダウンサンプリング）
+            const step = 3;
+            
+            for (let x = 0; x < width; x += step) {
+                for (let y = 0; y < height; y += step) {
+                    let totalIntensity = 0;
+                    let maxIntensity = 0;
+                    
+                    // 全ての波の干渉を計算
+                    for (const wave of waves) {
+                        const intensity = wave.getIntensity(x, y, time);
+                        totalIntensity += intensity;
+                        maxIntensity = Math.max(maxIntensity, Math.abs(intensity));
+                    }
+                    
+                    if (maxIntensity > 0.1) {
+                        // 強度を色に変換
+                        const normalized = Math.min(maxIntensity / 50, 1);
+                        const brightness = Math.floor(normalized * 255);
+                        
+                        // 色相は時間と位置で変化
+                        const hue = (time * 0.01 + x * 0.1 + y * 0.1) % 360;
+                        
+                        ctx.fillStyle = `hsla(${hue}, 80%, ${brightness / 3}%, ${normalized})`;
+                        ctx.fillRect(x, y, step, step);
+                    }
+                }
+            }
+            
+            // 古い波を削除
+            const currentTime = time;
+            waves = waves.filter(wave => currentTime - wave.startTime < 10000);
+            
+            time++;
+            requestAnimationFrame(draw);
+        }
+        
+        // 初期の波を追加
+        addWave(width / 2, height / 2);
+        
         draw();
     </script>
 </body>
