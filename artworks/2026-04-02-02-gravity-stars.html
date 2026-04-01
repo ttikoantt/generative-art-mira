@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>星の重力シミュレーション | Gravity Stars</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        canvas {
+            display: block;
+        }
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 10;
+            max-width: 300px;
+        }
+        .controls h2 {
+            margin-bottom: 15px;
+            font-size: 18px;
+            color: #ffcc00;
+        }
+        .controls p {
+            font-size: 12px;
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+        .controls button {
+            background: #ffcc00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            margin-top: 10px;
+            width: 100%;
+        }
+        .controls button:hover {
+            background: #ffdd44;
+        }
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 2px solid #fff;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 10;
+        }
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <h2>⭐ 星の重力シミュレーション</h2>
+        <p>星々が互いの重力で引き合い、美しい軌道を描きます。</p>
+        <p>クリックで星を追加、ダブルクリックでリセット。</p>
+        <button onclick="addStars()">星を追加 (+5)</button>
+    </div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // キャンバスサイズ設定
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 星のクラス
+        class Star {
+            constructor(x, y, vx, vy, mass, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.mass = mass;
+                this.color = color;
+                this.radius = Math.sqrt(mass) * 2;
+                this.trail = [];
+                this.maxTrail = 100;
+            }
+
+            update(stars) {
+                // 重力計算
+                for (let other of stars) {
+                    if (other === this) continue;
+
+                    const dx = other.x - this.x;
+                    const dy = other.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 5) continue; // 衝突回避
+
+                    const force = (0.5 * this.mass * other.mass) / (dist * dist);
+                    const fx = force * dx / dist;
+                    const fy = force * dy / dist;
+
+                    this.vx += fx / this.mass;
+                    this.vy += fy / this.mass;
+                }
+
+                // 位置更新
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 軌道記録
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > this.maxTrail) {
+                    this.trail.shift();
+                }
+
+                // 境界処理
+                if (this.x < 0 || this.x > canvas.width) this.vx *= -0.8;
+                if (this.y < 0 || this.y > canvas.height) this.vy *= -0.8;
+                this.x = Math.max(0, Math.min(canvas.width, this.x));
+                this.y = Math.max(0, Math.min(canvas.height, this.y));
+            }
+
+            draw() {
+                // 軌道描画
+                if (this.trail.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.trail[0].x, this.trail[0].y);
+                    for (let i = 1; i < this.trail.length; i++) {
+                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    }
+                    ctx.strokeStyle = this.color + '40';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+
+                // 星描画
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // 光芒効果
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius * 3
+                );
+                gradient.addColorStop(0, this.color + '80');
+                gradient.addColorStop(1, 'transparent');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // 星の配列
+        let stars = [];
+
+        // 色パレット
+        const colors = [
+            '#ffcc00', // 黄色
+            '#ff6b6b', // 赤
+            '#4ecdc4', // 青
+            '#95e1d3', // 水色
+            '#f38181', // ピンク
+            '#aa96da', // 紫
+            '#fcbad3', // ピンク紫
+            '#a8d8ea', // スカイブルー
+            '#ff9a9e', // コーラル
+            '#a18cd1'  // ラベンダー
+        ];
+
+        // ランダムな星を生成
+        function createStar() {
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            const vx = (Math.random() - 0.5) * 2;
+            const vy = (Math.random() - 0.5) * 2;
+            const mass = Math.random() * 5 + 2;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            return new Star(x, y, vx, vy, mass, color);
+        }
+
+        // 初期星の生成
+        function initStars(count = 15) {
+            stars = [];
+            for (let i = 0; i < count; i++) {
+                stars.push(createStar());
+            }
+        }
+
+        // 星を追加
+        function addStars() {
+            for (let i = 0; i < 5; i++) {
+                stars.push(createStar());
+            }
+        }
+
+        // クリックで星追加
+        canvas.addEventListener('click', (e) => {
+            const x = e.clientX;
+            const y = e.clientY;
+            const vx = (Math.random() - 0.5) * 3;
+            const vy = (Math.random() - 0.5) * 3;
+            const mass = Math.random() * 5 + 2;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            stars.push(new Star(x, y, vx, vy, mass, color));
+        });
+
+        // ダブルクリックでリセット
+        canvas.addEventListener('dblclick', () => {
+            initStars(15);
+        });
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 背景の星
+        let backgroundStars = [];
+        function initBackgroundStars() {
+            backgroundStars = [];
+            for (let i = 0; i < 200; i++) {
+                backgroundStars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: Math.random() * 1.5,
+                    opacity: Math.random() * 0.5 + 0.2
+                });
+            }
+        }
+
+        // アニメーションループ
+        function animate() {
+            // 背景クリア（少し残す）
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 背景の星描画
+            ctx.fillStyle = '#ffffff';
+            for (let star of backgroundStars) {
+                ctx.globalAlpha = star.opacity;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+
+            // 星の更新と描画
+            for (let star of stars) {
+                star.update(stars);
+                star.draw();
+            }
+
+            // 星の数表示
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '14px "Courier New"';
+            ctx.fillText(`Stars: ${stars.length}`, 20, canvas.height - 20);
+
+            requestAnimationFrame(animate);
+        }
+
+        // 初期化
+        initStars(15);
+        initBackgroundStars();
+        animate();
+
+        // ウィンドウサイズ変更時
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            initBackgroundStars();
+        });
+    </script>
+</body>
+</html>
