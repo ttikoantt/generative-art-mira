@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Glider - ネオン・グライダー</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #gameCanvas {
+            display: block;
+            cursor: pointer;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .ui div {
+            margin: 5px 0;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        .start-screen,
+        .game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 15, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 100;
+        }
+
+        .game-over-screen {
+            display: none;
+        }
+
+        .title {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+            text-align: center;
+        }
+
+        .subtitle {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .score-display {
+            font-size: 72px;
+            margin: 20px 0;
+            text-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+        }
+
+        .high-score {
+            font-size: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 40px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #00ffff, #ff00ff);
+            color: white;
+            border: none;
+            padding: 15px 50px;
+            font-size: 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(0, 255, 255, 0.3);
+            pointer-events: auto;
+        }
+
+        .btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 30px rgba(0, 255, 255, 0.5);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        @media (max-width: 768px) {
+            .title {
+                font-size: 36px;
+            }
+
+            .score-display {
+                font-size: 56px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui" id="ui">
+        <div id="score">Score: 0</div>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="instructions">
+        左クリック/左タップ: 左へ移動 | 右クリック/右タップ: 右へ移動
+    </div>
+
+    <div class="start-screen" id="startScreen">
+        <div class="title">Neon Glider</div>
+        <div class="subtitle">ネオン・グライダー</div>
+        <button class="btn" onclick="startGame()">ゲーム開始</button>
+    </div>
+
+    <div class="game-over-screen" id="gameOverScreen">
+        <div class="title">Game Over</div>
+        <div class="score-display" id="finalScore">0</div>
+        <div class="high-score" id="highScoreDisplay">High Score: 0</div>
+        <button class="btn" onclick="startGame()">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // ゲーム状態
+        let gameState = 'start'; // start, playing, gameover
+        let score = 0;
+        let highScore = localStorage.getItem('neonGliderHighScore') || 0;
+        let gameSpeed = 5;
+        let spawnRate = 60;
+        let frameCount = 0;
+
+        // プレイヤー
+        const player = {
+            x: width / 2,
+            y: height - 150,
+            width: 40,
+            height: 40,
+            speed: 8,
+            movingLeft: false,
+            movingRight: false,
+            trail: []
+        };
+
+        // 障害物配列
+        let obstacles = [];
+
+        // 色相
+        let hue = 0;
+
+        // イベントリスナー
+        canvas.addEventListener('mousedown', handleInput);
+        canvas.addEventListener('touchstart', handleInput, { passive: false });
+
+        function handleInput(e) {
+            if (gameState !== 'playing') return;
+
+            e.preventDefault();
+
+            let clientX;
+            if (e.type === 'touchstart') {
+                clientX = e.touches[0].clientX;
+            } else {
+                clientX = e.clientX;
+            }
+
+            if (clientX < width / 2) {
+                player.movingLeft = true;
+                setTimeout(() => { player.movingLeft = false; }, 100);
+            } else {
+                player.movingRight = true;
+                setTimeout(() => { player.movingRight = false; }, 100);
+            }
+        }
+
+        // キーボード操作
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a') {
+                player.movingLeft = true;
+            }
+            if (e.key === 'ArrowRight' || e.key === 'd') {
+                player.movingRight = true;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a') {
+                player.movingLeft = false;
+            }
+            if (e.key === 'ArrowRight' || e.key === 'd') {
+                player.movingRight = false;
+            }
+        });
+
+        // 障害物クラス
+        class Obstacle {
+            constructor() {
+                this.width = 60 + Math.random() * 80;
+                this.height = 20 + Math.random() * 30;
+                this.x = Math.random() * (width - this.width);
+                this.y = -this.height;
+                this.speed = gameSpeed + Math.random() * 2;
+                this.hue = hue + Math.random() * 60;
+            }
+
+            update() {
+                this.y += this.speed;
+            }
+
+            draw() {
+                // ネオングロー効果
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = `hsl(${this.hue}, 100%, 50%)`;
+
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 50%)`;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+
+                // 内部のハイライト
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, 0.5)`;
+                ctx.fillRect(this.x + 5, this.y + 5, this.width - 10, this.height - 10);
+
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            gameSpeed = 5;
+            spawnRate = 60;
+            frameCount = 0;
+            obstacles = [];
+            player.x = width / 2;
+            player.trail = [];
+
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('gameOverScreen').style.display = 'none';
+            document.getElementById('score').textContent = `Score: 0`;
+
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameState = 'gameover';
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('neonGliderHighScore', highScore);
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('highScoreDisplay').textContent = `High Score: ${highScore}`;
+            document.getElementById('gameOverScreen').style.display = 'flex';
+        }
+
+        function update() {
+            // プレイヤーの移動
+            if (player.movingLeft) {
+                player.x -= player.speed;
+            }
+            if (player.movingRight) {
+                player.x += player.speed;
+            }
+
+            // 画面境界
+            if (player.x < player.width / 2) {
+                player.x = player.width / 2;
+            }
+            if (player.x > width - player.width / 2) {
+                player.x = width - player.width / 2;
+            }
+
+            // トレイルを更新
+            player.trail.push({ x: player.x, y: player.y, alpha: 1 });
+            if (player.trail.length > 20) {
+                player.trail.shift();
+            }
+            player.trail.forEach(t => t.alpha -= 0.05);
+
+            // 障害物を生成
+            frameCount++;
+            if (frameCount >= spawnRate) {
+                obstacles.push(new Obstacle());
+                frameCount = 0;
+
+                // 難易度上昇
+                if (spawnRate > 30) {
+                    spawnRate -= 0.1;
+                }
+                if (gameSpeed < 12) {
+                    gameSpeed += 0.01;
+                }
+            }
+
+            // 障害物を更新
+            obstacles.forEach((obs, index) => {
+                obs.update();
+
+                // 画面外に出たら削除
+                if (obs.y > height) {
+                    obstacles.splice(index, 1);
+                    score += 10;
+                    document.getElementById('score').textContent = `Score: ${score}`;
+                }
+
+                // 衝突判定
+                if (checkCollision(player, obs)) {
+                    gameOver();
+                }
+            });
+
+            // 色相を回転
+            hue += 0.3;
+        }
+
+        function checkCollision(p, o) {
+            const pLeft = p.x - p.width / 2;
+            const pRight = p.x + p.width / 2;
+            const pTop = p.y - p.height / 2;
+            const pBottom = p.y + p.height / 2;
+
+            const oLeft = o.x;
+            const oRight = o.x + o.width;
+            const oTop = o.y;
+            const oBottom = o.y + o.height;
+
+            return pLeft < oRight &&
+                   pRight > oLeft &&
+                   pTop < oBottom &&
+                   pBottom > oTop;
+        }
+
+        function draw() {
+            // 背景をクリア（少し残す）
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // プレイヤーのトレイル
+            player.trail.forEach(t => {
+                if (t.alpha > 0) {
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, player.width / 2 * 0.8, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${hue}, 100%, 60%, ${t.alpha * 0.3})`;
+                    ctx.fill();
+                }
+            });
+
+            // プレイヤー
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.width / 2, 0, Math.PI * 2);
+            ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
+            ctx.fill();
+
+            // プレイヤーの内部
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.width / 3, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${hue + 30}, 100%, 70%, 0.8)`;
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+
+            // 障害物
+            obstacles.forEach(obs => obs.draw());
+        }
+
+        function gameLoop() {
+            if (gameState !== 'playing') return;
+
+            update();
+            draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 全画面切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            player.y = height - 150;
+        });
+
+        // 初期描画
+        function drawInitial() {
+            ctx.fillStyle = 'rgba(10, 10, 15, 1)';
+            ctx.fillRect(0, 0, width, height);
+        }
+        drawInitial();
+    </script>
+</body>
+</html>
