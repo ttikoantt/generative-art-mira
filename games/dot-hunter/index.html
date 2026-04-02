@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dot Hunter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 800px;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 2rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .stat-box {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px 25px;
+            border-radius: 15px;
+            color: #fff;
+            font-size: 1.2rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .stat-box span {
+            color: #00ffff;
+            font-weight: bold;
+        }
+
+        #gameCanvas {
+            border: 3px solid rgba(0, 255, 255, 0.5);
+            border-radius: 20px;
+            box-shadow: 0 0 40px rgba(0, 255, 255, 0.3);
+            background: rgba(0, 0, 0, 0.3);
+            max-width: 100%;
+            touch-action: none;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 15px 35px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            background: linear-gradient(135deg, #00ffff 0%, #0080ff 100%);
+            border: none;
+            border-radius: 30px;
+            color: #1a1a2e;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(0, 255, 255, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 255, 255, 0.4);
+        }
+
+        button:active {
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            z-index: 1000;
+        }
+
+        .combo-display {
+            position: absolute;
+            font-size: 2rem;
+            font-weight: bold;
+            color: #ffcc00;
+            text-shadow: 0 0 20px rgba(255, 204, 0, 0.8);
+            pointer-events: none;
+            animation: fadeUp 0.8s ease-out forwards;
+        }
+
+        @keyframes fadeUp {
+            0% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-50px) scale(1.5);
+            }
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .stat-box {
+                padding: 10px 20px;
+                font-size: 1rem;
+            }
+
+            button {
+                padding: 12px 28px;
+                font-size: 1rem;
+            }
+
+            .fullscreen-btn {
+                width: 50px;
+                height: 50px;
+                font-size: 1.3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <div class="container">
+        <h1>🎯 Dot Hunter</h1>
+        <div class="stats">
+            <div class="stat-box">スコア: <span id="score">0</span></div>
+            <div class="stat-box">時間: <span id="time">60</span>秒</div>
+            <div class="stat-box">コンボ: <span id="combo">0</span></div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div class="controls">
+            <button id="startBtn" onclick="startGame()">スタート</button>
+            <button onclick="showHighScores()">🏆 ハイスコア</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let score = 0;
+        let timeLeft = 60;
+        let combo = 0;
+        let gameRunning = false;
+        let lastClickTime = 0;
+        let gameLoop;
+        let timerLoop;
+        let dots = [];
+        let particles = [];
+        let specialDot = null;
+
+        const highScores = JSON.parse(localStorage.getItem('dotHunterHighScores') || '[]');
+
+        function resize() {
+            const maxWidth = Math.min(window.innerWidth - 40, 700);
+            const maxHeight = Math.min(window.innerHeight - 280, 500);
+
+            width = maxWidth;
+            height = maxHeight;
+
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        class Dot {
+            constructor(isSpecial = false) {
+                this.x = Math.random() * (width - 60) + 30;
+                this.y = Math.random() * (height - 60) + 30;
+                this.radius = isSpecial ? 25 : Math.random() * 15 + 20;
+                this.targetX = this.x;
+                this.targetY = this.y;
+                this.speed = isSpecial ? 3 : Math.random() * 1.5 + 0.5;
+                this.hue = isSpecial ? 45 : Math.random() * 360;
+                this.isSpecial = isSpecial;
+                this.points = isSpecial ? 50 : Math.floor(100 / this.radius * 10);
+                this.alpha = 0;
+                this.fadeIn = true;
+            }
+
+            update() {
+                // Fade in
+                if (this.fadeIn) {
+                    this.alpha += 0.1;
+                    if (this.alpha >= 1) {
+                        this.alpha = 1;
+                        this.fadeIn = false;
+                    }
+                }
+
+                // Move towards target
+                const dx = this.targetX - this.x;
+                const dy = this.targetY - this.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist > 5) {
+                    this.x += (dx / dist) * this.speed;
+                    this.y += (dy / dist) * this.speed;
+                } else {
+                    // New random target
+                    this.targetX = Math.random() * (width - 60) + 30;
+                    this.targetY = Math.random() * (height - 60) + 30;
+                }
+
+                // Change color slightly
+                if (!this.isSpecial) {
+                    this.hue += 0.5;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+
+                // Glow effect
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius * 1.5
+                );
+
+                if (this.isSpecial) {
+                    gradient.addColorStop(0, 'rgba(255, 215, 0, 0.9)');
+                    gradient.addColorStop(0.5, 'rgba(255, 200, 0, 0.5)');
+                    gradient.addColorStop(1, 'rgba(255, 200, 0, 0)');
+                } else {
+                    const color = `hsl(${this.hue}, 80%, 60%)`;
+                    gradient.addColorStop(0, color);
+                    gradient.addColorStop(0.5, `hsla(${this.hue}, 80%, 60%, 0.5)`);
+                    gradient.addColorStop(1, `hsla(${this.hue}, 80%, 60%, 0)`);
+                }
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 1.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Main dot
+                ctx.fillStyle = this.isSpecial ? '#ffd700' : `hsl(${this.hue}, 80%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Shine effect
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.beginPath();
+                ctx.arc(this.x - this.radius * 0.3, this.y - this.radius * 0.3, this.radius * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            containsPoint(px, py) {
+                const dist = Math.hypot(px - this.x, py - this.y);
+                return dist < this.radius;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.life = 1;
+                this.decay = Math.random() * 0.02 + 0.02;
+                this.size = Math.random() * 5 + 3;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.2;
+                this.life -= this.decay;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function showComboDisplay(x, y, text) {
+            const display = document.createElement('div');
+            display.className = 'combo-display';
+            display.textContent = text;
+            display.style.left = `${x + canvas.offsetLeft}px`;
+            display.style.top = `${y + canvas.offsetTop}px`;
+            document.body.appendChild(display);
+
+            setTimeout(() => {
+                display.remove();
+            }, 800);
+        }
+
+        function spawnDots() {
+            dots = [];
+            specialDot = null;
+
+            // Regular dots
+            for (let i = 0; i < 5; i++) {
+                dots.push(new Dot(false));
+            }
+
+            // Special dot (appears occasionally)
+            if (Math.random() < 0.3) {
+                specialDot = new Dot(true);
+            }
+        }
+
+        function handleClick(e) {
+            if (!gameRunning) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+
+            let x, y;
+            if (e.touches) {
+                x = (e.touches[0].clientX - rect.left) * scaleX;
+                y = (e.touches[0].clientY - rect.top) * scaleY;
+            } else {
+                x = (e.clientX - rect.left) * scaleX;
+                y = (e.clientY - rect.top) * scaleY;
+            }
+
+            // Check special dot first
+            if (specialDot && specialDot.containsPoint(x, y)) {
+                const now = Date.now();
+                if (now - lastClickTime < 1000) {
+                    combo++;
+                } else {
+                    combo = 1;
+                }
+                lastClickTime = now;
+
+                const bonusPoints = specialDot.points * combo;
+                score += bonusPoints;
+
+                createParticles(specialDot.x, specialDot.y, '#ffd700');
+                showComboDisplay(e.clientX, e.clientY, `+${bonusPoints}`);
+
+                specialDot = null;
+                document.getElementById('score').textContent = score;
+                document.getElementById('combo').textContent = combo;
+                return;
+            }
+
+            // Check regular dots
+            for (let i = dots.length - 1; i >= 0; i--) {
+                if (dots[i].containsPoint(x, y)) {
+                    const now = Date.now();
+                    if (now - lastClickTime < 1000) {
+                        combo++;
+                    } else {
+                        combo = 1;
+                    }
+                    lastClickTime = now;
+
+                    const points = dots[i].points * combo;
+                    score += points;
+
+                    const color = `hsl(${dots[i].hue}, 80%, 60%)`;
+                    createParticles(dots[i].x, dots[i].y, color);
+                    showComboDisplay(e.clientX, e.clientY, `+${points}`);
+
+                    dots.splice(i, 1);
+                    dots.push(new Dot(false));
+
+                    document.getElementById('score').textContent = score;
+                    document.getElementById('combo').textContent = combo;
+                    return;
+                }
+            }
+
+            // Miss - reset combo
+            combo = 0;
+            document.getElementById('combo').textContent = combo;
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Update and draw dots
+            dots.forEach(dot => {
+                dot.update();
+                dot.draw();
+            });
+
+            if (specialDot) {
+                specialDot.update();
+                specialDot.draw();
+            }
+
+            // Update and draw particles
+            particles = particles.filter(p => {
+                p.update();
+                p.draw();
+                return p.life > 0;
+            });
+
+            gameLoop = requestAnimationFrame(update);
+        }
+
+        function startGame() {
+            score = 0;
+            timeLeft = 60;
+            combo = 0;
+            gameRunning = true;
+
+            document.getElementById('score').textContent = score;
+            document.getElementById('time').textContent = timeLeft;
+            document.getElementById('combo').textContent = combo;
+            document.getElementById('startBtn').disabled = true;
+
+            spawnDots();
+            update();
+
+            timerLoop = setInterval(() => {
+                timeLeft--;
+                document.getElementById('time').textContent = timeLeft;
+
+                // Spawn special dot occasionally
+                if (!specialDot && Math.random() < 0.2) {
+                    specialDot = new Dot(true);
+                }
+
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            gameRunning = false;
+            clearInterval(timerLoop);
+            cancelAnimationFrame(gameLoop);
+
+            document.getElementById('startBtn').disabled = false;
+
+            // Save high score
+            highScores.push({
+                score: score,
+                date: new Date().toLocaleDateString('ja-JP')
+            });
+            highScores.sort((a, b) => b.score - a.score);
+            highScores.splice(10); // Keep top 10
+            localStorage.setItem('dotHunterHighScores', JSON.stringify(highScores));
+
+            // Show game over
+            setTimeout(() => {
+                alert(`🎯 ゲームオーバー！\n\nスコア: ${score}\n最高コンボ: ${combo}`);
+            }, 100);
+        }
+
+        function showHighScores() {
+            if (highScores.length === 0) {
+                alert('まだハイスコアがありません。ゲームをプレイしてください！');
+                return;
+            }
+
+            let message = '🏆 ハイスコア TOP 10\n\n';
+            highScores.forEach((entry, index) => {
+                const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '  ';
+                message += `${medal} ${entry.score}点 (${entry.date})\n`;
+            });
+
+            alert(message);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Event listeners
+        canvas.addEventListener('click', handleClick);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleClick(e);
+        });
+
+        window.addEventListener('resize', () => {
+            resize();
+            if (!gameRunning) {
+                ctx.clearRect(0, 0, width, height);
+            }
+        });
+
+        // Initialize
+        resize();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('スタートボタンを押してゲーム開始！', width / 2, height / 2);
+    </script>
+</body>
+</html>

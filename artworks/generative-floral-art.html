@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generative Floral Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 1200px;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(255, 100, 200, 0.5);
+        }
+
+        .info {
+            color: #888;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+
+        #canvas {
+            border: 2px solid rgba(255, 100, 200, 0.3);
+            border-radius: 10px;
+            box-shadow: 0 0 40px rgba(255, 100, 200, 0.2);
+            cursor: grab;
+            max-width: 100%;
+            touch-action: none;
+        }
+
+        #canvas:active {
+            cursor: grabbing;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #ff64c8 0%, #64b5ff 100%);
+            border: none;
+            border-radius: 25px;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 100, 200, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 100, 200, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            z-index: 1000;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.2rem;
+            }
+
+            .info {
+                font-size: 0.8rem;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 0.9rem;
+            }
+
+            .fullscreen-btn {
+                width: 45px;
+                height: 45px;
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <div class="container">
+        <h1>🌸 Generative Floral Art</h1>
+        <p class="info">ドラッグして回転・ズーム | ホイールでズーム | ボタンで新しい花を生成</p>
+        <canvas id="canvas"></canvas>
+        <div class="controls">
+            <button onclick="generateFlower()">🌸 新しい花</button>
+            <button onclick="changeColorPalette()">🎨 色を変更</button>
+            <button onclick="toggleAnimation()">▶️ アニメーション</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let scale = 1;
+        let offsetX = 0, offsetY = 0;
+        let rotation = 0;
+        let isDragging = false;
+        let lastX, lastY;
+        let isAnimating = true;
+        let animationFrame;
+
+        const colorPalettes = [
+            { bg: '#0a0a0f', colors: ['#ff64c8', '#64b5ff', '#c864ff', '#64ffc8', '#ffc864'] },
+            { bg: '#0f0a0a', colors: ['#ff6464', '#64ff64', '#6464ff', '#ffff64', '#ff64ff'] },
+            { bg: '#0a0f0a', colors: ['#64ffc8', '#ffc864', '#c864ff', '#64b5ff', '#ff64c8'] },
+            { bg: '#050510', colors: ['#a855f7', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'] },
+        ];
+        let currentPalette = 0;
+
+        let flowerParams = {
+            petals: 8,
+            layers: 5,
+            spread: 1.2,
+            curvature: 0.5,
+            twist: 0.3
+        };
+
+        function resize() {
+            const container = document.querySelector('.container');
+            const maxWidth = Math.min(window.innerWidth - 40, 1000);
+            const maxHeight = Math.min(window.innerHeight - 250, 800);
+
+            width = maxWidth;
+            height = maxHeight;
+
+            canvas.width = width;
+            canvas.height = height;
+
+            offsetX = width / 2;
+            offsetY = height / 2;
+
+            draw();
+        }
+
+        function generateFlower() {
+            flowerParams.petals = Math.floor(Math.random() * 8) + 5;
+            flowerParams.layers = Math.floor(Math.random() * 4) + 4;
+            flowerParams.spread = Math.random() * 1.5 + 0.5;
+            flowerParams.curvature = Math.random() * 1 + 0.2;
+            flowerParams.twist = Math.random() * 0.6 + 0.1;
+            draw();
+        }
+
+        function changeColorPalette() {
+            currentPalette = (currentPalette + 1) % colorPalettes.length;
+            document.body.style.background = colorPalettes[currentPalette].bg;
+            draw();
+        }
+
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+            if (isAnimating) {
+                animate();
+            }
+        }
+
+        function drawFlower(x, y, size, params, layerIndex) {
+            const { petals, spread, curvature, twist } = params;
+            const palette = colorPalettes[currentPalette].colors;
+
+            for (let i = 0; i < petals; i++) {
+                const angle = (i / petals) * Math.PI * 2 + layerIndex * twist;
+                const nextAngle = ((i + 1) / petals) * Math.PI * 2 + layerIndex * twist;
+
+                ctx.beginPath();
+
+                const baseSize = size * (1 - layerIndex * 0.15);
+                const spreadFactor = 1 + layerIndex * spread * 0.2;
+
+                for (let t = 0; t <= 1; t += 0.02) {
+                    const currentAngle = angle + (nextAngle - angle) * t;
+                    const radius = baseSize * spreadFactor * Math.sin(t * Math.PI);
+                    const curveOffset = curvature * size * Math.sin(t * Math.PI * 2) * 0.3;
+
+                    const px = x + Math.cos(currentAngle) * (radius + curveOffset);
+                    const py = y + Math.sin(currentAngle) * (radius + curveOffset);
+
+                    if (t === 0) {
+                        ctx.moveTo(px, py);
+                    } else {
+                        ctx.lineTo(px, py);
+                    }
+                }
+
+                ctx.closePath();
+
+                const colorIndex = (layerIndex + i) % palette.length;
+                const alpha = 0.7 - layerIndex * 0.1;
+                ctx.fillStyle = palette[colorIndex] + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+                ctx.strokeStyle = palette[colorIndex];
+                ctx.lineWidth = 1;
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            // Center decoration
+            if (layerIndex === 0) {
+                ctx.beginPath();
+                ctx.arc(x, y, size * 0.15, 0, Math.PI * 2);
+                ctx.fillStyle = palette[2] + 'cc';
+                ctx.fill();
+            }
+        }
+
+        function draw() {
+            const palette = colorPalettes[currentPalette];
+            ctx.fillStyle = palette.bg;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.rotate(rotation);
+            ctx.scale(scale, scale);
+
+            const baseSize = Math.min(width, height) * 0.35;
+
+            for (let layer = 0; layer < flowerParams.layers; layer++) {
+                drawFlower(0, 0, baseSize, flowerParams, layer);
+            }
+
+            ctx.restore();
+        }
+
+        let time = 0;
+        function animate() {
+            if (!isAnimating) return;
+
+            time += 0.01;
+            rotation = Math.sin(time * 0.5) * 0.2;
+            flowerParams.twist += Math.sin(time * 0.3) * 0.001;
+            draw();
+
+            animationFrame = requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            lastX = e.clientX;
+            lastY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+
+            const dx = e.clientX - lastX;
+            const dy = e.clientY - lastY;
+
+            offsetX += dx;
+            offsetY += dy;
+
+            lastX = e.clientX;
+            lastY = e.clientY;
+
+            draw();
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.95 : 1.05;
+            scale *= delta;
+            scale = Math.max(0.2, Math.min(5, scale));
+            draw();
+        });
+
+        // Touch support
+        let touchStartX, touchStartY, touchStartDistance;
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1) {
+                isDragging = true;
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                touchStartDistance = Math.hypot(
+                    e.touches[1].clientX - e.touches[0].clientX,
+                    e.touches[1].clientY - e.touches[0].clientY
+                );
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1 && isDragging) {
+                const dx = e.touches[0].clientX - touchStartX;
+                const dy = e.touches[0].clientY - touchStartY;
+
+                offsetX += dx;
+                offsetY += dy;
+
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+
+                draw();
+            } else if (e.touches.length === 2) {
+                const distance = Math.hypot(
+                    e.touches[1].clientX - e.touches[0].clientX,
+                    e.touches[1].clientY - e.touches[0].clientY
+                );
+                const delta = distance / touchStartDistance;
+                scale *= delta;
+                scale = Math.max(0.2, Math.min(5, scale));
+                touchStartDistance = distance;
+                draw();
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        window.addEventListener('resize', resize);
+
+        // Initialize
+        resize();
+        generateFlower();
+        animate();
+    </script>
+</body>
+</html>
