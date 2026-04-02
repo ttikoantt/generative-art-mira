@@ -3,59 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flow Field Particles</title>
+    <title>Flow Field Particles - Mira's Generative Art</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
+
         body {
-            background: #0a0a0f;
+            background: #000;
             overflow: hidden;
             font-family: 'Courier New', monospace;
         }
+
         canvas {
             display: block;
-            position: fixed;
-            top: 0;
-            left: 0;
         }
-        .info {
+
+        .controls {
             position: fixed;
             bottom: 20px;
             left: 20px;
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 12px;
             z-index: 100;
-            pointer-events: none;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
+
+        .controls button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            border-radius: 4px;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
         .fullscreen-btn {
             position: fixed;
             top: 20px;
             right: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: rgba(255, 255, 255, 0.8);
-            padding: 10px 20px;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.3s;
             z-index: 100;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            border-radius: 4px;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
         }
+
         .fullscreen-btn:hover {
             background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            color: rgba(255, 255, 255, 0.6);
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                bottom: 10px;
+                left: 10px;
+                right: 10px;
+            }
+
+            .controls button {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+
+            .info {
+                font-size: 10px;
+            }
         }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
+
     <div class="info">
-        <div>Flow Field Particles</div>
-        <div>Move/touch to influence particles</div>
+        Flow Field Particles #859<br>
+        Particles: <span id="particleCount">2000</span>
     </div>
-    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <div class="controls">
+        <button onclick="reset()">リセット</button>
+        <button onclick="toggleTrails()">トレイル</button>
+        <button onclick="changeColorScheme()">色変更</button>
+    </div>
 
     <script>
         const canvas = document.getElementById('canvas');
@@ -64,53 +130,76 @@
         let width, height;
         let particles = [];
         let flowField = [];
-        let rows, cols;
-        const scale = 20;
-        let mouseX = 0, mouseY = 0;
-        let mouseInfluence = 0;
+        let cols, rows;
+        let scale = 20;
+        let time = 0;
+        let showTrails = true;
+        let colorScheme = 0;
 
-        // Perlin-like noise (simplified)
-        class SimpleNoise {
-            constructor() {
-                this.perm = [];
-                for (let i = 0; i < 512; i++) {
-                    this.perm[i] = Math.floor(Math.random() * 256);
+        const colorSchemes = [
+            // Rainbow
+            (t) => {
+                const r = Math.sin(t * 0.3) * 127 + 128;
+                const g = Math.sin(t * 0.3 + 2) * 127 + 128;
+                const b = Math.sin(t * 0.3 + 4) * 127 + 128;
+                return `rgb(${r}, ${g}, ${b})`;
+            },
+            // Ocean
+            (t) => {
+                const r = Math.sin(t * 0.2) * 50;
+                const g = Math.sin(t * 0.2 + 1) * 100 + 100;
+                const b = Math.sin(t * 0.2 + 2) * 55 + 200;
+                return `rgb(${r}, ${g}, ${b})`;
+            },
+            // Sunset
+            (t) => {
+                const r = Math.sin(t * 0.25) * 55 + 200;
+                const g = Math.sin(t * 0.25 + 1.5) * 80 + 50;
+                const b = Math.sin(t * 0.25 + 3) * 50 + 50;
+                return `rgb(${r}, ${g}, ${b})`;
+            },
+            // Neon
+            (t) => {
+                const r = Math.sin(t * 0.4) * 127 + 128;
+                const g = Math.sin(t * 0.4 + 2.094) * 127 + 128;
+                const b = Math.sin(t * 0.4 + 4.188) * 127 + 128;
+                return `rgb(${r}, ${g}, ${b})`;
+            },
+            // Fire
+            (t) => {
+                const r = Math.sin(t * 0.3) * 55 + 200;
+                const g = Math.sin(t * 0.3 + 1) * 100;
+                const b = Math.sin(t * 0.3 + 2) * 50;
+                return `rgb(${r}, ${g}, ${b})`;
+            }
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.ceil(width / scale);
+            rows = Math.ceil(height / scale);
+            initFlowField();
+        }
+
+        function initFlowField() {
+            flowField = [];
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    flowField.push(0);
                 }
-            }
-
-            fade(t) {
-                return t * t * t * (t * (t * 6 - 15) + 10);
-            }
-
-            lerp(a, b, t) {
-                return a + t * (b - a);
-            }
-
-            grad(hash, x, y) {
-                const h = hash & 3;
-                const u = h < 2 ? x : y;
-                const v = h < 2 ? y : x;
-                return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
-            }
-
-            noise(x, y) {
-                const X = Math.floor(x) & 255;
-                const Y = Math.floor(y) & 255;
-                x -= Math.floor(x);
-                y -= Math.floor(y);
-                const u = this.fade(x);
-                const v = this.fade(y);
-                const A = this.perm[X] + Y;
-                const B = this.perm[X + 1] + Y;
-                return this.lerp(
-                    this.lerp(this.grad(this.perm[A], x, y), this.grad(this.perm[B], x - 1, y), u),
-                    this.lerp(this.grad(this.perm[A + 1], x, y - 1), this.grad(this.perm[B + 1], x - 1, y - 1), u),
-                    v
-                );
             }
         }
 
-        const noise = new SimpleNoise();
+        function updateFlowField() {
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const index = x + y * cols;
+                    const angle = Math.cos(x * 0.1) + Math.sin(y * 0.1) + time * 0.5;
+                    flowField[index] = angle;
+                }
+            }
+        }
 
         class Particle {
             constructor() {
@@ -122,9 +211,9 @@
                 this.y = Math.random() * height;
                 this.vx = 0;
                 this.vy = 0;
-                this.life = 1;
-                this.decay = 0.002 + Math.random() * 0.003;
-                this.baseHue = Math.random() * 60 + 180; // Cyan to purple
+                this.life = Math.random() * 200 + 100;
+                this.maxLife = this.life;
+                this.hue = Math.random() * 360;
             }
 
             update() {
@@ -134,139 +223,139 @@
 
                 if (index >= 0 && index < flowField.length) {
                     const angle = flowField[index];
-
-                    // Mouse influence
-                    const dx = this.x - mouseX;
-                    const dy = this.y - mouseY;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-
-                    if (dist < 150 && mouseInfluence > 0) {
-                        const influence = (1 - dist / 150) * mouseInfluence * 0.5;
-                        this.vx += Math.cos(Math.atan2(dy, dx)) * influence;
-                        this.vy += Math.sin(Math.atan2(dy, dx)) * influence;
-                    }
-
-                    // Flow field influence
                     this.vx += Math.cos(angle) * 0.1;
                     this.vy += Math.sin(angle) * 0.1;
                 }
 
-                // Speed limit
-                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                if (speed > 3) {
-                    this.vx = (this.vx / speed) * 3;
-                    this.vy = (this.vy / speed) * 3;
-                }
-
-                this.x += this.vx;
-                this.y += this.vy;
-                this.life -= this.decay;
-
-                // Friction
                 this.vx *= 0.99;
                 this.vy *= 0.99;
 
-                // Wrap around edges
-                if (this.x < 0) this.x = width;
-                if (this.x > width) this.x = 0;
-                if (this.y < 0) this.y = height;
-                if (this.y > height) this.y = 0;
+                this.x += this.vx;
+                this.y += this.vy;
 
-                if (this.life <= 0) {
+                this.life--;
+
+                if (this.life <= 0 ||
+                    this.x < 0 || this.x > width ||
+                    this.y < 0 || this.y > height) {
                     this.reset();
                 }
             }
 
             draw() {
+                const alpha = this.life / this.maxLife;
                 const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                const hue = (this.baseHue + speed * 30) % 360;
-                const alpha = this.life * 0.8;
+                const color = colorSchemes[colorScheme](time + this.hue * 0.1);
 
+                ctx.save();
+                ctx.globalAlpha = alpha * 0.6;
+                ctx.fillStyle = color;
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, 1.5 + speed * 0.5, 0, Math.PI * 2);
-                ctx.fillStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
+                ctx.arc(this.x, this.y, Math.min(speed * 0.5 + 1, 3), 0, Math.PI * 2);
                 ctx.fill();
-
-                // Trail
-                ctx.beginPath();
-                ctx.moveTo(this.x, this.y);
-                ctx.lineTo(this.x - this.vx * 3, this.y - this.vy * 3);
-                ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${alpha * 0.5})`;
-                ctx.lineWidth = 1;
-                ctx.stroke();
+                ctx.restore();
             }
         }
 
-        function init() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-
-            cols = Math.floor(width / scale) + 1;
-            rows = Math.floor(height / scale) + 1;
-
-            flowField = [];
-            for (let y = 0; y < rows; y++) {
-                for (let x = 0; x < cols; x++) {
-                    const angle = noise.noise(x * 0.1, y * 0.1) * Math.PI * 4;
-                    flowField.push(angle);
-                }
-            }
-
+        function initParticles() {
             particles = [];
-            for (let i = 0; i < 500; i++) {
+            const numParticles = Math.min(2000, (width * height) / 500);
+            for (let i = 0; i < numParticles; i++) {
                 particles.push(new Particle());
             }
+            document.getElementById('particleCount').textContent = numParticles;
         }
 
         function animate() {
-            // Fade effect
-            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
-            ctx.fillRect(0, 0, width, height);
+            if (showTrails) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                ctx.fillRect(0, 0, width, height);
+            } else {
+                ctx.clearRect(0, 0, width, height);
+            }
+
+            updateFlowField();
 
             particles.forEach(p => {
                 p.update();
                 p.draw();
             });
 
-            mouseInfluence *= 0.95;
-
+            time += 0.01;
             requestAnimationFrame(animate);
         }
 
+        function reset() {
+            time = 0;
+            initParticles();
+            ctx.clearRect(0, 0, width, height);
+        }
+
+        function toggleTrails() {
+            showTrails = !showTrails;
+        }
+
+        function changeColorScheme() {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+        }
+
         function toggleFullscreen() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
-            } else {
+            if (document.fullscreenElement) {
                 document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
             }
         }
 
-        // Event listeners
-        window.addEventListener('resize', () => {
-            init();
-        });
+        // Mouse interaction
+        let mouseX = -1000, mouseY = -1000;
 
         canvas.addEventListener('mousemove', (e) => {
             mouseX = e.clientX;
             mouseY = e.clientY;
-            mouseInfluence = Math.min(mouseInfluence + 0.1, 1);
+
+            // Add turbulence around mouse
+            const col = Math.floor(mouseX / scale);
+            const row = Math.floor(mouseY / scale);
+
+            for (let dy = -2; dy <= 2; dy++) {
+                for (let dx = -2; dx <= 2; dx++) {
+                    const x = col + dx;
+                    const y = row + dy;
+                    if (x >= 0 && x < cols && y >= 0 && y < rows) {
+                        const index = x + y * cols;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        flowField[index] += (Math.random() - 0.5) * (3 - dist);
+                    }
+                }
+            }
         });
 
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            mouseX = e.touches[0].clientX;
-            mouseY = e.touches[0].clientY;
-            mouseInfluence = Math.min(mouseInfluence + 0.1, 1);
-        });
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
 
-        canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            mouseX = e.touches[0].clientX;
-            mouseY = e.touches[0].clientY;
-            mouseInfluence = 1;
-        });
+            const col = Math.floor(mouseX / scale);
+            const row = Math.floor(mouseY / scale);
 
-        init();
+            for (let dy = -2; dy <= 2; dy++) {
+                for (let dx = -2; dx <= 2; dx++) {
+                    const x = col + dx;
+                    const y = row + dy;
+                    if (x >= 0 && x < cols && y >= 0 && y < rows) {
+                        const index = x + y * cols;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        flowField[index] += (Math.random() - 0.5) * (3 - dist);
+                    }
+                }
+            }
+        }, { passive: false });
+
+        window.addEventListener('resize', resize);
+        resize();
+        initParticles();
         animate();
     </script>
 </body>
