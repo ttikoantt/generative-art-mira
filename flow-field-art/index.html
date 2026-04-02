@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flow Field Art - Mira</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Interactive Flow Field Art</title>
     <style>
         * {
             margin: 0;
@@ -13,175 +13,140 @@
 
         body {
             background: #0a0a0f;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
 
-        .container {
-            text-align: center;
-            width: 100%;
-            max-width: 1200px;
-            padding: 20px;
-        }
-
-        h1 {
-            color: #fff;
-            margin-bottom: 10px;
-            font-size: 2em;
-        }
-
-        .subtitle {
-            color: #888;
-            margin-bottom: 20px;
-            font-size: 0.9em;
-        }
-
-        #canvas {
-            border: 2px solid #333;
-            border-radius: 10px;
-            background: #000;
-            max-width: 100%;
-            cursor: pointer;
+        canvas {
+            display: block;
+            touch-action: none;
         }
 
         .controls {
-            margin-top: 20px;
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             display: flex;
             gap: 10px;
-            justify-content: center;
-            flex-wrap: wrap;
+            z-index: 100;
         }
 
-        button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
+        .btn {
             padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
             border-radius: 25px;
             cursor: pointer;
             font-size: 14px;
-            font-weight: bold;
-            transition: transform 0.2s, box-shadow 0.2s;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
         }
 
-        button:hover {
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
             transform: scale(1.05);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
         }
 
-        button:active {
-            transform: scale(0.98);
-        }
-
-        .info {
-            color: #666;
-            margin-top: 15px;
-            font-size: 0.85em;
+        .btn:active {
+            transform: scale(0.95);
         }
 
         .fullscreen-btn {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            z-index: 100;
         }
 
         @media (max-width: 768px) {
-            h1 {
-                font-size: 1.5em;
-            }
-
             .controls {
-                flex-direction: column;
-                align-items: center;
+                bottom: 15px;
+                flex-wrap: wrap;
+                justify-content: center;
             }
 
-            button {
-                width: 100%;
-                max-width: 250px;
+            .btn {
+                padding: 10px 20px;
+                font-size: 13px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🌊 Flow Field Art</h1>
-        <p class="subtitle">クリックで新しいフローを生成</p>
+    <canvas id="canvas"></canvas>
 
-        <canvas id="canvas" width="900" height="600"></canvas>
-
-        <div class="controls">
-            <button onclick="regenerate()">🎨 新しいフロー</button>
-            <button onclick="changeColorScheme()">🎨 色スキーム変更</button>
-            <button class="fullscreen-btn" onclick="toggleFullscreen()">📺 全画面</button>
-        </div>
-
-        <p class="info">✨ パーティクルがノイズフィールドに沿って流れる</p>
+    <div class="info">
+        Flow Field Art - マウス/タッチで操作
     </div>
+
+    <div class="controls">
+        <button class="btn" onclick="resetParticles()">リセット</button>
+        <button class="btn" onclick="changeColors()">色変更</button>
+        <button class="btn" onclick="toggleTrail()">トレール</button>
+    </div>
+
+    <button class="btn fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
+        let width, height;
         let particles = [];
-        let flowField = [];
-        let rows, cols;
-        const resolution = 10;
-        let zOff = 0;
+        let flowField;
+        let cols, rows;
+        const scale = 20;
+        let mouse = { x: 0, y: 0, active: false };
+        let showTrail = true;
         let colorScheme = 0;
 
         const colorSchemes = [
-            // Rainbow flow
-            () => `hsl(${Math.random() * 360}, 70%, 60%)`,
-            // Blue to purple
-            () => `hsl(${220 + Math.random() * 60}, 70%, ${50 + Math.random() * 30}%)`,
-            // Fire colors
-            () => `hsl(${Math.random() * 60}, 100%, ${50 + Math.random() * 30}%)`,
-            // Green to teal
-            () => `hsl(${120 + Math.random() * 60}, 70%, ${40 + Math.random() * 40}%)`
+            ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff'],
+            ['#a29bfe', '#fd79a8', '#fdcb6e', '#6c5ce7', '#00b894'],
+            ['#00cec9', '#fab1a0', '#ffeaa7', '#dfe6e9', '#74b9ff'],
+            ['#e17055', '#00b894', '#0984e3', '#6c5ce7', '#fdcb6e'],
+            ['#ff7675', '#fd79a8', '#a29bfe', '#74b9ff', '#55efc4']
         ];
 
-        function resizeCanvas() {
-            const container = document.querySelector('.container');
-            const maxWidth = Math.min(900, container.clientWidth - 40);
-            const ratio = 600 / 900;
-
-            canvas.width = maxWidth;
-            canvas.height = maxWidth * ratio;
-
-            init();
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.floor(width / scale);
+            rows = Math.floor(height / scale);
+            initFlowField();
         }
 
-        function init() {
-            particles = [];
-            flowField = [];
-            zOff = 0;
-
-            cols = Math.floor(canvas.width / resolution);
-            rows = Math.floor(canvas.height / resolution);
-
-            // Create flow field
+        function initFlowField() {
+            flowField = new Array(cols * rows);
+            let yoff = 0;
             for (let y = 0; y < rows; y++) {
+                let xoff = 0;
                 for (let x = 0; x < cols; x++) {
                     const index = x + y * cols;
-                    const angle = noise(x / 10, y / 10, zOff) * Math.PI * 4;
+                    const angle = Math.sin(xoff) * Math.cos(yoff) * Math.PI * 2;
                     flowField[index] = angle;
+                    xoff += 0.1;
                 }
+                yoff += 0.1;
             }
-
-            // Create particles
-            const particleCount = 2000;
-            for (let i = 0; i < particleCount; i++) {
-                particles.push(new Particle());
-            }
-        }
-
-        function noise(x, y, z) {
-            // Simple pseudo-random noise
-            const n = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
-            return (n - Math.floor(n)) * 2 - 1;
         }
 
         class Particle {
@@ -190,124 +155,148 @@
             }
 
             reset() {
-                this.x = Math.random() * canvas.width;
-                this.y = Math.random() * canvas.height;
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
                 this.vx = 0;
                 this.vy = 0;
-                this.history = [];
-                this.maxHistory = 5;
-                this.color = colorSchemes[colorScheme]();
-                this.speed = 1 + Math.random();
+                this.speed = Math.random() * 2 + 1;
+                this.color = colorSchemes[colorScheme][Math.floor(Math.random() * colorSchemes[colorScheme].length)];
+                this.size = Math.random() * 2 + 1;
+                this.alpha = Math.random() * 0.5 + 0.5;
             }
 
             update() {
-                const x = Math.floor(this.x / resolution);
-                const y = Math.floor(this.y / resolution);
+                const x = Math.floor(this.x / scale);
+                const y = Math.floor(this.y / scale);
                 const index = x + y * cols;
 
                 if (index >= 0 && index < flowField.length) {
-                    const angle = flowField[index];
-                    this.vx += Math.cos(angle) * 0.1;
-                    this.vy += Math.sin(angle) * 0.1;
-                }
+                    let angle = flowField[index];
 
-                // Limit speed
-                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                if (speed > this.speed * 2) {
-                    this.vx = (this.vx / speed) * this.speed * 2;
-                    this.vy = (this.vy / speed) * this.speed * 2;
+                    // マウスの影響
+                    if (mouse.active) {
+                        const dx = mouse.x - this.x;
+                        const dy = mouse.y - this.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < 200) {
+                            const mouseAngle = Math.atan2(dy, dx);
+                            const force = (200 - dist) / 200;
+                            angle = angle * (1 - force) + mouseAngle * force;
+                        }
+                    }
+
+                    this.vx += Math.cos(angle) * 0.5;
+                    this.vy += Math.sin(angle) * 0.5;
+
+                    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                    if (speed > this.speed) {
+                        this.vx = (this.vx / speed) * this.speed;
+                        this.vy = (this.vy / speed) * this.speed;
+                    }
                 }
 
                 this.x += this.vx;
                 this.y += this.vy;
 
-                // Store history
-                this.history.push({ x: this.x, y: this.y });
-                if (this.history.length > this.maxHistory) {
-                    this.history.shift();
-                }
-
-                // Reset if out of bounds
-                if (this.x < 0 || this.x > canvas.width ||
-                    this.y < 0 || this.y > canvas.height) {
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
                     this.reset();
                 }
             }
 
             draw() {
-                if (this.history.length < 2) return;
-
                 ctx.beginPath();
-                ctx.moveTo(this.history[0].x, this.history[0].y);
-
-                for (let i = 1; i < this.history.length; i++) {
-                    ctx.lineTo(this.history[i].x, this.history[i].y);
-                }
-
-                ctx.strokeStyle = this.color;
-                ctx.lineWidth = 1;
-                ctx.globalAlpha = 0.6;
-                ctx.stroke();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.alpha;
+                ctx.fill();
                 ctx.globalAlpha = 1;
             }
         }
 
-        function animate() {
-            // Fade effect
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            particles.forEach(particle => {
-                particle.update();
-                particle.draw();
-            });
-
-            zOff += 0.01;
-
-            if (zOff > 2) {
-                // Regenerate flow field periodically
-                for (let y = 0; y < rows; y++) {
-                    for (let x = 0; x < cols; x++) {
-                        const index = x + y * cols;
-                        const angle = noise(x / 10, y / 10, zOff) * Math.PI * 4;
-                        flowField[index] = angle;
-                    }
-                }
+        function initParticles() {
+            particles = [];
+            const numParticles = Math.min(3000, Math.floor((width * height) / 500));
+            for (let i = 0; i < numParticles; i++) {
+                particles.push(new Particle());
             }
+        }
+
+        function resetParticles() {
+            initParticles();
+        }
+
+        function changeColors() {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+            particles.forEach(p => {
+                p.color = colorSchemes[colorScheme][Math.floor(Math.random() * colorSchemes[colorScheme].length)];
+            });
+        }
+
+        function toggleTrail() {
+            showTrail = !showTrail;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function animate() {
+            if (showTrail) {
+                ctx.fillStyle = 'rgba(10, 10, 15, 0.05)';
+                ctx.fillRect(0, 0, width, height);
+            } else {
+                ctx.clearRect(0, 0, width, height);
+            }
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
 
             requestAnimationFrame(animate);
         }
 
-        function regenerate() {
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            init();
-        }
+        // Event Listeners
+        window.addEventListener('resize', () => {
+            resize();
+            initParticles();
+        });
 
-        function changeColorScheme() {
-            colorScheme = (colorScheme + 1) % colorSchemes.length;
-            particles.forEach(p => {
-                p.color = colorSchemes[colorScheme]();
-            });
-        }
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
 
-        function toggleFullscreen() {
-            if (document.fullscreenElement) {
-                document.exitFullscreen();
-            } else {
-                canvas.requestFullscreen();
-            }
-        }
+        canvas.addEventListener('mouseleave', () => {
+            mouse.active = false;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.active = false;
+        });
 
         // Initialize
-        resizeCanvas();
+        resize();
+        initParticles();
         animate();
-
-        // Handle resize
-        window.addEventListener('resize', resizeCanvas);
-
-        // Click to regenerate
-        canvas.addEventListener('click', regenerate);
     </script>
 </body>
 </html>
