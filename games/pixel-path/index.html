@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Pixel Path - ピクセルパス</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: #1a1a2e;
+            overflow: hidden;
+            font-family: 'Press Start 2P', monospace;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .score {
+            color: #00ff88;
+            font-size: 24px;
+            text-shadow: 0 0 10px #00ff88;
+        }
+
+        .high-score {
+            color: #ff6b6b;
+            font-size: 14px;
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            display: none;
+            z-index: 20;
+        }
+
+        .game-over.active {
+            display: block;
+        }
+
+        .game-over h2 {
+            color: #ff6b6b;
+            font-size: 32px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px #ff6b6b;
+        }
+
+        .game-over p {
+            color: #ffffff;
+            font-size: 16px;
+            margin-bottom: 30px;
+        }
+
+        .restart-btn {
+            padding: 15px 40px;
+            background: linear-gradient(135deg, #00ff88, #00cc66);
+            border: none;
+            border-radius: 8px;
+            color: #1a1a2e;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            pointer-events: all;
+            transition: all 0.3s;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.8);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+            z-index: 10;
+            pointer-events: all;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(26, 26, 46, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 30;
+        }
+
+        .start-screen.hidden {
+            display: none;
+        }
+
+        .start-screen h1 {
+            color: #00ff88;
+            font-size: 36px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px #00ff88;
+            text-align: center;
+        }
+
+        .start-screen p {
+            color: #ffffff;
+            font-size: 14px;
+            margin-bottom: 40px;
+            text-align: center;
+            line-height: 1.8;
+        }
+
+        .start-btn {
+            padding: 20px 60px;
+            background: linear-gradient(135deg, #00ff88, #00cc66);
+            border: none;
+            border-radius: 8px;
+            color: #1a1a2e;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            pointer-events: all;
+            transition: all 0.3s;
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.5);
+        }
+
+        .start-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 50px rgba(0, 255, 136, 0.8);
+        }
+    </style>
+</head>
+<body>
+    <div class="start-screen" id="startScreen">
+        <h1>PIXEL PATH</h1>
+        <p>Tap or click to change direction<br>Avoid the obstacles!</p>
+        <button class="start-btn" onclick="startGame()">START</button>
+    </div>
+
+    <div class="ui">
+        <div class="score" id="score">0</div>
+        <div class="high-score" id="highScore">Best: 0</div>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <h2>GAME OVER</h2>
+        <p>Score: <span id="finalScore">0</span></p>
+        <button class="restart-btn" onclick="restartGame()">RETRY</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let gameRunning = false;
+        let score = 0;
+        let highScore = localStorage.getItem('pixelPathHighScore') || 0;
+        let animationId;
+
+        // Player
+        let player = {
+            x: 100,
+            y: 0,
+            size: 20,
+            speed: 5,
+            direction: 1, // 1 = right, -1 = left
+            color: '#00ff88'
+        };
+
+        // Obstacles
+        let obstacles = [];
+        let obstacleTimer = 0;
+        let obstacleInterval = 60;
+
+        // Particles
+        let particles = [];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            player.y = height / 2;
+        }
+
+        class Obstacle {
+            constructor() {
+                this.x = width + 50;
+                this.width = Math.random() * 30 + 20;
+                this.height = Math.random() * 80 + 40;
+                this.y = Math.random() * (height - this.height);
+                this.speed = Math.random() * 2 + 3;
+                this.color = `hsl(${Math.random() * 60 + 320}, 70%, 60%)`;
+                this.passed = false;
+            }
+
+            update() {
+                this.x -= this.speed;
+                return this.x > -this.width;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                ctx.shadowBlur = 0;
+
+                // Pixel effect
+                const pixelSize = 4;
+                for (let px = 0; px < this.width; px += pixelSize) {
+                    for (let py = 0; py < this.height; py += pixelSize) {
+                        if (Math.random() > 0.7) {
+                            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                            ctx.fillRect(this.x + px, this.y + py, pixelSize - 1, pixelSize - 1);
+                        }
+                    }
+                }
+            }
+
+            collidesWith(p) {
+                return p.x + p.size > this.x &&
+                       p.x < this.x + this.width &&
+                       p.y + p.size > this.y &&
+                       p.y < this.y + this.height;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.life = 1;
+                this.color = color;
+                this.size = Math.random() * 4 + 2;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 0.02;
+                return this.life > 0;
+            }
+
+            draw() {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function spawnParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function resetGame() {
+            player.x = 100;
+            player.y = height / 2;
+            player.direction = 1;
+            obstacles = [];
+            particles = [];
+            score = 0;
+            obstacleTimer = 0;
+            obstacleInterval = 60;
+            updateScore();
+        }
+
+        function startGame() {
+            document.getElementById('startScreen').classList.add('hidden');
+            gameRunning = true;
+            resetGame();
+            animate();
+        }
+
+        function restartGame() {
+            document.getElementById('gameOver').classList.remove('active');
+            gameRunning = true;
+            resetGame();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('pixelPathHighScore', highScore);
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('highScore').textContent = `Best: ${highScore}`;
+            document.getElementById('gameOver').classList.add('active');
+        }
+
+        function updateScore() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('highScore').textContent = `Best: ${highScore}`;
+        }
+
+        function changeDirection() {
+            player.direction *= -1;
+            spawnParticles(player.x, player.y, player.color, 5);
+        }
+
+        function animate() {
+            if (!gameRunning) return;
+
+            // Clear
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, width, height);
+
+            // Grid background
+            ctx.strokeStyle = 'rgba(0, 255, 136, 0.1)';
+            ctx.lineWidth = 1;
+            const gridSize = 30;
+            for (let x = 0; x < width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            // Update player
+            player.x += player.speed * player.direction;
+
+            // Player bounds
+            if (player.x < 50) {
+                player.x = 50;
+                player.direction = 1;
+            }
+            if (player.x > width - 50) {
+                player.x = width - 50;
+                player.direction = -1;
+            }
+
+            // Draw player
+            ctx.fillStyle = player.color;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = player.color;
+            ctx.fillRect(player.x, player.y, player.size, player.size);
+            ctx.shadowBlur = 0;
+
+            // Player trail
+            spawnParticles(player.x + player.size / 2, player.y + player.size / 2, player.color, 1);
+
+            // Spawn obstacles
+            obstacleTimer++;
+            if (obstacleTimer >= obstacleInterval) {
+                obstacleTimer = 0;
+                obstacles.push(new Obstacle());
+
+                // Increase difficulty
+                if (obstacleInterval > 30) {
+                    obstacleInterval -= 0.5;
+                }
+            }
+
+            // Update and draw obstacles
+            obstacles = obstacles.filter(obs => {
+                const alive = obs.update();
+                if (alive) {
+                    obs.draw();
+
+                    // Collision detection
+                    if (obs.collidesWith(player)) {
+                        spawnParticles(player.x, player.y, '#ff6b6b', 30);
+                        gameOver();
+                        return false;
+                    }
+
+                    // Score
+                    if (!obs.passed && obs.x + obs.width < player.x) {
+                        obs.passed = true;
+                        score++;
+                        updateScore();
+                    }
+                }
+                return alive;
+            });
+
+            // Update and draw particles
+            particles = particles.filter(p => {
+                const alive = p.update();
+                if (alive) {
+                    p.draw();
+                }
+                return alive;
+            });
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('click', changeDirection);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            changeDirection();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+                e.preventDefault();
+                if (gameRunning) {
+                    changeDirection();
+                }
+            }
+        });
+
+        // Initialize
+        resize();
+        document.getElementById('highScore').textContent = `Best: ${highScore}`;
+    </script>
+</body>
+</html>
