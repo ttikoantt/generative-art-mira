@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generative Texture Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 2rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+            text-align: center;
+        }
+
+        .subtitle {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .canvas-container {
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        canvas {
+            display: block;
+            border-radius: 20px;
+            cursor: crosshair;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.85rem;
+            margin-top: 15px;
+            text-align: center;
+            max-width: 500px;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 0.8rem;
+            }
+
+            .info {
+                font-size: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Generative Texture Art</h1>
+        <p class="subtitle">パーリンノイズで生成される有機的なテクスチャ</p>
+
+        <div class="canvas-container">
+            <canvas id="canvas" width="600" height="600"></canvas>
+        </div>
+
+        <div class="controls">
+            <button onclick="generateNewTexture()">✨ 新しいテクスチャ</button>
+            <button onclick="changePalette()">🎨 パレット変更</button>
+            <button onclick="toggleAnimation()">🔄 アニメーション</button>
+            <button onclick="downloadImage()">💾 保存</button>
+        </div>
+
+        <p class="info">
+            マウスを動かすとリアルタイムで変化します。クリックで新しいパターンを生成。
+        </p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width;
+        let height = canvas.height;
+        let animationId = null;
+        let isAnimating = false;
+        let time = 0;
+
+        // パーリンノイズの簡易実装
+        class PerlinNoise {
+            constructor() {
+                this.permutation = [];
+                for (let i = 0; i < 256; i++) {
+                    this.permutation[i] = Math.floor(Math.random() * 256);
+                }
+                this.p = [...this.permutation, ...this.permutation];
+            }
+
+            fade(t) {
+                return t * t * t * (t * (t * 6 - 15) + 10);
+            }
+
+            lerp(t, a, b) {
+                return a + t * (b - a);
+            }
+
+            grad(hash, x, y, z) {
+                const h = hash & 15;
+                const u = h < 8 ? x : y;
+                const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
+                return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+            }
+
+            noise(x, y, z) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+                const Z = Math.floor(z) & 255;
+
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+                z -= Math.floor(z);
+
+                const u = this.fade(x);
+                const v = this.fade(y);
+                const w = this.fade(z);
+
+                const A = this.p[X] + Y;
+                const AA = this.p[A] + Z;
+                const AB = this.p[A + 1] + Z;
+                const B = this.p[X + 1] + Y;
+                const BA = this.p[B] + Z;
+                const BB = this.p[B + 1] + Z;
+
+                return this.lerp(
+                    w,
+                    this.lerp(
+                        v,
+                        this.lerp(u, this.grad(this.p[AA], x, y, z), this.grad(this.p[BA], x - 1, y, z)),
+                        this.lerp(u, this.grad(this.p[AB], x, y - 1, z), this.grad(this.p[BB], x - 1, y - 1, z))
+                    ),
+                    this.lerp(
+                        v,
+                        this.lerp(u, this.grad(this.p[AA + 1], x, y, z - 1), this.grad(this.p[BA + 1], x - 1, y, z - 1)),
+                        this.lerp(u, this.grad(this.p[AB + 1], x, y - 1, z - 1), this.grad(this.p[BB + 1], x - 1, y - 1, z - 1))
+                    )
+                );
+            }
+        }
+
+        // カラーパレット
+        const palettes = [
+            // Ocean
+            [
+                { r: 0, g: 119, b: 182 },
+                { r: 0, g: 180, b: 216 },
+                { r: 144, g: 224, b: 239 },
+                { r: 202, g: 240, b: 248 }
+            ],
+            // Sunset
+            [
+                { r: 255, g: 94, b: 77 },
+                { r: 255, g: 149, b: 0 },
+                { r: 255, g: 204, b: 0 },
+                { r: 255, g: 245, b: 157 }
+            ],
+            // Forest
+            [
+                { r: 27, g: 94, b: 32 },
+                { r: 51, g: 160, b: 44 },
+                { r: 102, g: 187, b: 106 },
+                { r: 178, g: 235, b: 242 }
+            ],
+            // Aurora
+            [
+                { r: 46, g: 16, b: 101 },
+                { r: 92, g: 64, b: 151 },
+                { r: 134, g: 169, b: 183 },
+                { r: 230, g: 247, b: 255 }
+            ],
+            // Neon
+            [
+                { r: 255, g: 0, b: 128 },
+                { r: 128, g: 0, b: 255 },
+                { r: 0, g: 255, b: 255 },
+                { r: 255, g: 255, b: 0 }
+            ]
+        ];
+
+        let currentPalette = 0;
+        let perlin = new PerlinNoise();
+        let mouseX = 0.5;
+        let mouseY = 0.5;
+
+        function getColor(value) {
+            const palette = palettes[currentPalette];
+            const index = value * (palette.length - 1);
+            const i = Math.floor(index);
+            const t = index - i;
+
+            const c1 = palette[Math.min(i, palette.length - 1)];
+            const c2 = palette[Math.min(i + 1, palette.length - 1)];
+
+            const r = Math.round(c1.r + t * (c2.r - c1.r));
+            const g = Math.round(c1.g + t * (c2.g - c1.g));
+            const b = Math.round(c1.b + t * (c2.b - c1.b));
+
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        function generateTexture(offsetTime = 0) {
+            const imageData = ctx.createImageData(width, height);
+            const data = imageData.data;
+
+            const scale = 0.005;
+            const detail = 4;
+            const t = time + offsetTime;
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const nx = x * scale;
+                    const ny = y * scale;
+
+                    let value = 0;
+                    let amplitude = 1;
+                    let frequency = 1;
+                    let maxValue = 0;
+
+                    for (let o = 0; o < detail; o++) {
+                        value += perlin.noise(
+                            nx * frequency + t * 0.1,
+                            ny * frequency + t * 0.15,
+                            t * 0.05
+                        ) * amplitude;
+
+                        maxValue += amplitude;
+                        amplitude *= 0.5;
+                        frequency *= 2;
+                    }
+
+                    value = (value / maxValue + 1) / 2;
+
+                    // マウス位置に影響
+                    const dx = x - mouseX * width;
+                    const dy = y - mouseY * height;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const influence = Math.max(0, 1 - dist / 300);
+
+                    value = value * (1 - influence * 0.3) + perlin.noise(x * 0.01 + t, y * 0.01, t * 0.5) * influence * 0.3;
+
+                    const color = getColor(value);
+                    const rgb = color.match(/\d+/g);
+
+                    const idx = (y * width + x) * 4;
+                    data[idx] = parseInt(rgb[0]);
+                    data[idx + 1] = parseInt(rgb[1]);
+                    data[idx + 2] = parseInt(rgb[2]);
+                    data[idx + 3] = 255;
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function generateNewTexture() {
+            perlin = new PerlinNoise();
+            time += 1000;
+            generateTexture();
+        }
+
+        function changePalette() {
+            currentPalette = (currentPalette + 1) % palettes.length;
+            generateTexture();
+        }
+
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+            if (isAnimating) {
+                animate();
+            } else {
+                cancelAnimationFrame(animationId);
+            }
+        }
+
+        function animate() {
+            time += 0.5;
+            generateTexture();
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function downloadImage() {
+            const link = document.createElement('a');
+            link.download = `texture-art-${Date.now()}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = (e.clientX - rect.left) / rect.width;
+            mouseY = (e.clientY - rect.top) / rect.height;
+
+            if (!isAnimating) {
+                generateTexture();
+            }
+        });
+
+        canvas.addEventListener('click', () => {
+            generateNewTexture();
+        });
+
+        // 初期生成
+        generateTexture();
+    </script>
+</body>
+</html>
