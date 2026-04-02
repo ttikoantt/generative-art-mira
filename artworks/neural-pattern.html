@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Pattern | Mira's Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        #canvas {
+            border: 2px solid #00ffff;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+            cursor: pointer;
+        }
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #00ffff;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #00ffff;
+        }
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #00ffff;
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            font-size: 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .fullscreen-btn:hover {
+            background: #00cccc;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <div>🧠 Neural Pattern</div>
+        <div id="stats"></div>
+    </div>
+    <canvas id="canvas"></canvas>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvas size
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 150, 700);
+            canvas.width = size;
+            canvas.height = size;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Neural network nodes
+        class Node {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+                this.connections = [];
+                this.energy = 0;
+            }
+
+            update(time) {
+                this.pulsePhase += 0.02;
+                this.energy = Math.sin(this.pulsePhase) * 0.5 + 0.5;
+            }
+
+            draw() {
+                const size = 8 + this.energy * 6;
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, size
+                );
+                gradient.addColorStop(0, `rgba(0, 255, 255, ${0.8 + this.energy * 0.2})`);
+                gradient.addColorStop(0.5, `rgba(0, 200, 255, ${0.5 + this.energy * 0.3})`);
+                gradient.addColorStop(1, 'rgba(0, 100, 200, 0)');
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+
+        // Create neural network
+        const nodes = [];
+        const numNodes = 25;
+
+        // Create nodes in layers
+        for (let layer = 0; layer < 5; layer++) {
+            const nodesInLayer = Math.floor(numNodes / 5) + (layer === 2 ? 2 : 0);
+            const layerX = (canvas.width / 6) * (layer + 1);
+            
+            for (let i = 0; i < nodesInLayer; i++) {
+                const layerY = (canvas.height / (nodesInLayer + 1)) * (i + 1);
+                nodes.push(new Node(layerX, layerY));
+            }
+        }
+
+        // Connect nearby nodes
+        for (let i = 0; i < nodes.length; i++) {
+            for (let j = i + 1; j < nodes.length; j++) {
+                const dx = nodes[i].x - nodes[j].x;
+                const dy = nodes[i].y - nodes[j].y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < 180 && Math.random() > 0.5) {
+                    nodes[i].connections.push(nodes[j]);
+                }
+            }
+        }
+
+        // Signals traveling through connections
+        class Signal {
+            constructor(startNode, endNode) {
+                this.startNode = startNode;
+                this.endNode = endNode;
+                this.progress = 0;
+                this.speed = 0.02 + Math.random() * 0.02;
+            }
+
+            update() {
+                this.progress += this.speed;
+                return this.progress < 1;
+            }
+
+            draw() {
+                const x = this.startNode.x + (this.endNode.x - this.startNode.x) * this.progress;
+                const y = this.startNode.y + (this.endNode.y - this.startNode.y) * this.progress;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 0, ${1 - this.progress * 0.5})`;
+                ctx.fill();
+            }
+        }
+
+        let signals = [];
+        let time = 0;
+
+        // Animation loop
+        function animate() {
+            ctx.fillStyle = 'rgba(10, 10, 20, 0.15)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            time += 0.016;
+
+            // Draw connections
+            nodes.forEach(node => {
+                node.connections.forEach(other => {
+                    const dx = node.x - other.x;
+                    const dy = node.y - other.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    const alpha = (1 - dist / 180) * 0.3;
+                    ctx.beginPath();
+                    ctx.moveTo(node.x, node.y);
+                    ctx.lineTo(other.x, other.y);
+                    ctx.strokeStyle = `rgba(0, 150, 255, ${alpha})`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                });
+            });
+
+            // Update and draw nodes
+            nodes.forEach(node => {
+                node.update(time);
+                node.draw();
+            });
+
+            // Randomly create signals
+            if (Math.random() < 0.1 && nodes.length > 0) {
+                const randomNode = nodes[Math.floor(Math.random() * nodes.length)];
+                if (randomNode.connections.length > 0) {
+                    const targetNode = randomNode.connections[
+                        Math.floor(Math.random() * randomNode.connections.length)
+                    ];
+                    signals.push(new Signal(randomNode, targetNode));
+                }
+            }
+
+            // Update and draw signals
+            signals = signals.filter(signal => {
+                const alive = signal.update();
+                if (alive) signal.draw();
+                return alive;
+            });
+
+            // Update stats
+            document.getElementById('stats').innerHTML = `
+                Nodes: ${nodes.length}<br>
+                Signals: ${signals.length}<br>
+                Time: ${Math.floor(time)}s
+            `;
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        // Fullscreen toggle
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Regenerate on click
+        canvas.addEventListener('click', () => {
+            signals = [];
+        });
+    </script>
+</body>
+</html>
