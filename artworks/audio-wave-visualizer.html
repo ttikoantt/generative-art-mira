@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Wave Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #startBtn {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px 40px;
+            font-size: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            z-index: 100;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        #startBtn:hover {
+            transform: translate(-50%, -50%) scale(1.05);
+            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.5);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        #fullscreenBtn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            font-size: 14px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
+            cursor: pointer;
+            z-index: 100;
+            transition: background 0.3s;
+        }
+
+        #fullscreenBtn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <button id="startBtn">🎵 スタート</button>
+    <button id="fullscreenBtn" class="hidden">⛶ 全画面</button>
+    <canvas id="canvas"></canvas>
+    <div id="info" class="hidden">音声に反応してパーティクルが動きます</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const info = document.getElementById('info');
+
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let source;
+        let particles = [];
+        let isRunning = false;
+
+        // Canvasサイズ
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // パーティクルクラス
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.baseX = this.x;
+                this.baseY = this.y;
+                this.size = Math.random() * 3 + 1;
+                this.speedX = 0;
+                this.speedY = 0;
+                this.hue = Math.random() * 60 + 240; // 青～紫
+                this.life = 1;
+                this.decay = Math.random() * 0.01 + 0.005;
+            }
+
+            update(frequency) {
+                // 周波数に応じてパーティクルを動かす
+                const intensity = frequency / 255;
+                const angle = Math.random() * Math.PI * 2;
+                const force = intensity * 10;
+
+                this.speedX += Math.cos(angle) * force;
+                this.speedY += Math.sin(angle) * force;
+
+                // 摩擦
+                this.speedX *= 0.95;
+                this.speedY *= 0.95;
+
+                this.x += this.speedX;
+                this.y += this.speedY;
+
+                // 元の位置に戻る
+                this.x += (this.baseX - this.x) * 0.02;
+                this.y += (this.baseY - this.y) * 0.02;
+
+                // 色を変える
+                this.hue = (this.hue + intensity * 5) % 360;
+
+                // ライフを減らす
+                this.life -= this.decay;
+                if (this.life <= 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // パーティクルを初期化
+        function initParticles() {
+            particles = [];
+            const count = Math.min(300, (canvas.width * canvas.height) / 5000);
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        // アニメーション
+        function animate() {
+            // 背景をフェード
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 周波数データを取得
+            analyser.getByteFrequencyData(dataArray);
+
+            // 平均周波数を計算
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            const average = sum / dataArray.length;
+
+            // パーティクルを更新・描画
+            particles.forEach(particle => {
+                particle.update(average);
+                particle.draw();
+            });
+
+            // 中心の円
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 50 + average * 0.5;
+
+            ctx.save();
+            ctx.globalAlpha = 0.3;
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+            gradient.addColorStop(0, `hsl(${average * 2}, 100%, 60%)`);
+            gradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            requestAnimationFrame(animate);
+        }
+
+        // 音声を開始
+        async function startAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                initParticles();
+                animate();
+
+                startBtn.classList.add('hidden');
+                fullscreenBtn.classList.remove('hidden');
+                info.classList.remove('hidden');
+                isRunning = true;
+            } catch (err) {
+                alert('マイクのアクセスが許可されていません');
+                console.error(err);
+            }
+        }
+
+        // イベントリスナー
+        startBtn.addEventListener('click', startAudio);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // タッチでスタート
+        canvas.addEventListener('click', () => {
+            if (!isRunning) {
+                startAudio();
+            }
+        });
+    </script>
+</body>
+</html>
