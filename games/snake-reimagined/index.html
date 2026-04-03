@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Snake Reimagined - ネオンスネーク</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        .game-container {
+            position: relative;
+            width: min(90vw, 90vh);
+            aspect-ratio: 1;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border: 2px solid rgba(0, 255, 255, 0.3);
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.2);
+        }
+
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(10, 10, 15, 0.9);
+            border-radius: 10px;
+            transition: opacity 0.3s ease;
+        }
+
+        .ui-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .title {
+            font-size: clamp(24px, 5vw, 48px);
+            font-weight: 700;
+            color: #0ff;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .score {
+            font-size: clamp(18px, 4vw, 32px);
+            color: #f0f;
+            text-shadow: 0 0 15px rgba(255, 0, 255, 0.6);
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            background: transparent;
+            border: 2px solid #0ff;
+            border-radius: 30px;
+            color: #0ff;
+            font-size: clamp(14px, 3vw, 18px);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .btn:hover {
+            background: rgba(0, 255, 255, 0.1);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+            transform: scale(1.05);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .game-info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: clamp(12px, 2.5vw, 16px);
+            z-index: 10;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 30px;
+            color: #fff;
+            font-size: clamp(11px, 2vw, 14px);
+            font-weight: 600;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+
+        @media (max-width: 768px) {
+            .game-container {
+                width: 95vw;
+            }
+
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 15px;
+            }
+
+            .game-info {
+                top: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="canvas"></canvas>
+        <div class="game-info">
+            スコア: <span id="currentScore">0</span>
+        </div>
+        <button class="fullscreen-btn" id="fullscreenBtn">全画面</button>
+
+        <div class="ui-overlay" id="startOverlay">
+            <div class="title">Snake Reimagined</div>
+            <div class="score">最高スコア: <span id="highScore">0</span></div>
+            <button class="btn" id="startBtn">スタート</button>
+        </div>
+
+        <div class="ui-overlay hidden" id="gameOverOverlay">
+            <div class="title">Game Over</div>
+            <div class="score">スコア: <span id="finalScore">0</span></div>
+            <button class="btn" id="restartBtn">もう一度</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startOverlay = document.getElementById('startOverlay');
+        const gameOverOverlay = document.getElementById('gameOverOverlay');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const currentScoreEl = document.getElementById('currentScore');
+        const highScoreEl = document.getElementById('highScore');
+        const finalScoreEl = document.getElementById('finalScore');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        const GRID_SIZE = 20;
+        let canvasSize;
+
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            canvasSize = Math.floor(container.clientWidth / GRID_SIZE) * GRID_SIZE;
+            canvas.width = canvasSize;
+            canvas.height = canvasSize;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ゲーム状態
+        let snake = [];
+        let direction = { x: 1, y: 0 };
+        let nextDirection = { x: 1, y: 0 };
+        let food = null;
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('snakeHighScore')) || 0;
+        let gameLoop = null;
+        let gameSpeed = 150;
+
+        highScoreEl.textContent = highScore;
+
+        function initGame() {
+            const startX = Math.floor(canvasSize / GRID_SIZE / 2);
+            const startY = Math.floor(canvasSize / GRID_SIZE / 2);
+            snake = [
+                { x: startX, y: startY },
+                { x: startX - 1, y: startY },
+                { x: startX - 2, y: startY }
+            ];
+            direction = { x: 1, y: 0 };
+            nextDirection = { x: 1, y: 0 };
+            score = 0;
+            gameSpeed = 150;
+            currentScoreEl.textContent = score;
+            spawnFood();
+        }
+
+        function spawnFood() {
+            const gridCount = canvasSize / GRID_SIZE;
+            let newFood;
+            do {
+                newFood = {
+                    x: Math.floor(Math.random() * gridCount),
+                    y: Math.floor(Math.random() * gridCount)
+                };
+            } while (snake.some(seg => seg.x === newFood.x && seg.y === newFood.y));
+            food = newFood;
+        }
+
+        function update() {
+            direction = { ...nextDirection };
+
+            const head = {
+                x: snake[0].x + direction.x,
+                y: snake[0].y + direction.y
+            };
+
+            const gridCount = canvasSize / GRID_SIZE;
+
+            // 壁に当たったらゲームオーバー
+            if (head.x < 0 || head.x >= gridCount || head.y < 0 || head.y >= gridCount) {
+                gameOver();
+                return;
+            }
+
+            // 自分に当たったらゲームオーバー
+            if (snake.some(seg => seg.x === head.x && seg.y === head.y)) {
+                gameOver();
+                return;
+            }
+
+            snake.unshift(head);
+
+            // 食べ物を食べた
+            if (head.x === food.x && head.y === food.y) {
+                score += 10;
+                currentScoreEl.textContent = score;
+                spawnFood();
+
+                // スピードアップ
+                if (gameSpeed > 50) {
+                    gameSpeed -= 2;
+                    clearInterval(gameLoop);
+                    gameLoop = setInterval(gameStep, gameSpeed);
+                }
+            } else {
+                snake.pop();
+            }
+        }
+
+        function draw() {
+            // 背景
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, canvasSize, canvasSize);
+
+            // グリッド（薄く）
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= canvasSize; i += GRID_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, canvasSize);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(canvasSize, i);
+                ctx.stroke();
+            }
+
+            // 蛇を描画
+            snake.forEach((segment, index) => {
+                const hue = (180 + index * 5) % 360;
+                const lightness = 60 - (index * 0.5);
+                const alpha = 1 - (index * 0.02);
+
+                ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = `hsla(${hue}, 100%, ${lightness}%, ${alpha})`;
+                ctx.fillRect(
+                    segment.x * GRID_SIZE + 1,
+                    segment.y * GRID_SIZE + 1,
+                    GRID_SIZE - 2,
+                    GRID_SIZE - 2
+                );
+            });
+
+            // 食べ物を描画
+            ctx.shadowColor = '#f0f';
+            ctx.shadowBlur = 20;
+            ctx.fillStyle = '#f0f';
+            ctx.beginPath();
+            ctx.arc(
+                food.x * GRID_SIZE + GRID_SIZE / 2,
+                food.y * GRID_SIZE + GRID_SIZE / 2,
+                GRID_SIZE / 2 - 2,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+        }
+
+        function gameStep() {
+            update();
+            draw();
+        }
+
+        function startGame() {
+            startOverlay.classList.add('hidden');
+            gameOverOverlay.classList.add('hidden');
+            initGame();
+            draw();
+            gameLoop = setInterval(gameStep, gameSpeed);
+        }
+
+        function gameOver() {
+            clearInterval(gameLoop);
+            gameLoop = null;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('snakeHighScore', highScore);
+                highScoreEl.textContent = highScore;
+            }
+
+            finalScoreEl.textContent = score;
+            gameOverOverlay.classList.remove('hidden');
+        }
+
+        // キーボード操作
+        document.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    if (direction.y !== 1) {
+                        nextDirection = { x: 0, y: -1 };
+                    }
+                    e.preventDefault();
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    if (direction.y !== -1) {
+                        nextDirection = { x: 0, y: 1 };
+                    }
+                    e.preventDefault();
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    if (direction.x !== 1) {
+                        nextDirection = { x: -1, y: 0 };
+                    }
+                    e.preventDefault();
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    if (direction.x !== -1) {
+                        nextDirection = { x: 1, y: 0 };
+                    }
+                    e.preventDefault();
+                    break;
+            }
+        });
+
+        // タッチ操作（スワイプ）
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchEndX = 0;
+        let touchEndY = 0;
+
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            touchEndX = e.changedTouches[0].clientX;
+            touchEndY = e.changedTouches[0].clientY;
+            handleSwipe();
+        });
+
+        function handleSwipe() {
+            const deltaX = touchEndX - touchStartX;
+            const deltaY = touchEndY - touchStartY;
+            const minSwipe = 30;
+
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                if (deltaX > minSwipe && direction.x !== -1) {
+                    nextDirection = { x: 1, y: 0 };
+                } else if (deltaX < -minSwipe && direction.x !== 1) {
+                    nextDirection = { x: -1, y: 0 };
+                }
+            } else {
+                if (deltaY > minSwipe && direction.y !== -1) {
+                    nextDirection = { x: 0, y: 1 };
+                } else if (deltaY < -minSwipe && direction.y !== 1) {
+                    nextDirection = { x: 0, y: -1 };
+                }
+            }
+        }
+
+        // ボタンイベント
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        // 全画面切り替え
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // 初期描画
+        initGame();
+        draw();
+    </script>
+</body>
+</html>
