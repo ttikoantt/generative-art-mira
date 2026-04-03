@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>音に反応する色彩波紋アート | Audio Wave Ripples</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            z-index: 10;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin-bottom: 1rem;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            animation: titleGlow 3s ease-in-out infinite;
+        }
+
+        @keyframes titleGlow {
+            0%, 100% { text-shadow: 0 0 20px rgba(255, 255, 255, 0.5); }
+            50% { text-shadow: 0 0 40px rgba(255, 255, 255, 0.8), 0 0 60px rgba(138, 43, 226, 0.6); }
+        }
+
+        .start-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+            margin: 10px;
+        }
+
+        .start-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.6);
+        }
+
+        .start-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .info {
+            color: #aaa;
+            font-size: 0.9rem;
+            margin-top: 1rem;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        .volume-control {
+            margin-top: 1rem;
+            color: #fff;
+        }
+
+        .volume-control input[type="range"] {
+            width: 200px;
+            margin-left: 10px;
+            accent-color: #667eea;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">🔲 全画面</button>
+
+    <div class="container" id="container">
+        <h1>🎵 音に反応する色彩波紋</h1>
+        <button class="start-btn" id="startBtn">🎤 マイクを開始</button>
+        <p class="info">
+            音楽や声に合わせて美しい波紋が広がります。<br>
+            マイクの使用を許可してください。
+        </p>
+        <div class="volume-control hidden" id="volumeControl">
+            <label>感度: <input type="range" id="sensitivity" min="0.5" max="3" step="0.1" value="1.5"></label>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const container = document.getElementById('container');
+        const volumeControl = document.getElementById('volumeControl');
+        const sensitivitySlider = document.getElementById('sensitivity');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let dataArray;
+        let isRunning = false;
+        let ripples = [];
+        let hueOffset = 0;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        class Ripple {
+            constructor(x, y, volume) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = volume * 300 + 100;
+                this.alpha = 1;
+                this.hue = (hueOffset + Math.random() * 60) % 360;
+                this.speed = volume * 3 + 1;
+                this.thickness = volume * 3 + 1;
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.alpha = 1 - (this.radius / this.maxRadius);
+            }
+
+            draw(ctx) {
+                if (this.alpha <= 0) return;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${this.alpha})`;
+                ctx.lineWidth = this.thickness * this.alpha;
+                ctx.stroke();
+
+                // 内側の光るエフェクト
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 0.9, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue + 30}, 100%, 70%, ${this.alpha * 0.5})`;
+                ctx.lineWidth = this.thickness * 0.5 * this.alpha;
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.alpha <= 0;
+            }
+        }
+
+        async function startAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                microphone = audioContext.createMediaStreamSource(stream);
+
+                analyser.fftSize = 256;
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                microphone.connect(analyser);
+
+                isRunning = true;
+                container.classList.add('hidden');
+                volumeControl.classList.remove('hidden');
+
+                animate();
+            } catch (err) {
+                console.error('マイクへのアクセスに失敗しました:', err);
+                alert('マイクへのアクセスが必要です。ブラウザの設定を確認してください。');
+            }
+        }
+
+        function animate() {
+            if (!isRunning) return;
+
+            analyser.getByteFrequencyData(dataArray);
+
+            // 平均音量を計算
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            const average = sum / dataArray.length;
+            const normalizedVolume = (average / 255) * parseFloat(sensitivitySlider.value);
+
+            // 半透明の黒で上書きして残像効果
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 音量が一定以上なら新しい波紋を生成
+            if (normalizedVolume > 0.1) {
+                const x = canvas.width / 2 + (Math.random() - 0.5) * canvas.width * 0.6;
+                const y = canvas.height / 2 + (Math.random() - 0.5) * canvas.height * 0.6;
+                ripples.push(new Ripple(x, y, normalizedVolume));
+            }
+
+            // 色相をずらしていく
+            hueOffset += 0.5;
+
+            // 波紋を更新・描画
+            ripples = ripples.filter(ripple => {
+                ripple.update();
+                ripple.draw(ctx);
+                return !ripple.isDead();
+            });
+
+            // 中心の光るエフェクト
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            for (let i = 0; i < 3; i++) {
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 50 + i * 20 + normalizedVolume * 50, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${(hueOffset + i * 30) % 360}, 80%, 60%, ${0.3 - i * 0.1})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        startBtn.addEventListener('click', startAudio);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // タッチで波紋を生成
+        canvas.addEventListener('click', (e) => {
+            if (!isRunning) return;
+            ripples.push(new Ripple(e.clientX, e.clientY, 0.8));
+        });
+    </script>
+</body>
+</html>
