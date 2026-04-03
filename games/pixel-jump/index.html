@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Pixel Jump</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #1a1a2e;
+            overflow: hidden;
+            font-family: 'Press Start 2P', 'Courier New', monospace;
+            touch-action: none;
+        }
+        
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        
+        .game-ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #0f0;
+            font-size: 16px;
+            z-index: 100;
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+        }
+        
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 255, 0, 0.2);
+            color: #0f0;
+            border: 2px solid #0f0;
+            padding: 12px 24px;
+            cursor: pointer;
+            font-family: 'Press Start 2P', 'Courier New', monospace;
+            font-size: 12px;
+            z-index: 100;
+            transition: all 0.3s;
+            border-radius: 4px;
+        }
+        
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 0, 0.4);
+            transform: scale(1.05);
+        }
+        
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #f00;
+            font-size: 32px;
+            z-index: 100;
+            text-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
+            display: none;
+        }
+        
+        .game-over.show {
+            display: block;
+        }
+        
+        .game-over p {
+            font-size: 16px;
+            margin-top: 20px;
+            color: #fff;
+        }
+        
+        @media (max-width: 768px) {
+            .game-ui {
+                font-size: 12px;
+                top: 10px;
+                left: 10px;
+            }
+            
+            .fullscreen-btn {
+                padding: 8px 12px;
+                font-size: 10px;
+            }
+            
+            .game-over {
+                font-size: 24px;
+            }
+            
+            .game-over p {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="game-ui">
+        Score: <span id="score">0</span>
+    </div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+    <div class="game-over" id="gameOver">
+        GAME OVER
+        <p>Tap to restart</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+        
+        // Game state
+        let gameRunning = true;
+        let score = 0;
+        let animationId;
+        
+        // Player
+        const player = {
+            x: 100,
+            y: height - 100,
+            width: 30,
+            height: 30,
+            velocityY: 0,
+            jumping: false,
+            grounded: true
+        };
+        
+        // Physics
+        const gravity = 0.6;
+        const jumpForce = -12;
+        const groundY = height - 50;
+        
+        // Obstacles
+        let obstacles = [];
+        const obstacleSpeed = 5;
+        let spawnTimer = 0;
+        const spawnInterval = 100;
+        
+        // Background stars
+        const stars = [];
+        for (let i = 0; i < 50; i++) {
+            stars.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                size: Math.random() * 2 + 1,
+                speed: Math.random() * 0.5 + 0.1
+            });
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            player.y = Math.min(player.y, height - 50);
+        }
+        
+        function jump() {
+            if (player.grounded && gameRunning) {
+                player.velocityY = jumpForce;
+                player.jumping = true;
+                player.grounded = false;
+            } else if (!gameRunning) {
+                restartGame();
+            }
+        }
+        
+        function spawnObstacle() {
+            const height = Math.random() * 50 + 30;
+            obstacles.push({
+                x: width,
+                y: groundY - height,
+                width: 20,
+                height: height
+            });
+        }
+        
+        function update() {
+            if (!gameRunning) return;
+            
+            // Update player
+            player.velocityY += gravity;
+            player.y += player.velocityY;
+            
+            if (player.y >= groundY - player.height) {
+                player.y = groundY - player.height;
+                player.velocityY = 0;
+                player.grounded = true;
+                player.jumping = false;
+            }
+            
+            // Update obstacles
+            spawnTimer++;
+            if (spawnTimer >= spawnInterval) {
+                spawnObstacle();
+                spawnTimer = 0;
+            }
+            
+            obstacles.forEach((obs, index) => {
+                obs.x -= obstacleSpeed;
+                
+                if (obs.x + obs.width < 0) {
+                    obstacles.splice(index, 1);
+                    score++;
+                    document.getElementById('score').textContent = score;
+                }
+                
+                // Collision detection
+                if (player.x < obs.x + obs.width &&
+                    player.x + player.width > obs.x &&
+                    player.y < obs.y + obs.height &&
+                    player.y + player.height > obs.y) {
+                    gameOver();
+                }
+            });
+            
+            // Update stars
+            stars.forEach(star => {
+                star.x -= star.speed;
+                if (star.x < 0) {
+                    star.x = width;
+                    star.y = Math.random() * height;
+                }
+            });
+        }
+        
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Draw stars
+            ctx.fillStyle = '#fff';
+            stars.forEach(star => {
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            
+            // Draw ground
+            ctx.fillStyle = '#4a4a6a';
+            ctx.fillRect(0, groundY, width, height - groundY);
+            
+            // Draw obstacles
+            ctx.fillStyle = '#e94560';
+            obstacles.forEach(obs => {
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                // Glow effect
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#e94560';
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                ctx.shadowBlur = 0;
+            });
+            
+            // Draw player
+            ctx.fillStyle = '#0f0';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            // Glow effect
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#0f0';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.shadowBlur = 0;
+        }
+        
+        function gameLoop() {
+            update();
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+        
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('gameOver').classList.add('show');
+            cancelAnimationFrame(animationId);
+        }
+        
+        function restartGame() {
+            gameRunning = true;
+            score = 0;
+            obstacles = [];
+            spawnTimer = 0;
+            player.y = groundY - player.height;
+            player.velocityY = 0;
+            document.getElementById('score').textContent = score;
+            document.getElementById('gameOver').classList.remove('show');
+            gameLoop();
+        }
+        
+        // Event listeners
+        window.addEventListener('resize', resize);
+        
+        canvas.addEventListener('click', jump);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        }, { passive: false });
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                e.preventDefault();
+                jump();
+            }
+        });
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log('Fullscreen error:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // Start game
+        gameLoop();
+    </script>
+</body>
+</html>
