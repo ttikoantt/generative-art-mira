@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>フリック・シューター</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+        #gameCanvas {
+            display: block;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+        }
+        .info {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+        .info span {
+            background: rgba(255,255,255,0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+        }
+        #startScreen, #gameOverScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            z-index: 100;
+        }
+        #startScreen h1, #gameOverScreen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 4px 8px rgba(0,0,0,0.5);
+        }
+        #startScreen p, #gameOverScreen p {
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+        button {
+            padding: 15px 40px;
+            font-size: 20px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        button:hover {
+            transform: scale(1.05);
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+        #gameOverScreen {
+            display: none;
+        }
+        .combo {
+            position: fixed;
+            font-size: 36px;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 0 0 10px #ffd700, 0 0 20px #ff6b00;
+            pointer-events: none;
+            animation: comboAnim 0.5s ease-out;
+            z-index: 50;
+        }
+        @keyframes comboAnim {
+            0% { transform: scale(0.5); opacity: 1; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <span id="score">スコア: 0</span>
+        <span id="time">時間: 60</span>
+        <span id="combo" style="display: none;">コンボ: 0</span>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="startScreen">
+        <h1>🎯 フリック・シューター</h1>
+        <p>的をフリックして破壊！連続ヒットでコンボボーナス！</p>
+        <button onclick="startGame()">スタート</button>
+    </div>
+
+    <div id="gameOverScreen">
+        <h1>ゲームオーバー</h1>
+        <p>最終スコア: <span id="finalScore">0</span></p>
+        <p>最大コンボ: <span id="maxCombo">0</span></p>
+        <button onclick="startGame()">もう一度</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const timeElement = document.getElementById('time');
+        const comboElement = document.getElementById('combo');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreElement = document.getElementById('finalScore');
+        const maxComboElement = document.getElementById('maxCombo');
+
+        let width, height;
+        let gameRunning = false;
+        let score = 0;
+        let timeLeft = 60;
+        let combo = 0;
+        let maxComboCount = 0;
+        let targets = [];
+        let particles = [];
+        let difficulty = 1;
+        let lastTime = 0;
+        let spawnTimer = 0;
+        let gameTimer = 0;
+
+        function resize() {
+            const size = Math.min(window.innerWidth, window.innerHeight) * 0.95;
+            width = canvas.width = size * window.devicePixelRatio;
+            height = canvas.height = size * window.devicePixelRatio;
+            canvas.style.width = size + 'px';
+            canvas.style.height = size + 'px';
+        }
+
+        class Target {
+            constructor() {
+                this.radius = 30 + Math.random() * 20;
+                this.x = this.radius + Math.random() * (width - this.radius * 2);
+                this.y = this.radius + Math.random() * (height - this.radius * 2);
+                this.vx = (Math.random() - 0.5) * 4 * difficulty;
+                this.vy = (Math.random() - 0.5) * 4 * difficulty;
+                this.hue = Math.random() * 360;
+                this.life = 1;
+                this.maxLife = 3 + Math.random() * 2;
+                this.age = 0;
+            }
+
+            update(dt) {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.age += dt;
+
+                // 壁で反射
+                if (this.x - this.radius < 0 || this.x + this.radius > width) {
+                    this.vx *= -1;
+                    this.x = Math.max(this.radius, Math.min(width - this.radius, this.x));
+                }
+                if (this.y - this.radius < 0 || this.y + this.radius > height) {
+                    this.vy *= -1;
+                    this.y = Math.max(this.radius, Math.min(height - this.radius, this.y));
+                }
+
+                // 寿命
+                if (this.age > this.maxLife) {
+                    this.life -= 0.02;
+                }
+
+                return this.life > 0;
+            }
+
+            draw() {
+                const alpha = this.life;
+                const pulse = 1 + Math.sin(Date.now() * 0.01) * 0.1;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * pulse, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, ${alpha})`;
+                ctx.fill();
+
+                // 光るリング
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * pulse * 0.8, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, 70%, ${alpha * 0.5})`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // 中心
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 80%, ${alpha})`;
+                ctx.fill();
+            }
+
+            hit(x, y) {
+                const dx = this.x - x;
+                const dy = this.y - y;
+                return Math.sqrt(dx * dx + dy * dy) < this.radius;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.life = 1;
+                this.hue = hue;
+                this.size = 3 + Math.random() * 5;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 0.03;
+                return this.life > 0;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${this.life})`;
+                ctx.fill();
+            }
+        }
+
+        function spawnTarget() {
+            targets.push(new Target());
+        }
+
+        function createExplosion(x, y, hue) {
+            for (let i = 0; i < 15; i++) {
+                particles.push(new Particle(x, y, hue));
+            }
+        }
+
+        function showCombo(x, y) {
+            const comboDiv = document.createElement('div');
+            comboDiv.className = 'combo';
+            comboDiv.textContent = `×${combo}`;
+            comboDiv.style.left = x + 'px';
+            comboDiv.style.top = y + 'px';
+            document.body.appendChild(comboDiv);
+            setTimeout(() => comboDiv.remove(), 500);
+        }
+
+        function handleFlick(x, y) {
+            if (!gameRunning) return;
+
+            let hit = false;
+            for (let i = targets.length - 1; i >= 0; i--) {
+                if (targets[i].hit(x, y)) {
+                    createExplosion(targets[i].x, targets[i].y, targets[i].hue);
+                    targets.splice(i, 1);
+                    combo++;
+                    if (combo > maxComboCount) maxComboCount = combo;
+                    const points = 10 * combo;
+                    score += points;
+                    comboElement.textContent = `コンボ: ${combo}`;
+                    comboElement.style.display = 'inline';
+                    showCombo(x, y);
+                    hit = true;
+                    break;
+                }
+            }
+
+            if (!hit) {
+                combo = 0;
+                comboElement.style.display = 'none';
+            }
+
+            scoreElement.textContent = `スコア: ${score}`;
+        }
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            timeLeft = 60;
+            combo = 0;
+            maxComboCount = 0;
+            targets = [];
+            particles = [];
+            difficulty = 1;
+            spawnTimer = 0;
+            gameTimer = 0;
+            lastTime = performance.now();
+
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+
+            scoreElement.textContent = 'スコア: 0';
+            timeElement.textContent = '時間: 60';
+            comboElement.style.display = 'none';
+
+            spawnTarget();
+            spawnTarget();
+            gameLoop();
+        }
+
+        function endGame() {
+            gameRunning = false;
+            gameOverScreen.style.display = 'flex';
+            finalScoreElement.textContent = score;
+            maxComboElement.textContent = maxComboCount;
+        }
+
+        function gameLoop(currentTime = performance.now()) {
+            if (!gameRunning) return;
+
+            const dt = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+            gameTimer += dt;
+            spawnTimer += dt;
+
+            // 難易度上昇
+            difficulty = 1 + Math.floor(score / 100) * 0.2;
+
+            // ターゲット生成
+            const spawnRate = Math.max(0.5, 1.5 - difficulty * 0.2);
+            if (spawnTimer > spawnRate) {
+                spawnTarget();
+                spawnTimer = 0;
+            }
+
+            // タイマー更新
+            if (gameTimer > 1) {
+                timeLeft--;
+                timeElement.textContent = `時間: ${timeLeft}`;
+                gameTimer = 0;
+                if (timeLeft <= 0) {
+                    endGame();
+                    return;
+                }
+            }
+
+            // クリア
+            ctx.clearRect(0, 0, width, height);
+
+            // 更新・描画
+            targets = targets.filter(t => t.update(dt));
+            targets.forEach(t => t.draw());
+
+            particles = particles.filter(p => p.update());
+            particles.forEach(p => p.draw());
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // タッチ/マウスイベント
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            handleFlick(x, y);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = (touch.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (touch.clientY - rect.top) * (canvas.height / rect.height);
+            handleFlick(x, y);
+        }, { passive: false });
+
+        window.addEventListener('resize', resize);
+        resize();
+    </script>
+</body>
+</html>
