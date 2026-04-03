@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Wave Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #00ff88;
+            text-align: center;
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px #00ff88;
+        }
+
+        .info {
+            color: #888;
+            text-align: center;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+
+        .canvas-wrapper {
+            background: #111;
+            border: 2px solid #00ff88;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
+            overflow: auto;
+        }
+
+        #asciiCanvas {
+            white-space: pre;
+            font-size: 10px;
+            line-height: 10px;
+            color: #00ff88;
+            text-shadow: 0 0 5px currentColor;
+            font-family: 'Courier New', monospace;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        label {
+            color: #00ff88;
+            font-size: 0.8rem;
+        }
+
+        input[type="range"] {
+            width: 150px;
+            accent-color: #00ff88;
+        }
+
+        select {
+            padding: 8px;
+            background: #111;
+            border: 1px solid #00ff88;
+            color: #00ff88;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .stats {
+            color: #666;
+            text-align: center;
+            font-size: 0.8rem;
+            margin-top: 15px;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.2rem;
+            }
+
+            #asciiCanvas {
+                font-size: 8px;
+                line-height: 8px;
+            }
+
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌊 ASCII Wave Art</h1>
+        <div class="info">波の動きをASCII文字で表現</div>
+
+        <div class="canvas-wrapper">
+            <div id="asciiCanvas"></div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>波の数: <span id="waveCountValue">3</span></label>
+                <input type="range" id="waveCount" min="1" max="5" value="3">
+            </div>
+
+            <div class="control-group">
+                <label>速度: <span id="speedValue">1.0</span></label>
+                <input type="range" id="speed" min="0.1" max="2" step="0.1" value="1.0">
+            </div>
+
+            <div class="control-group">
+                <label>振幅: <span id="amplitudeValue">10</span></label>
+                <input type="range" id="amplitude" min="5" max="20" value="10">
+            </div>
+
+            <div class="control-group">
+                <label>文字セット</label>
+                <select id="charSet">
+                    <option value="gradient">グラデーション</option>
+                    <option value="blocks">ブロック</option>
+                    <option value="dots">ドット</option>
+                    <option value="custom">カスタム</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="stats">
+            フレーム: <span id="frameCount">0</span> |
+            FPS: <span id="fps">0</span>
+        </div>
+    </div>
+
+    <script>
+        const asciiCanvas = document.getElementById('asciiCanvas');
+        const waveCountSlider = document.getElementById('waveCount');
+        const speedSlider = document.getElementById('speed');
+        const amplitudeSlider = document.getElementById('amplitude');
+        const charSetSelect = document.getElementById('charSet');
+        const frameCountDisplay = document.getElementById('frameCount');
+        const fpsDisplay = document.getElementById('fps');
+
+        // 設定
+        let config = {
+            width: 80,
+            height: 40,
+            waveCount: 3,
+            speed: 1.0,
+            amplitude: 10,
+            charSet: 'gradient'
+        };
+
+        // 文字セット
+        const charSets = {
+            gradient: ' .:-=+*#%@',
+            blocks: ' ░▒▓█',
+            dots: ' .·:•●',
+            custom: ' ~^*#@'
+        };
+
+        let frame = 0;
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 0;
+
+        // 波のパラメータ
+        let waves = [];
+
+        function initWaves() {
+            waves = [];
+            for (let i = 0; i < config.waveCount; i++) {
+                waves.push({
+                    frequency: 0.05 + (i * 0.03),
+                    phase: (i * Math.PI * 2) / config.waveCount,
+                    amplitude: config.amplitude * (1 - i * 0.15),
+                    speed: 0.05 + (i * 0.02)
+                });
+            }
+        }
+
+        function getChar(intensity) {
+            const chars = charSets[config.charSet];
+            const index = Math.floor(intensity * (chars.length - 1));
+            return chars[Math.min(index, chars.length - 1)];
+        }
+
+        function getRGB(intensity, waveIndex) {
+            const hue = (120 + waveIndex * 60) % 360;
+            const saturation = 100;
+            const lightness = 20 + intensity * 60;
+            return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+        }
+
+        function render() {
+            let output = [];
+            
+            for (let y = 0; y < config.height; y++) {
+                let row = '';
+                
+                for (let x = 0; x < config.width; x++) {
+                    let totalIntensity = 0;
+                    
+                    // 全ての波を合成
+                    waves.forEach((wave, waveIndex) => {
+                        const waveY = Math.sin(
+                            x * wave.frequency + 
+                            frame * wave.speed * config.speed + 
+                            wave.phase
+                        ) * wave.amplitude;
+                        
+                        const distance = Math.abs(y - config.height / 2 - waveY);
+                        const intensity = Math.max(0, 1 - distance / 15);
+                        totalIntensity += intensity;
+                    });
+                    
+                    totalIntensity = Math.min(1, totalIntensity);
+                    
+                    if (totalIntensity > 0.1) {
+                        // 複数の波が重なっている場合、色を合成
+                        const rgb = getRGB(totalIntensity, Math.floor(totalIntensity * 3));
+                        const char = getChar(totalIntensity);
+                        
+                        // スパンで色を適用
+                        row += `<span style="color: ${rgb}">${char}</span>`;
+                    } else {
+                        row += ' ';
+                    }
+                }
+                
+                output.push(row);
+            }
+            
+            asciiCanvas.innerHTML = output.join('\n');
+        }
+
+        function updateFPS() {
+            frameCount++;
+            const currentTime = performance.now();
+            const deltaTime = currentTime - lastTime;
+            
+            if (deltaTime >= 1000) {
+                fps = Math.round(frameCount * 1000 / deltaTime);
+                frameCount = 0;
+                lastTime = currentTime;
+                fpsDisplay.textContent = fps;
+            }
+            
+            frameCountDisplay.textContent = frame;
+        }
+
+        function animate() {
+            frame++;
+            render();
+            updateFPS();
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        waveCountSlider.addEventListener('input', (e) => {
+            config.waveCount = parseInt(e.target.value);
+            document.getElementById('waveCountValue').textContent = config.waveCount;
+            initWaves();
+        });
+
+        speedSlider.addEventListener('input', (e) => {
+            config.speed = parseFloat(e.target.value);
+            document.getElementById('speedValue').textContent = config.speed.toFixed(1);
+        });
+
+        amplitudeSlider.addEventListener('input', (e) => {
+            config.amplitude = parseInt(e.target.value);
+            document.getElementById('amplitudeValue').textContent = config.amplitude;
+            initWaves();
+        });
+
+        charSetSelect.addEventListener('change', (e) => {
+            config.charSet = e.target.value;
+        });
+
+        // レスポンシブ対応
+        function updateSize() {
+            if (window.innerWidth < 600) {
+                config.width = 60;
+                config.height = 30;
+            } else {
+                config.width = 80;
+                config.height = 40;
+            }
+        }
+
+        window.addEventListener('resize', updateSize);
+
+        // 初期化
+        updateSize();
+        initWaves();
+        animate();
+    </script>
+</body>
+</html>
