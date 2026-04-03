@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Spring Catcher - 桜キャッチ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(180deg, #e3f2fd 0%, #fce4ec 50%, #f3e5f5 100%);
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            touch-action: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            touch-action: none;
+        }
+
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        .score {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #e91e63;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .level {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #9c27b0;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .start-screen, .game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        h1 {
+            color: #e91e63;
+            font-size: 36px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #9c27b0;
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #e91e63, #9c27b0);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(233, 30, 99, 0.4);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        .instructions {
+            color: #666;
+            font-size: 14px;
+            margin-top: 20px;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 28px;
+            }
+
+            .score, .level {
+                font-size: 16px;
+                padding: 8px 15px;
+            }
+
+            .start-screen, .game-over-screen {
+                padding: 25px;
+                width: 90%;
+                max-width: 350px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui-overlay">
+        <div class="score">スコア: <span id="scoreDisplay">0</span></div>
+        <div class="level">レベル: <span id="levelDisplay">1</span></div>
+    </div>
+
+    <div class="start-screen" id="startScreen">
+        <h1>🌸 Spring Catcher</h1>
+        <p class="subtitle">春風に乗って落ちてくる桜をキャッチ！</p>
+        <button id="startBtn">スタート</button>
+        <p class="instructions">
+            操作方法:<br>
+            👆 左右タップで移動<br>
+            💻 マウスで左右に動く<br>
+            ⏱️ 60秒間でハイスコアを目指そう！
+        </p>
+    </div>
+
+    <div class="game-over-screen hidden" id="gameOverScreen">
+        <h1>🎊 完了！</h1>
+        <p class="subtitle">春を楽しんでくれてありがとう！</p>
+        <p style="font-size: 24px; font-weight: bold; color: #e91e63; margin: 20px 0;">
+            スコア: <span id="finalScore">0</span>
+        </p>
+        <button id="restartBtn">もう一度プレイ</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvasサイズを設定
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ゲームの状態
+        let gameState = 'start'; // start, playing, gameover
+        let score = 0;
+        let level = 1;
+        let timeLeft = 60;
+        let lastTime = 0;
+
+        // プレイヤー
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height - 80,
+            width: 100,
+            height: 50,
+            speed: 0,
+            targetX: canvas.width / 2,
+            moveLeft: false,
+            moveRight: false
+        };
+
+        // 桜の花びら
+        let petals = [];
+        const petalColors = [
+            'rgba(255, 192, 203,',  // ピンク
+            'rgba(255, 182, 193,',  // ライトピンク
+            'rgba(255, 209, 220,',  // 薄いピンク
+            'rgba(255, 228, 225,',  // ミスティローズ
+        ];
+
+        // 特別なアイテム
+        let specialItems = [];
+        const specialTypes = [
+            { type: 'bonus', color: 'rgba(255, 215, 0,', points: 50, emoji: '⭐' },
+            { type: 'life', color: 'rgba(76, 175, 80,', points: 25, emoji: '💚' },
+            { type: 'time', color: 'rgba(33, 150, 243,', points: 20, emoji: '⏰' }
+        ];
+
+        // パーティクル
+        let particles = [];
+
+        // 桜の花びらクラス
+        class Petal {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * (canvas.width - 40) + 20;
+                this.y = -30;
+                this.size = Math.random() * 15 + 12;
+                this.speed = Math.random() * 2 + 1.5 + (level * 0.3);
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+                this.oscillation = Math.random() * Math.PI * 2;
+                this.oscillationSpeed = Math.random() * 0.05 + 0.02;
+                this.oscillationAmount = Math.random() * 1.5 + 0.5;
+                this.color = petalColors[Math.floor(Math.random() * petalColors.length)];
+                this.opacity = Math.random() * 0.2 + 0.8;
+            }
+
+            update() {
+                this.y += this.speed;
+                this.x += Math.sin(this.oscillation) * this.oscillationAmount;
+                this.rotation += this.rotationSpeed;
+                this.oscillation += this.oscillationSpeed;
+
+                if (this.y > canvas.height + 50) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.bezierCurveTo(
+                    this.size * 0.3, -this.size * 0.3,
+                    this.size * 0.6, -this.size * 0.1,
+                    this.size, 0
+                );
+                ctx.bezierCurveTo(
+                    this.size * 0.6, this.size * 0.1,
+                    this.size * 0.3, this.size * 0.3,
+                    0, 0
+                );
+                ctx.bezierCurveTo(
+                    -this.size * 0.3, this.size * 0.3,
+                    -this.size * 0.6, this.size * 0.1,
+                    -this.size, 0
+                );
+                ctx.bezierCurveTo(
+                    -this.size * 0.6, -this.size * 0.1,
+                    -this.size * 0.3, -this.size * 0.3,
+                    0, 0
+                );
+
+                ctx.fillStyle = this.color + this.opacity + ')';
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // 特別アイテムクラス
+        class SpecialItem {
+            constructor() {
+                const type = specialTypes[Math.floor(Math.random() * specialTypes.length)];
+                this.type = type.type;
+                this.color = type.color;
+                this.points = type.points;
+                this.emoji = type.emoji;
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * (canvas.width - 60) + 30;
+                this.y = -40;
+                this.size = 25;
+                this.speed = Math.random() * 1.5 + 1;
+                this.rotation = 0;
+            }
+
+            update() {
+                this.y += this.speed;
+                this.rotation += 0.05;
+
+                if (this.y > canvas.height + 50) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // 光る効果
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size * 1.2, 0, Math.PI * 2);
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size * 1.2);
+                gradient.addColorStop(0, this.color + '0.6)');
+                gradient.addColorStop(1, this.color + '0)');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // 絵文字
+                ctx.font = '24px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.emoji, 0, 0);
+
+                ctx.restore();
+            }
+        }
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 5 + 3;
+                this.speedX = (Math.random() - 0.5) * 8;
+                this.speedY = (Math.random() - 0.5) * 8;
+                this.color = color;
+                this.opacity = 1;
+                this.life = 1;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.speedY += 0.2; // 重力
+                this.life -= 0.02;
+                this.opacity = this.life;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // 花びらを初期化
+        function initPetals() {
+            petals = [];
+            for (let i = 0; i < 20 + level * 5; i++) {
+                petals.push(new Petal());
+            }
+        }
+
+        // 特別アイテムを初期化
+        function initSpecialItems() {
+            specialItems = [];
+            for (let i = 0; i < 3; i++) {
+                specialItems.push(new SpecialItem());
+            }
+        }
+
+        // 衝突判定
+        function checkCollision(item, isSpecial = false) {
+            const itemSize = isSpecial ? item.size : item.size;
+            const dx = player.x - item.x;
+            const dy = player.y - item.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            return distance < (player.width / 2 + itemSize);
+        }
+
+        // パーティクルを作成
+        function createParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        // スコアを更新
+        function updateScore(points) {
+            score += points;
+            document.getElementById('scoreDisplay').textContent = score;
+
+            // レベルアップチェック
+            const newLevel = Math.floor(score / 100) + 1;
+            if (newLevel > level) {
+                level = newLevel;
+                document.getElementById('levelDisplay').textContent = level;
+                initPetals(); // 新しいレベルで花びらを追加
+            }
+        }
+
+        // プレイヤーを描画
+        function drawPlayer() {
+            ctx.save();
+            ctx.translate(player.x, player.y);
+
+            // かごの底
+            ctx.fillStyle = 'rgba(139, 69, 19, 0.8)';
+            ctx.beginPath();
+            ctx.ellipse(0, 10, player.width / 2, 10, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // かごの縁
+            ctx.strokeStyle = 'rgba(139, 69, 19, 0.9)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, player.width / 2, 8, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // かごの側面
+            ctx.strokeStyle = 'rgba(139, 69, 19, 0.6)';
+            ctx.lineWidth = 2;
+            for (let i = -3; i <= 3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * 15, -8);
+                ctx.quadraticCurveTo(i * 15, 5, i * 15, 10);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        // ゲームを更新
+        function update(deltaTime) {
+            if (gameState !== 'playing') return;
+
+            // タイマーを更新
+            timeLeft -= deltaTime / 1000;
+            if (timeLeft <= 0) {
+                gameOver();
+                return;
+            }
+
+            // プレイヤーの移動
+            const speed = 8;
+            if (player.moveLeft) {
+                player.targetX -= speed;
+            }
+            if (player.moveRight) {
+                player.targetX += speed;
+            }
+
+            // 境界チェック
+            player.targetX = Math.max(player.width / 2, Math.min(canvas.width - player.width / 2, player.targetX));
+
+            // スムーズな移動
+            player.x += (player.targetX - player.x) * 0.15;
+            player.y = canvas.height - 80;
+
+            // 花びらを更新
+            petals.forEach(petal => {
+                petal.update();
+                if (checkCollision(petal)) {
+                    createParticles(petal.x, petal.y, petal.color + '1)', 8);
+                    updateScore(10);
+                    petal.reset();
+                }
+            });
+
+            // 特別アイテムを更新
+            specialItems.forEach(item => {
+                item.update();
+                if (checkCollision(item, true)) {
+                    createParticles(item.x, item.y, item.color + '1)', 15);
+
+                    if (item.type === 'time') {
+                        timeLeft = Math.min(timeLeft + 5, 60); // 最大60秒
+                    }
+
+                    updateScore(item.points);
+                    item.reset();
+                }
+            });
+
+            // パーティクルを更新
+            particles = particles.filter(p => {
+                p.update();
+                return p.life > 0;
+            });
+        }
+
+        // ゲームを描画
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 背景のグラデーション
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, 'rgba(227, 242, 253, 0.3)');
+            gradient.addColorStop(0.5, 'rgba(252, 228, 236, 0.3)');
+            gradient.addColorStop(1, 'rgba(243, 229, 245, 0.3)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 花びらを描画
+            petals.forEach(petal => petal.draw());
+
+            // 特別アイテムを描画
+            specialItems.forEach(item => item.draw());
+
+            // パーティクルを描画
+            particles.forEach(p => p.draw());
+
+            // プレイヤーを描画
+            if (gameState === 'playing') {
+                drawPlayer();
+            }
+
+            // タイマー表示
+            if (gameState === 'playing') {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.font = 'bold 20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`⏱️ ${Math.ceil(timeLeft)}秒`, canvas.width / 2, 40);
+            }
+        }
+
+        // ゲームループ
+        function gameLoop(currentTime) {
+            const deltaTime = currentTime - lastTime;
+            lastTime = currentTime;
+
+            update(deltaTime);
+            draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ゲーム開始
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            level = 1;
+            timeLeft = 60;
+            player.x = canvas.width / 2;
+            player.targetX = canvas.width / 2;
+
+            document.getElementById('scoreDisplay').textContent = score;
+            document.getElementById('levelDisplay').textContent = level;
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+
+            initPetals();
+            initSpecialItems();
+        }
+
+        // ゲームオーバー
+        function gameOver() {
+            gameState = 'gameover';
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        // イベントリスナー
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+
+        // キーボード操作
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a') {
+                player.moveLeft = true;
+            }
+            if (e.key === 'ArrowRight' || e.key === 'd') {
+                player.moveRight = true;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a') {
+                player.moveLeft = false;
+            }
+            if (e.key === 'ArrowRight' || e.key === 'd') {
+                player.moveRight = false;
+            }
+        });
+
+        // マウス操作
+        canvas.addEventListener('mousemove', (e) => {
+            if (gameState === 'playing') {
+                player.targetX = e.clientX;
+            }
+        });
+
+        // タッチ操作
+        canvas.addEventListener('touchstart', (e) => {
+            if (gameState === 'playing') {
+                const touch = e.touches[0];
+                player.targetX = touch.clientX;
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (gameState === 'playing') {
+                const touch = e.touches[0];
+                player.targetX = touch.clientX;
+            }
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+        });
+
+        // ゲームループを開始
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
