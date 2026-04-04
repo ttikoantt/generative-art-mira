@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Falling Melody - 音色をキャッチ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            text-align: center;
+            color: white;
+        }
+
+        .score {
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            margin-bottom: 10px;
+        }
+
+        .combo {
+            font-size: 24px;
+            color: #ffd700;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            backdrop-filter: blur(10px);
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .title {
+            color: white;
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.5);
+            letter-spacing: 3px;
+        }
+
+        .subtitle {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 18px;
+            margin-bottom: 40px;
+        }
+
+        .button {
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 20px 60px;
+            font-size: 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin: 10px;
+        }
+
+        .button:hover {
+            background: rgba(255, 255, 255, 0.25);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        .instructions {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            margin-top: 30px;
+            text-align: center;
+            line-height: 1.8;
+        }
+
+        .lives {
+            position: fixed;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+        }
+
+        .heart {
+            font-size: 30px;
+            filter: drop-shadow(0 0 5px rgba(255, 0, 0, 0.5));
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 50px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            .title {
+                font-size: 32px;
+            }
+
+            .score {
+                font-size: 36px;
+            }
+
+            .button {
+                padding: 15px 40px;
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui">
+        <div class="score" id="score">0</div>
+        <div class="combo" id="combo"></div>
+    </div>
+
+    <div class="lives" id="lives">
+        <span class="heart">❤️</span>
+        <span class="heart">❤️</span>
+        <span class="heart">❤️</span>
+    </div>
+
+    <div class="overlay" id="startOverlay">
+        <div class="title">🎵 FALLING MELODY</div>
+        <div class="subtitle">音色をキャッチしてハーモニーを作ろう</div>
+        <button class="button" id="startBtn">🎮 スタート</button>
+        <div class="instructions">
+            ← → または タップで移動<br>
+            色付きの音符をキャッチして得点！<br>
+            同じ色を連続でキャッチするとコンボボーナス！
+        </div>
+    </div>
+
+    <div class="overlay hidden" id="gameOverOverlay">
+        <div class="title">ゲームオーバー</div>
+        <div class="score" id="finalScore">0</div>
+        <div class="subtitle" id="finalCombo"></div>
+        <button class="button" id="restartBtn">🔄 もう一度</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶ 全画面</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const comboElement = document.getElementById('combo');
+        const livesElement = document.getElementById('lives');
+        const startOverlay = document.getElementById('startOverlay');
+        const gameOverOverlay = document.getElementById('gameOverOverlay');
+        const finalScoreElement = document.getElementById('finalScore');
+        const finalComboElement = document.getElementById('finalCombo');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        // Game state
+        let gameRunning = false;
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let lives = 3;
+        let lastColor = null;
+
+        // Player
+        const player = {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 20,
+            speed: 8,
+            color: '#fff'
+        };
+
+        // Falling notes
+        let notes = [];
+        const noteTypes = [
+            { color: '#ff6b6b', emoji: '🎵', points: 10 },  // Red
+            { color: '#4ecdc4', emoji: '🎶', points: 15 },  // Cyan
+            { color: '#ffe66d', emoji: '🎼', points: 20 },  // Yellow
+            { color: '#95e1d3', emoji: '🎹', points: 25 },  // Green
+            { color: '#dda0dd', emoji: '🎸', points: 30 }   // Purple
+        ];
+
+        // Particles
+        let particles = [];
+
+        // Resize canvas
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            player.y = canvas.height - 100;
+            player.x = canvas.width / 2 - player.width / 2;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Create note
+        function createNote() {
+            const type = noteTypes[Math.floor(Math.random() * noteTypes.length)];
+            const note = {
+                x: Math.random() * (canvas.width - 40),
+                y: -50,
+                size: 30,
+                speed: 2 + Math.random() * 3 + score / 500, // Speed increases with score
+                type: type,
+                rotation: 0,
+                rotationSpeed: (Math.random() - 0.5) * 0.1
+            };
+            notes.push(note);
+        }
+
+        // Create particle
+        function createParticle(x, y, color) {
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    size: Math.random() * 5 + 2,
+                    color: color,
+                    life: 1
+                });
+            }
+        }
+
+        // Update game
+        function update() {
+            if (!gameRunning) return;
+
+            // Spawn notes
+            if (Math.random() < 0.02 + score / 10000) {
+                createNote();
+            }
+
+            // Update notes
+            for (let i = notes.length - 1; i >= 0; i--) {
+                const note = notes[i];
+                note.y += note.speed;
+                note.rotation += note.rotationSpeed;
+
+                // Check collision with player
+                if (note.y + note.size > player.y &&
+                    note.y - note.size < player.y + player.height &&
+                    note.x + note.size > player.x &&
+                    note.x - note.size < player.x + player.width) {
+
+                    // Caught!
+                    const points = note.type.points;
+                    let bonus = 1;
+
+                    // Combo bonus
+                    if (lastColor === note.type.color) {
+                        combo++;
+                        bonus = 1 + combo * 0.1;
+                    } else {
+                        combo = 1;
+                    }
+                    lastColor = note.type.color;
+
+                    score += Math.floor(points * bonus);
+                    if (combo > maxCombo) maxCombo = combo;
+
+                    // Create particles
+                    createParticle(note.x, note.y, note.type.color);
+
+                    // Play sound (Web Audio API)
+                    playNoteSound(note.type);
+
+                    notes.splice(i, 1);
+                    continue;
+                }
+
+                // Missed note
+                if (note.y > canvas.height) {
+                    notes.splice(i, 1);
+                    combo = 0;
+                    lastColor = null;
+                    lives--;
+                    updateLives();
+                    if (lives <= 0) {
+                        gameOver();
+                    }
+                }
+            }
+
+            // Update particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            // Update UI
+            scoreElement.textContent = score;
+            comboElement.textContent = combo > 1 ? `${combo}x コンボ!` : '';
+        }
+
+        // Draw game
+        function draw() {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw player
+            const gradient = ctx.createLinearGradient(player.x, player.y, player.x, player.y + player.height);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0.4)');
+            ctx.fillStyle = gradient;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+            ctx.beginPath();
+            ctx.roundRect(player.x, player.y, player.width, player.height, 10);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Draw notes
+            notes.forEach(note => {
+                ctx.save();
+                ctx.translate(note.x, note.y);
+                ctx.rotate(note.rotation);
+
+                // Glow effect
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = note.type.color;
+
+                // Draw note circle
+                ctx.fillStyle = note.type.color;
+                ctx.beginPath();
+                ctx.arc(0, 0, note.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw emoji
+                ctx.shadowBlur = 0;
+                ctx.font = `${note.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(note.type.emoji, 0, 0);
+
+                ctx.restore();
+            });
+
+            // Draw particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        // Game loop
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Play note sound
+        function playNoteSound(type) {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            // Different frequencies for different colors
+            const frequencies = [261.63, 293.66, 329.63, 349.23, 392.00];
+            const index = noteTypes.indexOf(type);
+            oscillator.frequency.value = frequencies[index] || 261.63;
+            oscillator.type = 'sine';
+
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + 0.3);
+        }
+
+        // Update lives display
+        function updateLives() {
+            livesElement.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                const heart = document.createElement('span');
+                heart.className = 'heart';
+                heart.textContent = i < lives ? '❤️' : '🖤';
+                livesElement.appendChild(heart);
+            }
+        }
+
+        // Start game
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            lives = 3;
+            notes = [];
+            particles = [];
+            lastColor = null;
+            updateLives();
+            startOverlay.classList.add('hidden');
+            gameOverOverlay.classList.add('hidden');
+        }
+
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            finalScoreElement.textContent = score;
+            finalComboElement.textContent = `最大コンボ: ${maxCombo}`;
+            gameOverOverlay.classList.remove('hidden');
+        }
+
+        // Input handling
+        const keys = {};
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+        });
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        function handleInput() {
+            if (!gameRunning) return;
+
+            if (keys['ArrowLeft'] || keys['a']) {
+                player.x -= player.speed;
+            }
+            if (keys['ArrowRight'] || keys['d']) {
+                player.x += player.speed;
+            }
+
+            // Keep player in bounds
+            player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+        }
+
+        setInterval(handleInput, 16);
+
+        // Touch controls
+        let touchX = null;
+        canvas.addEventListener('touchstart', (e) => {
+            touchX = e.touches[0].clientX;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault();
+            const x = e.touches[0].clientX;
+            player.x = x - player.width / 2;
+            player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+        });
+
+        // Mouse controls
+        canvas.addEventListener('mousemove', (e) => {
+            if (!gameRunning) return;
+            player.x = e.clientX - player.width / 2;
+            player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+        });
+
+        // Button events
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // Start game loop
+        gameLoop();
+    </script>
+</body>
+</html>

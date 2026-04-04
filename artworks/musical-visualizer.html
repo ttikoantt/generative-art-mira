@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Musical Visualizer - 音楽に合わせて踊る光</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .button {
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 15px 40px;
+            font-size: 16px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .button:hover {
+            background: rgba(255, 255, 255, 0.25);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            z-index: 100;
+            backdrop-filter: blur(5px);
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px 15px;
+            border-radius: 10px;
+        }
+
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            z-index: 100;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            letter-spacing: 3px;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 50px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            font-size: 14px;
+        }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 18px;
+            z-index: 100;
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .title {
+                font-size: 18px;
+                top: 15px;
+            }
+
+            .info {
+                font-size: 12px;
+                top: 15px;
+                left: 15px;
+            }
+
+            .button {
+                padding: 12px 30px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="title">🎵 MUSICAL VISUALIZER</div>
+
+    <div class="info">
+        <div id="status">音楽ファイルを選択してください</div>
+    </div>
+
+    <div class="controls">
+        <button class="button" id="selectBtn">📁 音楽を選択</button>
+        <input type="file" id="audioFile" class="file-input" accept="audio/*">
+        <button class="button" id="micBtn" style="display: none;">🎤 マイクで</button>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶ 全画面</button>
+
+    <div class="loading" id="loading">読み込み中...</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const selectBtn = document.getElementById('selectBtn');
+        const audioFileInput = document.getElementById('audioFile');
+        const micBtn = document.getElementById('micBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const statusDiv = document.getElementById('status');
+        const loadingDiv = document.getElementById('loading');
+
+        let audioContext;
+        let analyser;
+        let source;
+        let animationId;
+        let audio = new Audio();
+
+        // Visualizer settings
+        let particles = [];
+        let frequencyData;
+        let visualMode = 0;
+        let time = 0;
+
+        // Resize canvas
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Initialize audio context
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            frequencyData = new Uint8Array(analyser.frequencyBinCount);
+        }
+
+        // Load audio file
+        function loadAudio(file) {
+            initAudio();
+
+            loadingDiv.style.display = 'block';
+            statusDiv.textContent = '読み込み中...';
+
+            const url = URL.createObjectURL(file);
+            audio.src = url;
+
+            if (source) {
+                source.disconnect();
+            }
+
+            source = audioContext.createMediaElementSource(audio);
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+
+            audio.play();
+            loadingDiv.style.display = 'none';
+            statusDiv.textContent = `再生中: ${file.name}`;
+            selectBtn.textContent = '⏸️ 一時停止';
+
+            visualize();
+        }
+
+        // Initialize particles
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < 100; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: Math.random() * 3 + 1,
+                    speedX: (Math.random() - 0.5) * 2,
+                    speedY: (Math.random() - 0.5) * 2,
+                    hue: Math.random() * 360
+                });
+            }
+        }
+
+        // Visualize
+        function visualize() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+
+            initParticles();
+
+            function draw() {
+                animationId = requestAnimationFrame(draw);
+
+                analyser.getByteFrequencyData(frequencyData);
+
+                // Clear with fade effect
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                time += 0.01;
+
+                // Get bass, mid, treble
+                const bass = frequencyData.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+                const mid = frequencyData.slice(10, 50).reduce((a, b) => a + b, 0) / 40;
+                const treble = frequencyData.slice(50, 100).reduce((a, b) => a + b, 0) / 50;
+
+                // Draw particles
+                particles.forEach((p, i) => {
+                    const freqIndex = Math.floor((i / particles.length) * frequencyData.length);
+                    const freqValue = frequencyData[freqIndex];
+
+                    // Update particle
+                    p.x += p.speedX * (1 + freqValue / 100);
+                    p.y += p.speedY * (1 + freqValue / 100);
+
+                    // Wrap around
+                    if (p.x < 0) p.x = canvas.width;
+                    if (p.x > canvas.width) p.x = 0;
+                    if (p.y < 0) p.y = canvas.height;
+                    if (p.y > canvas.height) p.y = 0;
+
+                    // Draw
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size + freqValue / 30, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${p.hue + time * 10}, 100%, ${50 + freqValue / 3}%, ${0.5 + freqValue / 200})`;
+                    ctx.fill();
+                });
+
+                // Draw circular spectrum
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                const radius = 100 + bass / 2;
+
+                for (let i = 0; i < frequencyData.length; i++) {
+                    const angle = (i / frequencyData.length) * Math.PI * 2;
+                    const value = frequencyData[i];
+                    const barHeight = value * 1.5;
+
+                    const x1 = centerX + Math.cos(angle) * radius;
+                    const y1 = centerY + Math.sin(angle) * radius;
+                    const x2 = centerX + Math.cos(angle) * (radius + barHeight);
+                    const y2 = centerY + Math.sin(angle) * (radius + barHeight);
+
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                    ctx.strokeStyle = `hsla(${(i / frequencyData.length) * 360 + time * 20}, 100%, 50%, 0.8)`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                // Draw center circle
+                const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+                gradient.addColorStop(0, `hsla(${time * 30}, 100%, 50%, 0.8)`);
+                gradient.addColorStop(0.5, `hsla(${time * 30 + 60}, 100%, 50%, 0.4)`);
+                gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Draw wave
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height);
+
+                for (let i = 0; i < canvas.width; i++) {
+                    const freqIndex = Math.floor((i / canvas.width) * frequencyData.length);
+                    const value = frequencyData[freqIndex];
+                    const y = canvas.height - value * 2 - Math.sin(i * 0.02 + time * 5) * 20;
+                    ctx.lineTo(i, y);
+                }
+
+                ctx.lineTo(canvas.width, canvas.height);
+                ctx.closePath();
+                ctx.fillStyle = `hsla(${time * 20}, 100%, 50%, 0.1)`;
+                ctx.fill();
+            }
+
+            draw();
+        }
+
+        // Event listeners
+        selectBtn.addEventListener('click', () => {
+            audioFileInput.click();
+        });
+
+        audioFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                loadAudio(file);
+            }
+        });
+
+        audio.addEventListener('ended', () => {
+            statusDiv.textContent = '終了';
+            selectBtn.textContent = '📁 音楽を選択';
+        });
+
+        audio.addEventListener('pause', () => {
+            selectBtn.textContent = '▶️ 再生';
+        });
+
+        audio.addEventListener('play', () => {
+            selectBtn.textContent = '⏸️ 一時停止';
+        });
+
+        selectBtn.addEventListener('click', () => {
+            if (audio.src) {
+                if (audio.paused) {
+                    audio.play();
+                } else {
+                    audio.pause();
+                }
+            }
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (audio.src) {
+                    if (audio.paused) {
+                        audio.play();
+                    } else {
+                        audio.pause();
+                    }
+                }
+            }
+        });
+
+        // Touch controls for mobile
+        let touchStartY = 0;
+        document.addEventListener('touchstart', (e) => {
+            touchStartY = e.touches[0].clientY;
+        });
+
+        document.addEventListener('touchend', (e) => {
+            const touchEndY = e.changedTouches[0].clientY;
+            const diff = touchStartY - touchEndY;
+
+            if (Math.abs(diff) < 10) {
+                // Tap
+                if (audio.src) {
+                    if (audio.paused) {
+                        audio.play();
+                    } else {
+                        audio.pause();
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
