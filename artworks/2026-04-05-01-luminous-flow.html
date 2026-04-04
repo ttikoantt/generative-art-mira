@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Luminous Flow Field - 発光フローフィールド</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+        }
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas1"></canvas>
+    <canvas id="canvas2"></canvas>
+    <div class="info">
+        <div>🌟 Luminous Flow Field</div>
+        <div>ドラッグで光の流れを操作</div>
+    </div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas1 = document.getElementById('canvas1');
+        const canvas2 = document.getElementById('canvas2');
+        const ctx1 = canvas1.getContext('2d');
+        const ctx2 = canvas2.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let flowField = [];
+        let rows, cols;
+        const scale = 15;
+        let mouseX = 0, mouseY = 0;
+        let isMouseDown = false;
+
+        function resize() {
+            width = canvas1.width = canvas2.width = window.innerWidth;
+            height = canvas1.height = canvas2.height = window.innerHeight;
+            cols = Math.floor(width / scale) + 1;
+            rows = Math.floor(height / scale) + 1;
+            flowField = new Array(cols * rows);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Simple noise function
+        function noise(x, y, z) {
+            const p = [];
+            for (let i = 0; i < 512; i++) p[i] = Math.floor(Math.random() * 256);
+            
+            const X = Math.floor(x) & 255;
+            const Y = Math.floor(y) & 255;
+            const Z = Math.floor(z) & 255;
+            
+            x -= Math.floor(x);
+            y -= Math.floor(y);
+            z -= Math.floor(z);
+            
+            const u = fade(x);
+            const v = fade(y);
+            const w = fade(z);
+            
+            const A = p[X] + Y;
+            const AA = p[A] + Z;
+            const AB = p[A + 1] + Z;
+            const B = p[X + 1] + Y;
+            const BA = p[B] + Z;
+            const BB = p[B + 1] + Z;
+            
+            return lerp(w,
+                lerp(v,
+                    lerp(u, grad(p[AA], x, y, z), grad(p[BA], x - 1, y, z)),
+                    lerp(u, grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z))
+                ),
+                lerp(v,
+                    lerp(u, grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1)),
+                    lerp(u, grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1))
+                )
+            );
+        }
+
+        function fade(t) {
+            return t * t * t * (t * (t * 6 - 15) + 10);
+        }
+
+        function lerp(t, a, b) {
+            return a + t * (b - a);
+        }
+
+        function grad(hash, x, y, z) {
+            const h = hash & 15;
+            const u = h < 8 ? x : y;
+            const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
+            return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+        }
+
+        let zOff = 0;
+        const particleCount = 2000;
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = 0;
+                this.vy = 0;
+                this.life = Math.random() * 200 + 100;
+                this.maxLife = this.life;
+                this.hue = Math.random() * 60 + 180; // Blue to cyan
+                this.size = Math.random() * 2 + 1;
+                this.history = [];
+            }
+
+            update() {
+                // Get flow field angle
+                const x = Math.floor(this.x / scale);
+                const y = Math.floor(this.y / scale);
+                const index = x + y * cols;
+                
+                let angle;
+                if (isMouseDown) {
+                    // Attract to mouse
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    angle = Math.atan2(dy, dx) + Math.sin(Date.now() * 0.001) * 0.5;
+                } else {
+                    angle = flowField[index] || 0;
+                }
+
+                this.vx += Math.cos(angle) * 0.5;
+                this.vy += Math.sin(angle) * 0.5;
+
+                // Limit speed
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 3) {
+                    this.vx = (this.vx / speed) * 3;
+                    this.vy = (this.vy / speed) * 3;
+                }
+
+                // Add friction
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Store history for trail
+                this.history.push({ x: this.x, y: this.y });
+                if (this.history.length > 10) {
+                    this.history.shift();
+                }
+
+                this.life--;
+
+                // Wrap around edges
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+
+                // Reset if dead
+                if (this.life <= 0) {
+                    this.reset();
+                }
+            }
+
+            draw(ctx) {
+                const alpha = (this.life / this.maxLife);
+                
+                // Draw trail
+                if (this.history.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.history[0].x, this.history[0].y);
+                    for (let i = 1; i < this.history.length; i++) {
+                        ctx.lineTo(this.history[i].x, this.history[i].y);
+                    }
+                    ctx.strokeStyle = `hsla(${this.hue}, 100%, 60%, ${alpha * 0.3})`;
+                    ctx.lineWidth = this.size;
+                    ctx.stroke();
+                }
+
+                // Draw particle with glow
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size * 3
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${alpha})`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 100%, 50%, ${alpha * 0.5})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 50%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Initialize particles
+        for (let i = 0; i < particleCount; i++) {
+            particles.push(new Particle());
+        }
+
+        // Mouse events
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        document.addEventListener('mousedown', () => {
+            isMouseDown = true;
+        });
+
+        document.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        document.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isMouseDown = true;
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        document.addEventListener('touchend', () => {
+            isMouseDown = false;
+        });
+
+        function animate() {
+            // Fade effect on canvas2 (for trails)
+            ctx2.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx2.fillRect(0, 0, width, height);
+
+            // Update flow field
+            let yOff = 0;
+            for (let y = 0; y < rows; y++) {
+                let xOff = 0;
+                for (let x = 0; x < cols; x++) {
+                    const index = x + y * cols;
+                    const angle = noise(xOff, yOff, zOff) * Math.PI * 4;
+                    flowField[index] = angle;
+                    xOff += 0.1;
+                }
+                yOff += 0.1;
+            }
+            zOff += 0.003;
+
+            // Update and draw particles
+            ctx1.clearRect(0, 0, width, height);
+            for (const particle of particles) {
+                particle.update();
+                particle.draw(ctx1);
+                particle.draw(ctx2);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
