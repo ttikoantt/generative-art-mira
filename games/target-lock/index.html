@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Target Lock | Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        #ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 15px;
+            color: white;
+            font-size: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .stat-value {
+            font-weight: bold;
+            font-size: 24px;
+            color: #00d4ff;
+        }
+
+        #start-screen, #game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        #game-over-screen {
+            display: none;
+        }
+
+        h1 {
+            color: white;
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 18px;
+            margin-bottom: 40px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+            border: none;
+            color: white;
+            padding: 15px 50px;
+            border-radius: 30px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.3);
+        }
+
+        .btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 30px rgba(0, 212, 255, 0.5);
+        }
+
+        #final-score {
+            color: #00d4ff;
+            font-size: 64px;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+
+        #fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            z-index: 50;
+            transition: all 0.3s;
+        }
+
+        #fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .combo {
+            position: fixed;
+            pointer-events: none;
+            font-size: 24px;
+            font-weight: bold;
+            color: #ffff00;
+            text-shadow: 0 0 10px rgba(255, 255, 0, 0.8);
+            animation: comboFade 0.5s ease-out;
+        }
+
+        @keyframes comboFade {
+            0% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-50px) scale(1.5);
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui">
+        <div class="stat">
+            <div>Score</div>
+            <div class="stat-value" id="score">0</div>
+        </div>
+        <div class="stat">
+            <div>Time</div>
+            <div class="stat-value" id="time">60</div>
+        </div>
+        <div class="stat">
+            <div>Combo</div>
+            <div class="stat-value" id="combo">0x</div>
+        </div>
+    </div>
+
+    <button id="fullscreen-btn">⛶</button>
+
+    <div id="start-screen">
+        <h1>🎯 Target Lock</h1>
+        <p class="subtitle">Tap the targets before they disappear!</p>
+        <button class="btn" id="start-btn">Start Game</button>
+    </div>
+
+    <div id="game-over-screen">
+        <h1>Time's Up!</h1>
+        <div id="final-score">0</div>
+        <p class="subtitle">Final Score</p>
+        <button class="btn" id="restart-btn">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let targets = [];
+        let score = 0;
+        let combo = 0;
+        let timeLeft = 60;
+        let gameRunning = false;
+        let gameLoop;
+        let spawnInterval;
+        let timerInterval;
+        let difficulty = 1;
+
+        const TARGET_MIN_SIZE = 40;
+        const TARGET_MAX_SIZE = 80;
+        const BASE_LIFETIME = 3000;
+
+        class Target {
+            constructor() {
+                this.size = TARGET_MAX_SIZE;
+                this.x = Math.random() * (width - this.size * 2) + this.size;
+                this.y = Math.random() * (height - this.size * 2) + this.size;
+                this.vx = (Math.random() - 0.5) * 2 * difficulty;
+                this.vy = (Math.random() - 0.5) * 2 * difficulty;
+                this.lifetime = BASE_LIFETIME;
+                this.maxLifetime = BASE_LIFETIME;
+                this.color = this.randomColor();
+                this.pulsePhase = Math.random() * Math.PI * 2;
+            }
+
+            randomColor() {
+                const colors = [
+                    '#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24',
+                    '#6c5ce7', '#a29bfe', '#fd79a8', '#00b894'
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update(deltaTime) {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Bounce off walls
+                if (this.x < this.size || this.x > width - this.size) {
+                    this.vx *= -1;
+                    this.x = Math.max(this.size, Math.min(width - this.size, this.x));
+                }
+                if (this.y < this.size || this.y > height - this.size) {
+                    this.vy *= -1;
+                    this.y = Math.max(this.size, Math.min(height - this.size, this.y));
+                }
+
+                this.lifetime -= deltaTime;
+                this.size = TARGET_MIN_SIZE + (TARGET_MAX_SIZE - TARGET_MIN_SIZE) * (this.lifetime / this.maxLifetime);
+                this.pulsePhase += 0.1;
+            }
+
+            draw() {
+                const pulseSize = Math.sin(this.pulsePhase) * 5;
+                const alpha = this.lifetime / this.maxLifetime;
+
+                // Outer glow
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size + pulseSize + 10, 0, Math.PI * 2);
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, this.size * 0.5,
+                    this.x, this.y, this.size + pulseSize + 10
+                );
+                gradient.addColorStop(0, this.color + '80');
+                gradient.addColorStop(1, this.color + '00');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Main circle
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size + pulseSize, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = alpha;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // Inner circle
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, (this.size + pulseSize) * 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.fill();
+
+                // Target crosshair
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(this.x - (this.size + pulseSize) * 0.7, this.y);
+                ctx.lineTo(this.x + (this.size + pulseSize) * 0.7, this.y);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y - (this.size + pulseSize) * 0.7);
+                ctx.lineTo(this.x, this.y + (this.size + pulseSize) * 0.7);
+                ctx.stroke();
+            }
+
+            contains(x, y) {
+                const distance = Math.sqrt(Math.pow(x - this.x, 2) + Math.pow(y - this.y, 2));
+                return distance < this.size + 10;
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function spawnTarget() {
+            if (targets.length < 5 + difficulty) {
+                targets.push(new Target());
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('time').textContent = timeLeft;
+            document.getElementById('combo').textContent = combo + 'x';
+        }
+
+        function showCombo(x, y, points) {
+            const comboEl = document.createElement('div');
+            comboEl.className = 'combo';
+            comboEl.textContent = '+' + points + (combo > 1 ? ' (' + combo + 'x)' : '');
+            comboEl.style.left = x + 'px';
+            comboEl.style.top = y + 'px';
+            document.body.appendChild(comboEl);
+            setTimeout(() => comboEl.remove(), 500);
+        }
+
+        function handleClick(x, y) {
+            if (!gameRunning) return;
+
+            for (let i = targets.length - 1; i >= 0; i--) {
+                if (targets[i].contains(x, y)) {
+                    const target = targets[i];
+                    const basePoints = Math.floor(100 * (target.lifetime / target.maxLifetime));
+                    const points = basePoints * (1 + combo * 0.1);
+                    score += Math.floor(points);
+                    combo++;
+                    showCombo(target.x, target.y, Math.floor(points));
+                    targets.splice(i, 1);
+                    updateUI();
+                    return;
+                }
+            }
+
+            // Miss - reset combo
+            if (combo > 0) {
+                combo = 0;
+                updateUI();
+            }
+        }
+
+        function gameUpdate() {
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            targets = targets.filter(target => target.lifetime > 0);
+
+            targets.forEach(target => {
+                target.update(16);
+                target.draw();
+            });
+        }
+
+        function startGame() {
+            score = 0;
+            combo = 0;
+            timeLeft = 60;
+            difficulty = 1;
+            targets = [];
+            gameRunning = true;
+
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('game-over-screen').style.display = 'none';
+            updateUI();
+
+            resize();
+            spawnTarget();
+
+            gameLoop = setInterval(gameUpdate, 16);
+            spawnInterval = setInterval(spawnTarget, 1000);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                difficulty = 1 + (60 - timeLeft) / 30;
+                updateUI();
+
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            gameRunning = false;
+            clearInterval(gameLoop);
+            clearInterval(spawnInterval);
+            clearInterval(timerInterval);
+
+            document.getElementById('final-score').textContent = score;
+            document.getElementById('game-over-screen').style.display = 'flex';
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('click', (e) => {
+            handleClick(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleClick(touch.clientX, touch.clientY);
+        });
+
+        document.getElementById('start-btn').addEventListener('click', startGame);
+        document.getElementById('restart-btn').addEventListener('click', startGame);
+
+        document.getElementById('fullscreen-btn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Initialize
+        resize();
+    </script>
+</body>
+</html>
