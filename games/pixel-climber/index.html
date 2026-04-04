@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Climber - ジャンプアクションゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a2e;
+            overflow: hidden;
+            font-family: 'Press Start 2P', 'Segoe UI', sans-serif;
+            touch-action: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+            background: linear-gradient(180deg, #0f0f23 0%, #1a1a2e 100%);
+        }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 16px;
+            text-align: center;
+            pointer-events: none;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .score {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 10px;
+            text-align: center;
+            color: white;
+            display: none;
+            z-index: 100;
+        }
+
+        .game-over h2 {
+            font-size: 32px;
+            margin-bottom: 20px;
+            color: #ff6b6b;
+        }
+
+        .game-over p {
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+
+        .game-over button {
+            background: #4ecdc4;
+            border: none;
+            color: white;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .game-over button:hover {
+            transform: scale(1.1);
+        }
+
+        .game-over button:active {
+            transform: scale(0.95);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div class="ui">
+        <div class="score">Score: <span id="score">0</span></div>
+    </div>
+    <div class="instructions">タップ/クリックでジャンプ</div>
+    <div class="game-over" id="gameOver">
+        <h2>GAME OVER</h2>
+        <p>Score: <span id="finalScore">0</span></p>
+        <button onclick="restartGame()">再挑戦</button>
+    </div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // キャンバスサイズ設定
+        function resizeCanvas() {
+            const maxWidth = 600;
+            const maxHeight = 800;
+            const ratio = maxWidth / maxHeight;
+
+            let width = window.innerWidth;
+            let height = window.innerHeight;
+
+            if (width / height > ratio) {
+                width = height * ratio;
+            } else {
+                height = width / ratio;
+            }
+
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ゲーム状態
+        let gameState = 'playing';
+        let score = 0;
+        let cameraY = 0;
+
+        // プレイヤー
+        const player = {
+            x: canvas.width / 2 - 15,
+            y: canvas.height - 200,
+            width: 30,
+            height: 40,
+            velocityX: 0,
+            velocityY: 0,
+            gravity: 0.6,
+            jumpForce: -12,
+            speed: 5,
+            grounded: false,
+            color: '#4ecdc4'
+        };
+
+        // プラットフォーム
+        const platforms = [];
+        const platformCount = 20;
+
+        // プラットフォームを生成
+        function generatePlatforms() {
+            platforms.length = 0;
+
+            // 初期プラットフォーム
+            platforms.push({
+                x: canvas.width / 2 - 50,
+                y: canvas.height - 100,
+                width: 100,
+                height: 20,
+                type: 'normal'
+            });
+
+            // ランダムなプラットフォームを生成
+            for (let i = 1; i < platformCount; i++) {
+                const platform = {
+                    x: Math.random() * (canvas.width - 100),
+                    y: canvas.height - 100 - i * 150,
+                    width: Math.random() * 60 + 60,
+                    height: 20,
+                    type: Math.random() < 0.2 ? 'moving' : 'normal'
+                };
+
+                if (platform.type === 'moving') {
+                    platform.startX = platform.x;
+                    platform.range = 100;
+                    platform.speed = 2;
+                    platform.direction = 1;
+                }
+
+                platforms.push(platform);
+            }
+        }
+
+        // 新しいプラットフォームを追加
+        function addPlatform() {
+            const highestPlatform = platforms[platforms.length - 1];
+            const newPlatform = {
+                x: Math.random() * (canvas.width - 100),
+                y: highestPlatform.y - 150,
+                width: Math.random() * 60 + 60,
+                height: 20,
+                type: Math.random() < 0.2 ? 'moving' : 'normal'
+            };
+
+            if (newPlatform.type === 'moving') {
+                newPlatform.startX = newPlatform.x;
+                newPlatform.range = 100;
+                newPlatform.speed = 2;
+                newPlatform.direction = 1;
+            }
+
+            platforms.push(newPlatform);
+        }
+
+        // ジャンプ
+        function jump() {
+            if (player.grounded && gameState === 'playing') {
+                player.velocityY = player.jumpForce;
+                player.grounded = false;
+            }
+        }
+
+        // 衝突判定
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        // ゲームオーバー
+        function gameOver() {
+            gameState = 'gameover';
+            document.getElementById('gameOver').style.display = 'block';
+            document.getElementById('finalScore').textContent = score;
+        }
+
+        // ゲームを再開
+        function restartGame() {
+            gameState = 'playing';
+            score = 0;
+            cameraY = 0;
+            player.x = canvas.width / 2 - 15;
+            player.y = canvas.height - 200;
+            player.velocityX = 0;
+            player.velocityY = 0;
+            player.grounded = false;
+            document.getElementById('gameOver').style.display = 'none';
+            document.getElementById('score').textContent = score;
+            generatePlatforms();
+        }
+
+        // 更新
+        function update() {
+            if (gameState !== 'playing') return;
+
+            // プレイヤーの移動
+            player.velocityY += player.gravity;
+            player.y += player.velocityY;
+
+            // 落下判定
+            if (player.y > canvas.height + cameraY + 100) {
+                gameOver();
+                return;
+            }
+
+            // キーボード入力
+            if (keys['ArrowLeft'] || keys['KeyA']) {
+                player.x -= player.speed;
+            }
+            if (keys['ArrowRight'] || keys['KeyD']) {
+                player.x += player.speed;
+            }
+
+            // 画面外に出ないように
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) {
+                player.x = canvas.width - player.width;
+            }
+        }
+
+        // プラットフォームの更新
+        function updatePlatforms() {
+            platforms.forEach(platform => {
+                if (platform.type === 'moving') {
+                    platform.x += platform.speed * platform.direction;
+                    if (platform.x < platform.startX - platform.range / 2 ||
+                        platform.x > platform.startX + platform.range / 2) {
+                        platform.direction *= -1;
+                    }
+                }
+            });
+        }
+
+        // 衝突判定
+        function checkCollisions() {
+            player.grounded = false;
+
+            platforms.forEach(platform => {
+                const platformRect = {
+                    x: platform.x,
+                    y: platform.y,
+                    width: platform.width,
+                    height: platform.height
+                };
+
+                if (checkCollision(player, platformRect)) {
+                    // 上から乗った場合
+                    if (player.velocityY > 0 &&
+                        player.y + player.height - player.velocityY <= platform.y) {
+                        player.grounded = true;
+                        player.velocityY = 0;
+                        player.y = platform.y - player.height;
+                    }
+                }
+            });
+        }
+
+        // カメラ更新
+        function updateCamera() {
+            const targetY = canvas.height * 0.6;
+            if (player.y < targetY + cameraY) {
+                cameraY = player.y - targetY;
+                score = Math.max(score, Math.floor(-cameraY / 10));
+                document.getElementById('score').textContent = score;
+
+                // 新しいプラットフォームを追加
+                const highestPlatform = platforms[platforms.length - 1];
+                if (highestPlatform.y > cameraY - 100) {
+                    addPlatform();
+                }
+
+                // 古いプラットフォームを削除
+                if (platforms[0].y > cameraY + canvas.height + 100) {
+                    platforms.shift();
+                }
+            }
+        }
+
+        // 描画
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // カメラ変換
+            ctx.save();
+            ctx.translate(0, -cameraY);
+
+            // プラットフォームを描画
+            platforms.forEach(platform => {
+                ctx.fillStyle = platform.type === 'moving' ? '#ff6b6b' : '#95e1d3';
+                ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+
+                // 枠線
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(platform.x, platform.y, platform.width, platform.height);
+            });
+
+            // プレイヤーを描画
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+
+            // プレイヤーの目
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(player.x + 5, player.y + 10, 8, 8);
+            ctx.fillRect(player.x + 17, player.y + 10, 8, 8);
+
+            ctx.fillStyle = '#000';
+            ctx.fillRect(player.x + 7, player.y + 12, 4, 4);
+            ctx.fillRect(player.x + 19, player.y + 12, 4, 4);
+
+            ctx.restore();
+        }
+
+        // キー入力
+        const keys = {};
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                e.preventDefault();
+                jump();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        // タッチ/クリック入力
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        }, { passive: false });
+
+        canvas.addEventListener('click', (e) => {
+            jump();
+        });
+
+        // 全画面表示
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // ゲームループ
+        function gameLoop() {
+            update();
+            updatePlatforms();
+            checkCollisions();
+            updateCamera();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ゲーム開始
+        generatePlatforms();
+        gameLoop();
+    </script>
+</body>
+</html>
