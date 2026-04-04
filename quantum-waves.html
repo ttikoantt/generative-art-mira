@@ -12,75 +12,89 @@
         }
 
         body {
-            background: #0a0a1a;
+            background: #000;
             overflow: hidden;
             font-family: 'Courier New', monospace;
         }
 
         canvas {
             display: block;
-            position: fixed;
-            top: 0;
-            left: 0;
-        }
-
-        .info {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 14px;
-            z-index: 10;
-            pointer-events: none;
         }
 
         .controls {
             position: fixed;
-            top: 20px;
-            right: 20px;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            display: flex;
+            gap: 15px;
+            z-index: 100;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .control-group {
             display: flex;
             flex-direction: column;
-            gap: 10px;
-            z-index: 10;
+            gap: 5px;
         }
 
-        .btn {
-            padding: 10px 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            font-family: 'Courier New', monospace;
+        label {
+            color: #0ff;
             font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        input[type="range"] {
+            width: 120px;
+            accent-color: #0ff;
+        }
+
+        button {
+            background: linear-gradient(135deg, #0ff, #f0f);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            color: #000;
+            font-weight: bold;
             cursor: pointer;
-            transition: all 0.3s;
-            backdrop-filter: blur(10px);
+            font-size: 14px;
+            text-transform: uppercase;
         }
 
-        .btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-            border-color: rgba(255, 255, 255, 0.5);
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
         }
 
-        .btn:active {
-            transform: scale(0.95);
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #0ff;
+            color: #0ff;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 100;
         }
 
-        @media (max-width: 768px) {
-            .info {
-                font-size: 12px;
-                bottom: 10px;
-                left: 10px;
-            }
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.2);
+        }
 
-            .controls {
-                top: 10px;
-                right: 10px;
-            }
-
-            .btn {
-                padding: 8px 16px;
-                font-size: 11px;
-            }
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            font-size: 12px;
+            z-index: 100;
         }
     </style>
 </head>
@@ -89,119 +103,137 @@
 
     <div class="info">
         <div>Quantum Waves</div>
-        <div>クリック/タップで波紋を生成</div>
+        <div>クリック/タッチで波を追加</div>
     </div>
 
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
     <div class="controls">
-        <button class="btn" onclick="changeMode()">モード切替</button>
-        <button class="btn" onclick="toggleAuto()">自動生成: ON</button>
-        <button class="btn" onclick="clearWaves()">クリア</button>
+        <div class="control-group">
+            <label>波の数: <span id="waveCountLabel">5</span></label>
+            <input type="range" id="waveCount" min="1" max="10" value="5">
+        </div>
+        <div class="control-group">
+            <label>粒子数: <span id="particleCountLabel">200</span></label>
+            <input type="range" id="particleCount" min="50" max="500" value="200">
+        </div>
+        <div class="control-group">
+            <label>速度: <span id="speedLabel">1.0</span></label>
+            <input type="range" id="speed" min="0.1" max="3" step="0.1" value="1">
+        </div>
+        <button onclick="reset()">リセット</button>
     </div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
+        let width, height;
         let waves = [];
-        let mode = 0;
-        let autoGenerate = true;
-        let hue = 0;
+        let particles = [];
+        let time = 0;
+
+        const config = {
+            waveCount: 5,
+            particleCount: 200,
+            speed: 1
+        };
 
         function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
         }
-
-        resize();
-        window.addEventListener('resize', resize);
 
         class Wave {
             constructor(x, y) {
-                this.x = x;
-                this.y = y;
-                this.radius = 0;
-                this.maxRadius = Math.random() * 200 + 150;
-                this.speed = Math.random() * 2 + 1;
-                this.hue = hue;
-                this.alpha = 1;
-                this.lineWidth = Math.random() * 3 + 1;
+                this.x = x || width / 2;
+                this.y = y || height / 2;
+                this.frequency = Math.random() * 0.02 + 0.01;
+                this.amplitude = Math.random() * 50 + 30;
+                this.phase = Math.random() * Math.PI * 2;
+                this.color = `hsl(${Math.random() * 360}, 100%, 50%)`;
+                this.speed = Math.random() * 0.02 + 0.01;
             }
 
-            update() {
-                this.radius += this.speed;
-                this.alpha = 1 - (this.radius / this.maxRadius);
-                return this.alpha > 0;
+            getValueAt(px, py, t) {
+                const dist = Math.sqrt((px - this.x) ** 2 + (py - this.y) ** 2);
+                return Math.sin(dist * this.frequency + this.phase + t * this.speed) * this.amplitude;
+            }
+        }
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.baseX = this.x;
+                this.baseY = this.y;
+                this.size = Math.random() * 3 + 1;
+            }
+
+            update(t) {
+                let offsetX = 0;
+                let offsetY = 0;
+
+                waves.forEach(wave => {
+                    const value = wave.getValueAt(this.baseX, this.baseY, t);
+                    const angle = Math.atan2(this.baseY - wave.y, this.baseX - wave.x);
+                    offsetX += Math.cos(angle) * value * 0.5;
+                    offsetY += Math.sin(angle) * value * 0.5;
+                });
+
+                this.x = this.baseX + offsetX;
+                this.y = this.baseY + offsetY;
             }
 
             draw() {
+                const totalWave = waves.reduce((sum, wave) => {
+                    return sum + wave.getValueAt(this.baseX, this.baseY, time);
+                }, 0);
+
+                const hue = (Math.abs(totalWave) * 2 + time * 10) % 360;
+                ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-
-                const gradient = ctx.createRadialGradient(
-                    this.x, this.y, this.radius * 0.8,
-                    this.x, this.y, this.radius
-                );
-
-                const color1 = `hsla(${this.hue}, 80%, 60%, ${this.alpha})`;
-                const color2 = `hsla(${(this.hue + 30) % 360}, 80%, 50%, 0)`;
-
-                gradient.addColorStop(0, color2);
-                gradient.addColorStop(1, color1);
-
-                ctx.strokeStyle = gradient;
-                ctx.lineWidth = this.lineWidth;
-                ctx.stroke();
-
-                // インターフェレンス効果（多重波）
-                if (mode === 1) {
-                    for (let i = 1; i <= 3; i++) {
-                        ctx.beginPath();
-                        ctx.arc(this.x, this.y, this.radius - (i * 20), 0, Math.PI * 2);
-                        ctx.strokeStyle = `hsla(${(this.hue + i * 20) % 360}, 70%, 50%, ${this.alpha * 0.5})`;
-                        ctx.lineWidth = this.lineWidth * 0.5;
-                        ctx.stroke();
-                    }
-                }
-
-                // 量子もつれ効果（螺旋）
-                if (mode === 2) {
-                    const spiralCount = 8;
-                    for (let i = 0; i < spiralCount; i++) {
-                        const angle = (i / spiralCount) * Math.PI * 2 + (this.radius * 0.02);
-                        const px = this.x + Math.cos(angle) * this.radius;
-                        const py = this.y + Math.sin(angle) * this.radius;
-
-                        ctx.beginPath();
-                        ctx.arc(px, py, 3, 0, Math.PI * 2);
-                        ctx.fillStyle = `hsla(${(this.hue + i * 45) % 360}, 80%, 60%, ${this.alpha})`;
-                        ctx.fill();
-                    }
-                }
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
             }
+        }
+
+        function init() {
+            waves = [];
+            particles = [];
+
+            for (let i = 0; i < config.waveCount; i++) {
+                waves.push(new Wave(
+                    Math.random() * width,
+                    Math.random() * height
+                ));
+            }
+
+            for (let i = 0; i < config.particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(p => {
+                p.update(time);
+                p.draw();
+            });
+
+            time += config.speed;
+            requestAnimationFrame(draw);
         }
 
         function addWave(x, y) {
             waves.push(new Wave(x, y));
-            hue = (hue + 15) % 360;
+            if (waves.length > 10) {
+                waves.shift();
+            }
         }
 
-        function changeMode() {
-            mode = (mode + 1) % 3;
-            const modeNames = ['標準', '干渉', '量子もつれ'];
-            console.log(`モード: ${modeNames[mode]}`);
-        }
-
-        function toggleAuto() {
-            autoGenerate = !autoGenerate;
-            const btn = event.target;
-            btn.textContent = `自動生成: ${autoGenerate ? 'ON' : 'OFF'}`;
-        }
-
-        function clearWaves() {
-            waves = [];
-        }
-
-        // イベントリスナー
         canvas.addEventListener('click', (e) => {
             addWave(e.clientX, e.clientY);
         });
@@ -212,48 +244,44 @@
             addWave(touch.clientX, touch.clientY);
         });
 
-        // 自動生成
-        let lastAutoGen = 0;
-        function autoGenerateWave(timestamp) {
-            if (autoGenerate && timestamp - lastAutoGen > 1500) {
-                const x = Math.random() * canvas.width;
-                const y = Math.random() * canvas.height;
-                addWave(x, y);
-                lastAutoGen = timestamp;
+        document.getElementById('waveCount').addEventListener('input', (e) => {
+            config.waveCount = parseInt(e.target.value);
+            document.getElementById('waveCountLabel').textContent = config.waveCount;
+            init();
+        });
+
+        document.getElementById('particleCount').addEventListener('input', (e) => {
+            config.particleCount = parseInt(e.target.value);
+            document.getElementById('particleCountLabel').textContent = config.particleCount;
+            init();
+        });
+
+        document.getElementById('speed').addEventListener('input', (e) => {
+            config.speed = parseFloat(e.target.value);
+            document.getElementById('speedLabel').textContent = config.speed.toFixed(1);
+        });
+
+        function reset() {
+            time = 0;
+            init();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
             }
         }
 
-        // アニメーションループ
-        function animate(timestamp) {
-            // 背景をフェード
-            ctx.fillStyle = 'rgba(10, 10, 26, 0.05)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        window.addEventListener('resize', () => {
+            resize();
+            init();
+        });
 
-            // 自動生成
-            autoGenerateWave(timestamp);
-
-            // 波を更新・描画
-            waves = waves.filter(wave => {
-                wave.draw();
-                return wave.update();
-            });
-
-            // 惑星のような光る中心
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 100);
-            gradient.addColorStop(0, `hsla(${hue}, 80%, 50%, 0.02)`);
-            gradient.addColorStop(1, 'transparent');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            requestAnimationFrame(animate);
-        }
-
-        animate(0);
-
-        // 初期波紋
-        setTimeout(() => addWave(canvas.width / 2, canvas.height / 2), 500);
+        resize();
+        init();
+        draw();
     </script>
 </body>
 </html>
