@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Square Spinner - スクエアスピナー</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(circle, #1a1a2e, #0f0f1a);
+      font-family: system-ui, -apple-system, sans-serif;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #ui {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: white;
+      z-index: 100;
+    }
+    #start-screen, #game-over {
+      background: rgba(0, 0, 0, 0.85);
+      padding: 32px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+    }
+    #game-over { display: none; }
+    h1 { margin: 0 0 8px; font-size: 24px; color: #4ecdc4; }
+    p { margin: 8px 0; color: rgba(255,255,255,0.7); font-size: 14px; }
+    .score { font-size: 48px; font-weight: bold; color: #ff6b6b; margin: 16px 0; }
+    button {
+      background: linear-gradient(135deg, #4ecdc4, #44a08d);
+      border: none;
+      border-radius: 25px;
+      padding: 12px 32px;
+      color: white;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: transform 0.1s;
+      margin-top: 16px;
+    }
+    button:active { transform: scale(0.95); }
+    #hud {
+      position: fixed;
+      top: 20px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 20px;
+      pointer-events: none;
+      z-index: 50;
+    }
+    .hud-item {
+      color: white;
+      font-size: 20px;
+      font-weight: bold;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    }
+    #high-score { color: #ffd700; }
+    .tutorial {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.6);
+      font-size: 14px;
+      pointer-events: none;
+      transition: opacity 0.5s;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="hud">
+    <div class="hud-item" id="score">0</div>
+    <div class="hud-item" id="high-score">🏆 0</div>
+  </div>
+  <div class="tutorial" id="tutorial">タップで回転・障害物を避けよう</div>
+  <div id="ui">
+    <div id="start-screen">
+      <h1>Square Spinner</h1>
+      <p>中央の四角をタップで回転させて<br>障害物を避けよう！</p>
+      <button onclick="startGame()">スタート</button>
+    </div>
+    <div id="game-over">
+      <h1>ゲームオーバー</h1>
+      <div class="score" id="final-score">0</div>
+      <p>ベストスコア: <span id="final-high">0</span></p>
+      <button onclick="startGame()">もう一度</button>
+    </div>
+  </div>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let width, height, centerX, centerY;
+    let gameRunning = false;
+    let score = 0;
+    let highScore = parseInt(localStorage.getItem('squareSpinnerHigh') || '0');
+    document.getElementById('high-score').textContent = '🏆 ' + highScore;
+
+    let player = { angle: 0, rotationSpeed: 0, size: 60 };
+    let obstacles = [];
+    let particles = [];
+    let obstacleTimer = 0;
+    let difficulty = 1;
+
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      centerX = width / 2;
+      centerY = height / 2;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function startGame() {
+      gameRunning = true;
+      score = 0;
+      difficulty = 1;
+      player.angle = 0;
+      player.rotationSpeed = 0;
+      obstacles = [];
+      particles = [];
+      obstacleTimer = 0;
+      document.getElementById('start-screen').style.display = 'none';
+      document.getElementById('game-over').style.display = 'none';
+      document.getElementById('tutorial').style.opacity = '1';
+      setTimeout(() => {
+        document.getElementById('tutorial').style.opacity = '0';
+      }, 2000);
+      requestAnimationFrame(gameLoop);
+    }
+
+    function gameOver() {
+      gameRunning = false;
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem('squareSpinnerHigh', highScore);
+        document.getElementById('high-score').textContent = '🏆 ' + highScore;
+      }
+      document.getElementById('final-score').textContent = score;
+      document.getElementById('final-high').textContent = highScore;
+      document.getElementById('game-over').style.display = 'block';
+    }
+
+    function spawnObstacle() {
+      const side = Math.floor(Math.random() * 4);
+      const dist = Math.min(width, height) / 2 + 50;
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2 + Math.random() * 2 + difficulty * 0.3;
+      let x, y, targetX, targetY;
+
+      if (side === 0) { x = -50; y = Math.random() * height; }
+      else if (side === 1) { x = width + 50; y = Math.random() * height; }
+      else if (side === 2) { x = Math.random() * width; y = -50; }
+      else { x = Math.random() * width; y = height + 50; }
+
+      obstacles.push({ x, y, targetX: centerX, targetY: centerY, speed, size: 15 + Math.random() * 10, color: `hsl(${Math.random() * 60 + 330}, 70%, 55%)` });
+    }
+
+    function createParticles(x, y, color, count) {
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x, y,
+          vx: (Math.random() - 0.5) * 8,
+          vy: (Math.random() - 0.5) * 8,
+          size: 3 + Math.random() * 4,
+          color,
+          life: 1
+        });
+      }
+    }
+
+    function gameLoop() {
+      if (!gameRunning) return;
+
+      ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+      ctx.fillRect(0, 0, width, height);
+
+      // Player rotation
+      player.angle += player.rotationSpeed;
+      player.rotationSpeed *= 0.95;
+      if (Math.abs(player.rotationSpeed) < 0.001) player.rotationSpeed = 0;
+
+      // Draw player
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(player.angle);
+      ctx.fillStyle = '#4ecdc4';
+      ctx.shadowColor = '#4ecdc4';
+      ctx.shadowBlur = 20;
+      ctx.fillRect(-player.size / 2, -player.size / 2, player.size, player.size);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(-player.size / 2, -player.size / 2, player.size, player.size);
+      ctx.restore();
+
+      // Spawn obstacles
+      obstacleTimer++;
+      if (obstacleTimer > 60 - difficulty * 5) {
+        spawnObstacle();
+        obstacleTimer = 0;
+      }
+
+      // Update obstacles
+      obstacles.forEach((obs, i) => {
+        const dx = obs.targetX - obs.x;
+        const dy = obs.targetY - obs.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        obs.x += (dx / dist) * obs.speed;
+        obs.y += (dy / dist) * obs.speed;
+
+        // Draw obstacle
+        ctx.beginPath();
+        ctx.arc(obs.x, obs.y, obs.size, 0, Math.PI * 2);
+        ctx.fillStyle = obs.color;
+        ctx.shadowColor = obs.color;
+        ctx.shadowBlur = 15;
+        ctx.fill();
+
+        // Collision detection
+        const toObsX = obs.x - centerX;
+        const toObsY = obs.y - centerY;
+        const distToObs = Math.sqrt(toObsX * toObsX + toObsY * toObsY);
+        if (distToObs < player.size / 2 + obs.size) {
+          const angleToObs = Math.atan2(toObsY, toObsX) - player.angle;
+          const normalizedAngle = ((angleToObs % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2) - Math.PI / 4;
+          if (Math.abs(normalizedAngle) < Math.PI / 4) {
+            createParticles(obs.x, obs.y, obs.color, 20);
+            gameOver();
+            return;
+          }
+        }
+
+        // Score
+        if (distToObs < 50) {
+          score++;
+          obstacles.splice(i, 1);
+          document.getElementById('score').textContent = score;
+          difficulty = 1 + Math.floor(score / 10) * 0.5;
+        }
+      });
+
+      // Update particles
+      particles.forEach((p, i) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.02;
+        p.vx *= 0.98;
+        p.vy *= 0.98;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        if (p.life <= 0) particles.splice(i, 1);
+      });
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    canvas.addEventListener('mousedown', () => { if (gameRunning) player.rotationSpeed += 0.15; });
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); if (gameRunning) player.rotationSpeed += 0.15; });
+  </script>
+</body>
+</html>

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KaleidoFlow - カレイドスコープフロー</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(circle, #111, #000);
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .controls {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      z-index: 10;
+      pointer-events: none;
+    }
+    .controls button {
+      pointer-events: auto;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      padding: 8px 16px;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .controls button:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    .controls button:active {
+      transform: scale(0.95);
+    }
+    .info {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.7);
+      font-size: 12px;
+      pointer-events: none;
+      line-height: 1.6;
+    }
+    .info strong {
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="info">
+    <strong>KaleidoFlow</strong><br>
+    マウス/タッチを動かして模様を描こう<br>
+    クリックで色変更
+  </div>
+  <div class="controls">
+    <button onclick="clearCanvas()">クリア</button>
+    <button onclick="download()">保存</button>
+    <button onclick="toggleAutoRotate()">自動回転</button>
+  </div>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let width, height, centerX, centerY;
+    let mouseX = 0, mouseY = 0, isDown = false;
+    let hue = 0;
+    let paths = [];
+    let autoRotate = false;
+    let rotation = 0;
+
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      centerX = width / 2;
+      centerY = height / 2;
+      mouseX = centerX;
+      mouseY = centerY;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function drawPath(path) {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(rotation);
+      ctx.translate(-centerX, -centerY);
+
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      const seg = Math.PI * 2 / path.segments;
+      for (let i = 0; i < path.segments; i++) {
+        ctx.rotate(seg);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        for (const p of path.points) {
+          ctx.lineTo(p.x, p.y);
+        }
+        ctx.strokeStyle = `hsla(${path.hue}, ${path.sat}%, ${path.light}%, ${path.alpha})`;
+        ctx.lineWidth = path.width;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+      }
+      ctx.restore();
+      ctx.restore();
+    }
+
+    function render() {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+      ctx.fillRect(0, 0, width, height);
+
+      paths.forEach(path => {
+        path.alpha -= path.fade;
+        if (path.alpha < 0) path.alpha = 0;
+        drawPath(path);
+      });
+      paths = paths.filter(p => p.alpha > 0);
+
+      if (autoRotate) {
+        rotation += 0.003;
+      }
+
+      hue = (hue + 0.3) % 360;
+      requestAnimationFrame(render);
+    }
+    render();
+
+    function addPoint(x, y) {
+      const relX = x - centerX;
+      const relY = y - centerY;
+      const dist = Math.sqrt(relX * relX + relY * relY);
+      const angle = Math.atan2(relY, relX);
+
+      const seg = Math.floor(12 + Math.random() * 12);
+      let last = paths[paths.length - 1];
+      if (!last || last.hue !== Math.floor(hue)) {
+        last = {
+          segments: seg,
+          hue: Math.floor(hue),
+          sat: 70 + Math.random() * 20,
+          light: 50 + Math.random() * 15,
+          alpha: 1,
+          fade: 0.002 + Math.random() * 0.004,
+          width: 2 + Math.random() * 4,
+          points: []
+        };
+        paths.push(last);
+      }
+      last.points.push({ x: relX, y: relY });
+    }
+
+    canvas.addEventListener('mousedown', e => { isDown = true; hue = Math.random() * 360; });
+    canvas.addEventListener('mouseup', () => isDown = false);
+    canvas.addEventListener('mousemove', e => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      if (isDown) addPoint(mouseX, mouseY);
+    });
+
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      isDown = true;
+      hue = Math.random() * 360;
+      mouseX = e.touches[0].clientX;
+      mouseY = e.touches[0].clientY;
+    });
+    canvas.addEventListener('touchend', () => isDown = false);
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (isDown) addPoint(e.touches[0].clientX, e.touches[0].clientY);
+    });
+
+    function clearCanvas() {
+      paths = [];
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, width, height);
+    }
+
+    function download() {
+      const link = document.createElement('a');
+      link.download = 'kaleido-flow.png';
+      link.href = canvas.toDataURL();
+      link.click();
+    }
+
+    function toggleAutoRotate() {
+      autoRotate = !autoRotate;
+    }
+  </script>
+</body>
+</html>
