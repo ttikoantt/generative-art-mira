@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gravity Ball - 重力ボール</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            height: 100vh;
+            max-height: 700px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+
+        .ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .ui div {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            padding: 10px 20px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 30px;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .overlay h1 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        .overlay p {
+            font-size: 16px;
+            margin: 10px 0;
+            opacity: 0.9;
+        }
+
+        .overlay button {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: 18px;
+            background: white;
+            color: #667eea;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .overlay button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.5);
+        }
+
+        @media (max-width: 600px) {
+            .game-container {
+                max-width: 100%;
+                max-height: 100vh;
+                border-radius: 0;
+            }
+
+            .overlay h1 {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="canvas"></canvas>
+
+        <div class="ui">
+            <div id="level">Level 1</div>
+            <div id="platforms">Platforms: 3</div>
+        </div>
+
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+        <div class="overlay" id="startOverlay">
+            <h1>🎱 Gravity Ball</h1>
+            <p>画面をタップしてプラットフォームを配置</p>
+            <p>ボールをゴールへ導こう！</p>
+            <button onclick="startGame()">スタート</button>
+        </div>
+
+        <div class="overlay hidden" id="winOverlay">
+            <h1>🎉 Clear!</h1>
+            <p id="winMessage"></p>
+            <button onclick="nextLevel()">次へ</button>
+        </div>
+
+        <div class="overlay hidden" id="gameOverOverlay">
+            <h1>😢 Game Over</h1>
+            <p>もう一度挑戦！</p>
+            <button onclick="restartLevel()">リトライ</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let ball;
+        let platforms = [];
+        let goal;
+        let level = 1;
+        let maxPlatforms = 3;
+        let gameState = 'start'; // start, playing, won, lost
+
+        const levels = [
+            {
+                ballStart: { x: 0.1, y: 0.2 },
+                goalPos: { x: 0.8, y: 0.8 },
+                maxPlatforms: 3
+            },
+            {
+                ballStart: { x: 0.5, y: 0.1 },
+                goalPos: { x: 0.5, y: 0.85 },
+                maxPlatforms: 3
+            },
+            {
+                ballStart: { x: 0.9, y: 0.2 },
+                goalPos: { x: 0.1, y: 0.8 },
+                maxPlatforms: 3
+            },
+            {
+                ballStart: { x: 0.5, y: 0.15 },
+                goalPos: { x: 0.5, y: 0.9 },
+                maxPlatforms: 4
+            },
+            {
+                ballStart: { x: 0.1, y: 0.3 },
+                goalPos: { x: 0.9, y: 0.3 },
+                maxPlatforms: 4
+            }
+        ];
+
+        function resize() {
+            const container = document.querySelector('.game-container');
+            width = canvas.width = container.clientWidth;
+            height = canvas.height = container.clientHeight;
+        }
+
+        class Ball {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 12;
+                this.vx = 0;
+                this.vy = 0;
+                this.gravity = 0.3;
+                this.bounce = 0.6;
+            }
+
+            update() {
+                this.vy += this.gravity;
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 壁との衝突
+                if (this.x - this.radius < 0) {
+                    this.x = this.radius;
+                    this.vx *= -this.bounce;
+                }
+                if (this.x + this.radius > width) {
+                    this.x = width - this.radius;
+                    this.vx *= -this.bounce;
+                }
+
+                // 天井との衝突
+                if (this.y - this.radius < 0) {
+                    this.y = this.radius;
+                    this.vy *= -this.bounce;
+                }
+
+                // 地面（ゲームオーバー）
+                if (this.y - this.radius > height) {
+                    gameOver();
+                }
+
+                // プラットフォームとの衝突
+                platforms.forEach(platform => {
+                    if (this.checkCollision(platform)) {
+                        // プラットフォームの上に着地
+                        if (this.vy > 0) {
+                            this.y = platform.y - this.radius;
+                            this.vy *= -this.bounce;
+                        } else {
+                            // 下からぶつかる
+                            this.y = platform.y + platform.height + this.radius;
+                            this.vy *= -this.bounce;
+                        }
+                        this.vx *= 0.98; // 摩擦
+                    }
+                });
+            }
+
+            checkCollision(platform) {
+                const closestX = Math.max(platform.x, Math.min(this.x, platform.x + platform.width));
+                const closestY = Math.max(platform.y, Math.min(this.y, platform.y + platform.height));
+                const dx = this.x - closestX;
+                const dy = this.y - closestY;
+                return (dx * dx + dy * dy) < (this.radius * this.radius);
+            }
+
+            draw() {
+                const gradient = ctx.createRadialGradient(
+                    this.x - this.radius * 0.3, this.y - this.radius * 0.3, 0,
+                    this.x, this.y, this.radius
+                );
+                gradient.addColorStop(0, 'white');
+                gradient.addColorStop(1, '#4a5568');
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        class Goal {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 20;
+            }
+
+            checkCollision(ball) {
+                const dx = this.x - ball.x;
+                const dy = this.y - ball.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                return dist < this.radius + ball.radius;
+            }
+
+            draw() {
+                const time = Date.now() / 1000;
+                const pulse = Math.sin(time * 3) * 0.2 + 1;
+
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius * pulse);
+                gradient.addColorStop(0, 'rgba(74, 222, 128, 0.8)');
+                gradient.addColorStop(0.5, 'rgba(74, 222, 128, 0.3)');
+                gradient.addColorStop(1, 'transparent');
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * pulse, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // 星マーク
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.fillStyle = 'white';
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('⭐', 0, 0);
+                ctx.restore();
+            }
+        }
+
+        function initLevel() {
+            const levelData = levels[(level - 1) % levels.length];
+            ball = new Ball(
+                levelData.ballStart.x * width,
+                levelData.ballStart.y * height
+            );
+            goal = new Goal(
+                levelData.goalPos.x * width,
+                levelData.goalPos.y * height
+            );
+            maxPlatforms = levelData.maxPlatforms;
+            platforms = [];
+            document.getElementById('level').textContent = `Level ${level}`;
+            document.getElementById('platforms').textContent = `Platforms: ${maxPlatforms - platforms.length}`;
+        }
+
+        function addPlatform(x, y) {
+            if (platforms.length >= maxPlatforms) return;
+
+            const platformWidth = 80;
+            platforms.push({
+                x: x - platformWidth / 2,
+                y: y,
+                width: platformWidth,
+                height: 10
+            });
+
+            document.getElementById('platforms').textContent = `Platforms: ${maxPlatforms - platforms.length}`;
+        }
+
+        function update() {
+            if (gameState !== 'playing') return;
+
+            ball.update();
+
+            if (goal.checkCollision(ball)) {
+                winLevel();
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            // プラットフォーム描画
+            platforms.forEach(platform => {
+                const gradient = ctx.createLinearGradient(platform.x, platform.y, platform.x, platform.y + platform.height);
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+                gradient.addColorStop(1, 'rgba(200, 200, 200, 0.6)');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.roundRect(platform.x, platform.y, platform.width, platform.height, 5);
+                ctx.fill();
+            });
+
+            if (goal) goal.draw();
+            if (ball) ball.draw();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            document.getElementById('startOverlay').classList.add('hidden');
+            gameState = 'playing';
+            level = 1;
+            initLevel();
+        }
+
+        function winLevel() {
+            gameState = 'won';
+            document.getElementById('winMessage').textContent = `Level ${level} をクリア！`;
+            document.getElementById('winOverlay').classList.remove('hidden');
+        }
+
+        function gameOver() {
+            gameState = 'lost';
+            document.getElementById('gameOverOverlay').classList.remove('hidden');
+        }
+
+        function nextLevel() {
+            document.getElementById('winOverlay').classList.add('hidden');
+            level++;
+            gameState = 'playing';
+            initLevel();
+        }
+
+        function restartLevel() {
+            document.getElementById('gameOverOverlay').classList.add('hidden');
+            gameState = 'playing';
+            initLevel();
+        }
+
+        canvas.addEventListener('click', (e) => {
+            if (gameState !== 'playing') return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            addPlatform(x, y);
+        });
+
+        window.addEventListener('resize', () => {
+            resize();
+            if (ball && goal) {
+                initLevel();
+            }
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        resize();
+        gameLoop();
+    </script>
+</body>
+</html>

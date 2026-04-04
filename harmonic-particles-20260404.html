@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Harmonic Particles - 粒子の調和</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 30px;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .info h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+            color: white;
+        }
+
+        .info p {
+            margin: 3px 0;
+        }
+
+        @media (max-width: 600px) {
+            .info {
+                font-size: 11px;
+            }
+
+            .info h1 {
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    <div class="info">
+        <h1>🌟 Harmonic Particles</h1>
+        <p>クリック/タップで引力点を追加</p>
+        <p>ダブルクリックでリセット</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let attractors = [];
+        const PARTICLE_COUNT = 150;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 2 + 1;
+                this.baseRadius = this.radius;
+            }
+
+            getSpeed() {
+                return Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+            }
+
+            getColor() {
+                const speed = this.getSpeed();
+                const hue = (speed * 30 + 200) % 360;
+                const saturation = Math.min(speed * 20 + 70, 100);
+                const lightness = Math.min(speed * 10 + 50, 70);
+                return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+            }
+
+            update() {
+                // 互いに引力
+                particles.forEach(other => {
+                    if (other === this) return;
+                    const dx = other.x - this.x;
+                    const dy = other.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 100 && dist > 5) {
+                        const force = 0.0003 * (1 - dist / 100);
+                        this.vx += dx * force;
+                        this.vy += dy * force;
+                    }
+                });
+
+                // 引力点に引き寄せられる
+                attractors.forEach(attractor => {
+                    const dx = attractor.x - this.x;
+                    const dy = attractor.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > 10) {
+                        const force = 0.002 * (1 / (dist / 100 + 1));
+                        this.vx += dx * force;
+                        this.vy += dy * force;
+                    }
+                });
+
+                // 抵抗
+                this.vx *= 0.999;
+                this.vy *= 0.999;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 境界で跳ね返る
+                if (this.x < 0 || this.x > width) {
+                    this.vx *= -0.8;
+                    this.x = Math.max(0, Math.min(width, this.x));
+                }
+                if (this.y < 0 || this.y > height) {
+                    this.vy *= -0.8;
+                    this.y = Math.max(0, Math.min(height, this.y));
+                }
+
+                // 速度に応じてサイズ変化
+                const speed = this.getSpeed();
+                this.radius = this.baseRadius * (1 + speed * 0.1);
+            }
+
+            draw() {
+                const speed = this.getSpeed();
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius * 3
+                );
+
+                const color = this.getColor();
+                gradient.addColorStop(0, color);
+                gradient.addColorStop(0.3, color.replace(')', ', 0.5)').replace('hsl', 'hsla'));
+                gradient.addColorStop(1, 'transparent');
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 3, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+
+        function init() {
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 引力点を描画
+            attractors.forEach(attractor => {
+                const gradient = ctx.createRadialGradient(
+                    attractor.x, attractor.y, 0,
+                    attractor.x, attractor.y, 30
+                );
+                gradient.addColorStop(0, 'rgba(255, 200, 100, 0.3)');
+                gradient.addColorStop(1, 'transparent');
+                ctx.beginPath();
+                ctx.arc(attractor.x, attractor.y, 30, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            });
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        function addAttractor(x, y) {
+            attractors.push({ x, y });
+            if (attractors.length > 5) {
+                attractors.shift();
+            }
+        }
+
+        function reset() {
+            attractors = [];
+            particles.forEach(p => {
+                p.x = Math.random() * width;
+                p.y = Math.random() * height;
+                p.vx = (Math.random() - 0.5) * 2;
+                p.vy = (Math.random() - 0.5) * 2;
+            });
+        }
+
+        canvas.addEventListener('click', (e) => {
+            addAttractor(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('dblclick', () => {
+            reset();
+        });
+
+        window.addEventListener('resize', resize);
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        resize();
+        init();
+        animate();
+    </script>
+</body>
+</html>
