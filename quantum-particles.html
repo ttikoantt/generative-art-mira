@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Quantum Particles - ジェネレーティブアート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            pointer-events: none;
+        }
+
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="title">⚛️ Quantum Particles</div>
+    <canvas id="canvas"></canvas>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面表示</button>
+    <div class="info">クリック/タップでパーティクル追加 | ダブルクリックでリセット</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        let mouse = { x: null, y: null };
+
+        // パーティクル設定
+        const PARTICLE_COUNT = 80;
+        const CONNECTION_DISTANCE = 150;
+        const MOUSE_INFLUENCE = 200;
+
+        // 色パレット（サイバーパンク風）
+        const colors = [
+            '#00f7ff', // シアン
+            '#ff00ff', // マゼンタ
+            '#ffff00', // イエロー
+            '#00ff00', // グリーン
+            '#ff6600'  // オレンジ
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 3 + 1;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.life = 1;
+                this.decay = 0;
+            }
+
+            update() {
+                // マウスの影響
+                if (mouse.x !== null && mouse.y !== null) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < MOUSE_INFLUENCE) {
+                        const force = (MOUSE_INFLUENCE - dist) / MOUSE_INFLUENCE;
+                        this.vx += dx * force * 0.02;
+                        this.vy += dy * force * 0.02;
+                    }
+                }
+
+                // 量子もつれ効果（近いパーティクル同士を引き寄せる）
+                particles.forEach(p => {
+                    if (p === this) return;
+                    const dx = p.x - this.x;
+                    const dy = p.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < CONNECTION_DISTANCE && dist > 30) {
+                        this.vx += dx * 0.0005;
+                        this.vy += dy * 0.0005;
+                    }
+                });
+
+                // 速度制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 3) {
+                    this.vx = (this.vx / speed) * 3;
+                    this.vy = (this.vy / speed) * 3;
+                }
+
+                // 位置更新
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 境界で反転
+                if (this.x < 0 || this.x > width) this.vx *= -1;
+                if (this.y < 0 || this.y > height) this.vy *= -1;
+
+                // 境界内に収める
+                this.x = Math.max(0, Math.min(width, this.x));
+                this.y = Math.max(0, Math.min(height, this.y));
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // グロー効果
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+            }
+        }
+
+        function init() {
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function drawConnections() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < CONNECTION_DISTANCE) {
+                        const opacity = (1 - dist / CONNECTION_DISTANCE) * 0.5;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `rgba(100, 200, 255, ${opacity})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            // 背景を少し残す
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // シャドウリセット
+            ctx.shadowBlur = 0;
+
+            // 接続線を描画
+            drawConnections();
+
+            // パーティクルを更新・描画
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        // タッチ対応
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        // クリックでパーティクル追加
+        canvas.addEventListener('click', (e) => {
+            for (let i = 0; i < 5; i++) {
+                particles.push(new Particle(e.clientX, e.clientY));
+            }
+        });
+
+        // ダブルクリックでリセット
+        canvas.addEventListener('dblclick', () => {
+            init();
+        });
+
+        // 初期化
+        resize();
+        init();
+        animate();
+    </script>
+</body>
+</html>
