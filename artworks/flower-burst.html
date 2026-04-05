@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flower Burst - ジェネレーティブ・フラワー・アート</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: pointer;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            text-align: left;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .info h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            background: linear-gradient(45deg, #ff6b9d, #c44cff, #4cc9ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        button.active {
+            background: rgba(255, 107, 157, 0.3);
+            border-color: #ff6b9d;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+            }
+
+            .info h1 {
+                font-size: 18px;
+            }
+
+            button {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h1>🌸 Flower Burst</h1>
+        <p>クリックで花を咲かせよう</p>
+    </div>
+
+    <div class="controls">
+        <button id="autoBtn">自動生成: オフ</button>
+        <button id="clearBtn">クリア</button>
+    </div>
+
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let flowers = [];
+        let autoMode = false;
+        let autoInterval;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Flower {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.petals = [];
+                this.centerSize = 0;
+                this.maxCenterSize = 8 + Math.random() * 6;
+                this.hue = Math.random() * 360;
+                this.petalCount = 5 + Math.floor(Math.random() * 4);
+                this.maxPetalSize = 30 + Math.random() * 40;
+                this.growthSpeed = 0.02 + Math.random() * 0.02;
+                this.age = 0;
+                this.maxAge = 800 + Math.random() * 400;
+                this.alpha = 1;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.01;
+
+                // 花弁を作成
+                for (let i = 0; i < this.petalCount; i++) {
+                    const angle = (i / this.petalCount) * Math.PI * 2;
+                    this.petals.push({
+                        angle: angle,
+                        size: 0,
+                        maxSize: this.maxPetalSize * (0.8 + Math.random() * 0.4),
+                        hueOffset: (Math.random() - 0.5) * 30
+                    });
+                }
+            }
+
+            update() {
+                this.age++;
+
+                // 花弁の成長
+                let allGrown = true;
+                for (const petal of this.petals) {
+                    if (petal.size < petal.maxSize) {
+                        petal.size += this.growthSpeed * petal.maxSize;
+                        allGrown = false;
+                    }
+                }
+
+                // 中心の成長
+                if (this.centerSize < this.maxCenterSize) {
+                    this.centerSize += this.growthSpeed * 5;
+                }
+
+                // 回転
+                this.rotation += this.rotationSpeed;
+
+                // フェードアウト
+                if (this.age > this.maxAge - 100) {
+                    this.alpha = (this.maxAge - this.age) / 100;
+                }
+
+                return this.age < this.maxAge;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.globalAlpha = this.alpha;
+
+                // 花弁を描画
+                for (const petal of this.petals) {
+                    if (petal.size > 0) {
+                        ctx.save();
+                        ctx.rotate(petal.angle);
+
+                        const hue = (this.hue + petal.hueOffset) % 360;
+
+                        // 花弁のグラデーション
+                        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, petal.size);
+                        gradient.addColorStop(0, `hsla(${hue}, 80%, 70%, 0.9)`);
+                        gradient.addColorStop(0.5, `hsla(${hue + 20}, 70%, 60%, 0.7)`);
+                        gradient.addColorStop(1, `hsla(${hue + 40}, 60%, 50%, 0)`);
+
+                        ctx.fillStyle = gradient;
+                        ctx.beginPath();
+                        ctx.ellipse(0, petal.size * 0.5, petal.size * 0.3, petal.size * 0.6, 0, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        ctx.restore();
+                    }
+                }
+
+                // 中心を描画
+                const centerGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.centerSize);
+                centerGradient.addColorStop(0, `hsla(${this.hue + 60}, 90%, 70%, 1)`);
+                centerGradient.addColorStop(1, `hsla(${this.hue + 40}, 80%, 50%, 0.8)`);
+
+                ctx.fillStyle = centerGradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.centerSize, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 中心の光る点
+                ctx.fillStyle = `rgba(255, 255, 200, ${0.8 * this.alpha})`;
+                ctx.beginPath();
+                ctx.arc(-this.centerSize * 0.3, -this.centerSize * 0.3, this.centerSize * 0.2, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        function createFlower(x, y) {
+            flowers.push(new Flower(x, y));
+        }
+
+        function animate() {
+            // 半透明の黒でフェード効果
+            ctx.fillStyle = 'rgba(26, 26, 46, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 花を更新・描画
+            flowers = flowers.filter(flower => {
+                const alive = flower.update();
+                if (alive) {
+                    flower.draw(ctx);
+                }
+                return alive;
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // クリックで花を咲かせる
+        canvas.addEventListener('click', (e) => {
+            createFlower(e.clientX, e.clientY);
+        });
+
+        // タッチ対応
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            for (const touch of e.touches) {
+                createFlower(touch.clientX, touch.clientY);
+            }
+        });
+
+        // 自動生成
+        document.getElementById('autoBtn').addEventListener('click', () => {
+            autoMode = !autoMode;
+            const btn = document.getElementById('autoBtn');
+            btn.textContent = `自動生成: ${autoMode ? 'オン' : 'オフ'}`;
+            btn.classList.toggle('active', autoMode);
+
+            if (autoMode) {
+                autoInterval = setInterval(() => {
+                    const x = Math.random() * width;
+                    const y = Math.random() * height;
+                    createFlower(x, y);
+                }, 500);
+            } else {
+                clearInterval(autoInterval);
+            }
+        });
+
+        // クリア
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            flowers = [];
+            ctx.fillStyle = 'rgba(26, 26, 46, 1)';
+            ctx.fillRect(0, 0, width, height);
+        });
+
+        // 全画面
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // アニメーション開始
+        animate();
+    </script>
+</body>
+</html>
