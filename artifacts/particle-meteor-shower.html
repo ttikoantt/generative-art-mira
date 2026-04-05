@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Meteor Shower - Mira's Generative Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(to bottom, #0a0a1a 0%, #1a1a3a 50%, #2a1a2a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffffff;
+            font-family: 'Arial', sans-serif;
+            font-size: 14px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .star-info {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffffff;
+            font-family: 'Arial', sans-serif;
+            font-size: 12px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px 15px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+    </style>
+</head>
+<body>
+    <div class="canvas-container">
+        <canvas id="canvas"></canvas>
+        
+        <div class="info">
+            <strong>Particle Meteor Shower</strong> - Move mouse to attract meteors
+        </div>
+
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶</button>
+
+        <div class="star-info">
+            Stars: <span id="starCount">0</span> | Meteors: <span id="meteorCount">0</span>
+        </div>
+
+        <div class="controls">
+            <button onclick="addMeteors(10)">✨ Add Meteors</button>
+            <button onclick="clearMeteors()">🌑 Clear</button>
+            <button onclick="toggleSpeed()">⚡ Speed</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let stars = [];
+        let meteors = [];
+        let mouseX = 0;
+        let mouseY = 0;
+        let speedMultiplier = 1;
+
+        // Resize canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initStars();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // Initialize stars
+        function initStars() {
+            stars = [];
+            const starCount = Math.floor((canvas.width * canvas.height) / 3000);
+
+            for (let i = 0; i < starCount; i++) {
+                stars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: Math.random() * 1.5 + 0.5,
+                    brightness: Math.random(),
+                    twinkleSpeed: Math.random() * 0.02 + 0.01
+                });
+            }
+
+            document.getElementById('starCount').textContent = stars.length;
+        }
+
+        // Meteor class
+        class Meteor {
+            constructor(x, y) {
+                this.x = x || Math.random() * canvas.width;
+                this.y = y || -50;
+                this.size = Math.random() * 3 + 1;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.speedY = Math.random() * 3 + 2;
+                this.trail = [];
+                this.maxTrailLength = 20;
+                this.hue = Math.random() * 60 + 180; // Blue to purple
+                this.brightness = Math.random() * 50 + 50;
+            }
+
+            update() {
+                // Attract to mouse
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < 300) {
+                    this.speedX += (dx / distance) * 0.05;
+                    this.speedY += (dy / distance) * 0.05;
+                }
+
+                // Add trail
+                this.trail.push({ x: this.x, y: this.y, brightness: this.brightness });
+                if (this.trail.length > this.maxTrailLength) {
+                    this.trail.shift();
+                }
+
+                // Update position
+                this.x += this.speedX * speedMultiplier;
+                this.y += this.speedY * speedMultiplier;
+
+                // Add some randomness
+                this.speedX += (Math.random() - 0.5) * 0.1;
+
+                // Slow down friction
+                this.speedX *= 0.99;
+                this.speedY *= 0.99;
+
+                // Fade brightness
+                this.brightness -= 0.1;
+            }
+
+            draw() {
+                // Draw trail
+                for (let i = 0; i < this.trail.length; i++) {
+                    const t = this.trail[i];
+                    const alpha = (i / this.trail.length) * (this.brightness / 100);
+                    const size = this.size * (i / this.trail.length);
+
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, size, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${this.hue}, 80%, 70%, ${alpha})`;
+                    ctx.fill();
+                }
+
+                // Draw meteor head
+                if (this.brightness > 0) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${this.hue}, 100%, 80%, ${this.brightness / 100})`;
+                    ctx.fill();
+
+                    // Glow effect
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${this.brightness / 200})`;
+                    ctx.fill();
+                }
+            }
+
+            isDead() {
+                return (
+                    this.y > canvas.height + 50 ||
+                    this.x < -50 ||
+                    this.x > canvas.width + 50 ||
+                    this.brightness <= 0
+                );
+            }
+        }
+
+        // Add meteors
+        function addMeteors(count) {
+            for (let i = 0; i < count; i++) {
+                meteors.push(new Meteor());
+            }
+            document.getElementById('meteorCount').textContent = meteors.length;
+        }
+
+        // Clear meteors
+        function clearMeteors() {
+            meteors = [];
+            document.getElementById('meteorCount').textContent = 0;
+        }
+
+        // Toggle speed
+        function toggleSpeed() {
+            speedMultiplier = speedMultiplier === 1 ? 2 : 1;
+        }
+
+        // Toggle fullscreen
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Mouse move
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        // Touch support
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        // Animation loop
+        function animate() {
+            // Clear with fade effect
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw stars
+            stars.forEach(star => {
+                star.brightness += star.twinkleSpeed;
+                if (star.brightness > 1 || star.brightness < 0) {
+                    star.twinkleSpeed *= -1;
+                }
+
+                const alpha = Math.abs(star.brightness);
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.fill();
+            });
+
+            // Update and draw meteors
+            meteors = meteors.filter(meteor => !meteor.isDead());
+            meteors.forEach(meteor => {
+                meteor.update();
+                meteor.draw();
+            });
+
+            document.getElementById('meteorCount').textContent = meteors.length;
+
+            // Randomly spawn new meteors
+            if (Math.random() < 0.02 && meteors.length < 50) {
+                meteors.push(new Meteor());
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize
+        resizeCanvas();
+        addMeteors(20);
+        animate();
+
+        // Set initial mouse position
+        mouseX = canvas.width / 2;
+        mouseY = canvas.height / 2;
+    </script>
+</body>
+</html>
