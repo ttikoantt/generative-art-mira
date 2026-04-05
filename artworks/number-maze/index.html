@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>迷路のような整数 - Number Maze Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: #fff;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+            background: linear-gradient(90deg, #00f5ff, #ff00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header p {
+            font-size: 0.9rem;
+            color: #888;
+        }
+        
+        .canvas-container {
+            position: relative;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(0, 245, 255, 0.3);
+        }
+        
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .control-group label {
+            font-size: 0.75rem;
+            color: #888;
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            background: linear-gradient(135deg, #00f5ff, #0080ff);
+            border: none;
+            border-radius: 5px;
+            color: #000;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 245, 255, 0.4);
+        }
+        
+        select {
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            background: #1a1a2e;
+            border: 1px solid #00f5ff;
+            border-radius: 5px;
+            color: #fff;
+            cursor: pointer;
+        }
+        
+        .fullscreen-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            font-size: 0.8rem;
+            background: rgba(0, 245, 255, 0.2);
+            border: 1px solid #00f5ff;
+            border-radius: 5px;
+            color: #00f5ff;
+            cursor: pointer;
+            z-index: 1000;
+        }
+        
+        .info {
+            margin-top: 15px;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #666;
+            max-width: 600px;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.2rem;
+            }
+            
+            .controls {
+                gap: 8px;
+            }
+            
+            button, select {
+                padding: 8px 15px;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    
+    <div class="header">
+        <h1>迷路のような整数</h1>
+        <p>Mathematical Labyrinth of Numbers</p>
+    </div>
+    
+    <div class="canvas-container">
+        <canvas id="mazeCanvas"></canvas>
+    </div>
+    
+    <div class="controls">
+        <div class="control-group">
+            <label>パターン</label>
+            <select id="patternSelect">
+                <option value="fibonacci">フィボナッチ数列</option>
+                <option value="prime">素数の螺旋</option>
+                <option value="collatz">コラッツ数列</option>
+                <option value="ulam">ウラムの螺旋</option>
+            </select>
+        </div>
+        
+        <button onclick="generateMaze()">生成</button>
+        <button onclick="animateMaze()">アニメーション</button>
+        <button onclick="downloadArt()">ダウンロード</button>
+    </div>
+    
+    <div class="info" id="info">
+        整数の数学的パターンを迷路として可視化
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('mazeCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Canvas size
+        const width = Math.min(700, window.innerWidth - 40);
+        const height = Math.min(700, window.innerWidth - 40);
+        canvas.width = width;
+        canvas.height = height;
+        
+        // Grid settings
+        const cellSize = 4;
+        const cols = Math.floor(width / cellSize);
+        const rows = Math.floor(height / cellSize);
+        
+        let currentPattern = 'fibonacci';
+        let animationId = null;
+        let mazeGrid = [];
+        
+        // Pattern generators
+        const patterns = {
+            fibonacci: (index) => {
+                const fib = [0, 1];
+                for (let i = 2; i <= index; i++) {
+                    fib[i] = (fib[i-1] + fib[i-2]) % 256;
+                }
+                return fib[index] || 0;
+            },
+            
+            prime: (index) => {
+                const count = index + 1;
+                let num = 2;
+                let primeCount = 0;
+                
+                while (primeCount < count) {
+                    let isPrime = true;
+                    for (let i = 2; i <= Math.sqrt(num); i++) {
+                        if (num % i === 0) {
+                            isPrime = false;
+                            break;
+                        }
+                    }
+                    if (isPrime) primeCount++;
+                    num++;
+                }
+                
+                return (num - 1) % 256;
+            },
+            
+            collatz: (index) => {
+                let n = index + 1;
+                let steps = 0;
+                
+                while (n !== 1 && steps < 100) {
+                    if (n % 2 === 0) {
+                        n = n / 2;
+                    } else {
+                        n = 3 * n + 1;
+                    }
+                    steps++;
+                }
+                
+                return steps * 5 % 256;
+            },
+            
+            ulam: (index) => {
+                // Ulam spiral mapping
+                let x = 0, y = 0;
+                let n = index + 1;
+                let step = 1;
+                let direction = 0; // 0: right, 1: up, 2: left, 3: down
+                
+                for (let i = 1; i < n; i++) {
+                    switch (direction) {
+                        case 0: x++; break;
+                        case 1: y++; break;
+                        case 2: x--; break;
+                        case 3: y--; break;
+                    }
+                    
+                    if (i === step * step) {
+                        direction = (direction + 1) % 4;
+                        if (direction % 2 === 0) step++;
+                    }
+                }
+                
+                return (Math.abs(x) + Math.abs(y)) * 10 % 256;
+            }
+        };
+        
+        function generateMaze() {
+            currentPattern = document.getElementById('patternSelect').value;
+            mazeGrid = [];
+            
+            for (let y = 0; y < rows; y++) {
+                mazeGrid[y] = [];
+                for (let x = 0; x < cols; x++) {
+                    const index = y * cols + x;
+                    const value = patterns[currentPattern](index);
+                    mazeGrid[y][x] = value;
+                }
+            }
+            
+            drawMaze();
+            updateInfo();
+        }
+        
+        function drawMaze(progress = 1) {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+            
+            const totalCells = rows * cols;
+            const cellsToDraw = Math.floor(totalCells * progress);
+            
+            for (let i = 0; i < cellsToDraw; i++) {
+                const x = i % cols;
+                const y = Math.floor(i / cols);
+                const value = mazeGrid[y][x];
+                
+                const hue = (value * 1.4) % 360;
+                const saturation = 70 + (value / 256) * 30;
+                const lightness = 30 + (value / 256) * 40;
+                
+                ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+                ctx.fillRect(x * cellSize, y * cellSize, cellSize - 0.5, cellSize - 0.5);
+            }
+        }
+        
+        function animateMaze() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+                return;
+            }
+            
+            generateMaze();
+            
+            let progress = 0;
+            const duration = 2000;
+            const startTime = performance.now();
+            
+            function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+                progress = Math.min(elapsed / duration, 1);
+                
+                drawMaze(progress);
+                
+                if (progress < 1) {
+                    animationId = requestAnimationFrame(animate);
+                } else {
+                    animationId = null;
+                }
+            }
+            
+            animationId = requestAnimationFrame(animate);
+        }
+        
+        function updateInfo() {
+            const info = document.getElementById('info');
+            const patternNames = {
+                fibonacci: 'フィボナッチ数列の数学的美',
+                prime: '素数分布の神秘的なパターン',
+                collatz: 'コラッツ予想の数の迷路',
+                ulam: 'ウラムの螺旋と素数の配置'
+            };
+            info.textContent = patternNames[currentPattern];
+        }
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                canvas.requestFullscreen().catch(err => {
+                    console.log('Fullscreen error:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        function downloadArt() {
+            const link = document.createElement('a');
+            link.download = 'number-maze-art.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+        
+        // Initialize
+        generateMaze();
+        
+        // Resize handler
+        window.addEventListener('resize', () => {
+            const newWidth = Math.min(700, window.innerWidth - 40);
+            const newHeight = Math.min(700, window.innerWidth - 40);
+            
+            if (newWidth !== width || newHeight !== height) {
+                // For simplicity, just regenerate
+                location.reload();
+            }
+        });
+    </script>
+</body>
+</html>
