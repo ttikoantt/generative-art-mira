@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum Ripples - 量子波紋</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Quantum Ripples - Interactive Generative Art</title>
     <style>
         * {
             margin: 0;
@@ -12,9 +12,10 @@
         }
 
         body {
-            background: #0a0a0f;
+            background: #000;
             overflow: hidden;
             font-family: 'Courier New', monospace;
+            touch-action: none;
         }
 
         canvas {
@@ -23,7 +24,7 @@
 
         .info {
             position: fixed;
-            bottom: 20px;
+            top: 20px;
             left: 20px;
             color: rgba(255, 255, 255, 0.6);
             font-size: 12px;
@@ -33,49 +34,57 @@
 
         .fullscreen-btn {
             position: fixed;
-            top: 20px;
+            bottom: 20px;
             right: 20px;
-            padding: 10px 20px;
             background: rgba(255, 255, 255, 0.1);
             border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 8px;
             color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px;
             transition: all 0.3s;
-            z-index: 10;
+            backdrop-filter: blur(5px);
         }
 
         .fullscreen-btn:hover {
             background: rgba(255, 255, 255, 0.2);
         }
 
-        .title {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 24px;
-            font-weight: bold;
-            pointer-events: none;
-            z-index: 10;
-            text-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+        @media (max-width: 768px) {
+            .info {
+                top: 10px;
+                left: 10px;
+                font-size: 10px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="title">Quantum Ripples</div>
+    <div class="info">
+        <div>🌊 Quantum Ripples</div>
+        <div>Tap to create ripples</div>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn">Full Screen</button>
+
     <canvas id="canvas"></canvas>
-    <div class="info">Click or tap to create ripples</div>
-    <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
 
         let width, height;
         let ripples = [];
-        let autoCreateTimer = 0;
+
+        // 設定
+        const config = {
+            maxRipples: 50,
+            baseHue: 180,
+            hueRange: 60,
+            speed: 2
+        };
 
         function resize() {
             width = canvas.width = window.innerWidth;
@@ -83,80 +92,79 @@
         }
 
         class Ripple {
-            constructor(x, y, auto = false) {
+            constructor(x, y) {
                 this.x = x;
                 this.y = y;
                 this.radius = 0;
-                this.maxRadius = Math.random() * 200 + 150;
-                this.speed = Math.random() * 2 + 1;
-                this.opacity = 1;
-                this.hue = Math.random() * 60 + 180; // Blue to cyan range
-                this.lineWidth = Math.random() * 3 + 1;
-                this.auto = auto;
+                this.maxRadius = Math.max(width, height) * 0.4;
+                this.hue = (config.baseHue + Math.random() * config.hueRange) % 360;
+                this.alpha = 1;
+                this.lineWidth = 3;
+                this.speed = config.speed + Math.random() * 2;
                 this.phase = Math.random() * Math.PI * 2;
             }
 
             update() {
                 this.radius += this.speed;
-                this.opacity = 1 - (this.radius / this.maxRadius);
-                this.phase += 0.05;
-
-                return this.opacity > 0;
+                this.alpha = 1 - (this.radius / this.maxRadius);
+                this.phase += 0.1;
+                return this.radius < this.maxRadius;
             }
 
             draw() {
                 const waveCount = 3;
                 for (let i = 0; i < waveCount; i++) {
-                    const waveRadius = this.radius + i * 30 + Math.sin(this.phase + i) * 10;
-                    const waveOpacity = this.opacity * (1 - i / waveCount) * 0.6;
+                    const offset = (i / waveCount) * Math.PI * 2;
+                    const adjustedRadius = this.radius + Math.sin(this.phase + offset) * 20;
+                    const adjustedAlpha = this.alpha * (1 - i / waveCount) * 0.5;
 
-                    if (waveOpacity > 0) {
-                        ctx.beginPath();
-                        ctx.arc(this.x, this.y, waveRadius, 0, Math.PI * 2);
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, Math.max(0, adjustedRadius), 0, Math.PI * 2);
 
-                        const gradient = ctx.createRadialGradient(
-                            this.x, this.y, waveRadius * 0.8,
-                            this.x, this.y, waveRadius
-                        );
+                    const gradient = ctx.createRadialGradient(
+                        this.x, this.y, adjustedRadius * 0.8,
+                        this.x, this.y, adjustedRadius
+                    );
+                    gradient.addColorStop(0, `hsla(${this.hue}, 80%, 60%, 0)`);
+                    gradient.addColorStop(0.5, `hsla(${this.hue}, 80%, 60%, ${adjustedAlpha})`);
+                    gradient.addColorStop(1, `hsla(${this.hue + 30}, 80%, 60%, 0)`);
 
-                        const hue = (this.hue + i * 20) % 360;
-                        gradient.addColorStop(0, `hsla(${hue}, 80%, 60%, 0)`);
-                        gradient.addColorStop(0.5, `hsla(${hue}, 80%, 60%, ${waveOpacity})`);
-                        gradient.addColorStop(1, `hsla(${hue}, 80%, 60%, 0)`);
-
-                        ctx.strokeStyle = gradient;
-                        ctx.lineWidth = this.lineWidth;
-                        ctx.stroke();
-                    }
+                    ctx.strokeStyle = gradient;
+                    ctx.lineWidth = this.lineWidth;
+                    ctx.stroke();
                 }
 
-                // Inner glow
-                const glowRadius = this.radius * 0.3;
-                const glowOpacity = this.opacity * 0.3;
-                const gradient = ctx.createRadialGradient(
-                    this.x, this.y, 0,
-                    this.x, this.y, glowRadius
-                );
-                gradient.addColorStop(0, `hsla(${this.hue}, 80%, 60%, ${glowOpacity})`);
-                gradient.addColorStop(1, `hsla(${this.hue}, 80%, 60%, 0)`);
+                // 中心の光
+                if (this.radius < 100) {
+                    const centerAlpha = (1 - this.radius / 100) * 0.3;
+                    const gradient = ctx.createRadialGradient(
+                        this.x, this.y, 0,
+                        this.x, this.y, 30
+                    );
+                    gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${centerAlpha})`);
+                    gradient.addColorStop(1, `hsla(${this.hue}, 100%, 70%, 0)`);
 
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, glowRadius, 0, Math.PI * 2);
-                ctx.fillStyle = gradient;
-                ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 30, 0, Math.PI * 2);
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+                }
             }
         }
 
-        function createRipple(x, y, auto = false) {
-            ripples.push(new Ripple(x, y, auto));
+        function createRipple(x, y) {
+            if (ripples.length >= config.maxRipples) {
+                ripples.shift();
+            }
+            ripples.push(new Ripple(x, y));
         }
 
         function animate() {
-            // Fade effect
-            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            // 背景をフェード
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
             ctx.fillRect(0, 0, width, height);
 
-            // Update and draw ripples
+            // リップルを更新・描画
             ripples = ripples.filter(ripple => {
                 const alive = ripple.update();
                 if (alive) {
@@ -165,76 +173,52 @@
                 return alive;
             });
 
-            // Interference pattern enhancement
-            ripples.forEach((r1, i) => {
-                ripples.slice(i + 1).forEach(r2 => {
-                    const dx = r1.x - r2.x;
-                    const dy = r1.y - r2.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
+            // デコレーション（浮遊する粒子）
+            const time = Date.now() * 0.001;
+            for (let i = 0; i < 20; i++) {
+                const x = Math.sin(time + i * 0.5) * width * 0.4 + width / 2;
+                const y = Math.cos(time * 0.7 + i * 0.3) * height * 0.4 + height / 2;
+                const size = Math.sin(time + i) * 2 + 3;
 
-                    if (Math.abs(r1.radius - r2.radius) < 50 && dist < r1.radius + r2.radius) {
-                        // Draw interference point
-                        const midX = (r1.x + r2.x) / 2;
-                        const midY = (r1.y + r2.y) / 2;
-                        const intensity = Math.min(r1.opacity, r2.opacity) * 0.5;
-
-                        ctx.beginPath();
-                        ctx.arc(midX, midY, 3, 0, Math.PI * 2);
-                        ctx.fillStyle = `rgba(200, 255, 255, ${intensity})`;
-                        ctx.fill();
-                    }
-                });
-            });
-
-            // Auto create ripples
-            autoCreateTimer++;
-            if (autoCreateTimer > 120) {
-                autoCreateTimer = 0;
-                createRipple(
-                    Math.random() * width,
-                    Math.random() * height,
-                    true
-                );
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${(config.baseHue + i * 10) % 360}, 70%, 50%, 0.3)`;
+                ctx.fill();
             }
 
             requestAnimationFrame(animate);
         }
 
-        function toggleFullscreen() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
-            } else {
-                document.exitFullscreen();
-            }
-        }
-
-        // Event listeners
-        window.addEventListener('resize', resize);
-
+        // イベントリスナー
         canvas.addEventListener('click', (e) => {
             createRipple(e.clientX, e.clientY);
         });
 
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            const touch = e.touches[0];
-            createRipple(touch.clientX, touch.clientY);
-        });
-
-        canvas.addEventListener('mousemove', (e) => {
-            if (Math.random() > 0.95) {
-                createRipple(e.clientX, e.clientY);
+            for (let touch of e.touches) {
+                createRipple(touch.clientX, touch.clientY);
             }
         });
 
-        // Initialize
-        resize();
-        animate();
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
 
-        // Create initial ripples
-        setTimeout(() => createRipple(width / 2, height / 2), 500);
-        setTimeout(() => createRipple(width / 3, height / 3), 1000);
-        setTimeout(() => createRipple(width * 2 / 3, height * 2 / 3), 1500);
+        // 初期化
+        resize();
+        window.addEventListener('resize', resize);
+
+        // 自動で開始用のリップル
+        setTimeout(() => {
+            createRipple(width / 2, height / 2);
+        }, 500);
+
+        animate();
     </script>
 </body>
 </html>
