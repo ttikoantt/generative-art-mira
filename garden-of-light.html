@@ -37,6 +37,21 @@
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
         }
 
+        .waveform-indicator {
+            position: fixed;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.75rem;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px 16px;
+            border-radius: 20px;
+        }
+
         .stats {
             position: fixed;
             bottom: 20px;
@@ -74,6 +89,11 @@
                 padding: 0 20px;
             }
 
+            .waveform-indicator {
+                font-size: 0.65rem;
+                padding: 6px 12px;
+            }
+
             .start-btn {
                 padding: 15px 30px;
                 font-size: 1rem;
@@ -83,6 +103,7 @@
 </head>
 <body>
     <div class="info">🌸 タップすると光と音が広がります</div>
+    <div class="waveform-indicator">🎵 波形: <span id="waveformName">サイン波</span></div>
     <div class="stats">Ripples: <span id="rippleCount">0</span></div>
     <button class="start-btn" id="startBtn">🎵 音をオンにする</button>
     <canvas id="canvas"></canvas>
@@ -91,6 +112,7 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const rippleCountEl = document.getElementById('rippleCount');
+        const waveformNameEl = document.getElementById('waveformName');
         const startBtn = document.getElementById('startBtn');
 
         let width, height;
@@ -113,13 +135,29 @@
             880.00   // A5
         ];
 
+        // Waveform types with visual characteristics
+        const waveformTypes = [
+            { type: 'sine', name: 'サイン波', emoji: '〰️', layers: 3, softness: 1.0 },
+            { type: 'triangle', name: '三角波', emoji: '📐', layers: 4, softness: 0.8 },
+            { type: 'sawtooth', name: 'のこぎり波', emoji: '🪚', layers: 5, softness: 0.6 },
+            { type: 'square', name: '矩形波', emoji: '⬛', layers: 6, softness: 0.4 }
+        ];
+
+        let currentWaveformIndex = 0;
+
         function initAudio() {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             audioEnabled = true;
             startBtn.style.display = 'none';
         }
 
-        function playNote(hue) {
+        function getWaveformFromPosition(x) {
+            // Map X position to waveform type
+            const index = Math.floor((x / width) * waveformTypes.length);
+            return Math.min(index, waveformTypes.length - 1);
+        }
+
+        function playNote(hue, waveformIndex) {
             if (!audioEnabled || !audioCtx) return;
 
             // Map hue to scale note
@@ -129,20 +167,28 @@
             // Create oscillator
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
+            const filterNode = audioCtx.createBiquadFilter();
 
-            oscillator.connect(gainNode);
+            oscillator.connect(filterNode);
+            filterNode.connect(gainNode);
             gainNode.connect(audioCtx.destination);
 
-            oscillator.type = 'sine';
+            const waveform = waveformTypes[waveformIndex];
+            oscillator.type = waveform.type;
             oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+
+            // Filter to soften harsh waveforms
+            filterNode.type = 'lowpass';
+            filterNode.frequency.setValueAtTime(2000, audioCtx.currentTime);
+            filterNode.Q.setValueAtTime(1, audioCtx.currentTime);
 
             // Envelope
             gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-            gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.01);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1);
+            gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.5);
 
             oscillator.start(audioCtx.currentTime);
-            oscillator.stop(audioCtx.currentTime + 1);
+            oscillator.stop(audioCtx.currentTime + 1.5);
         }
 
         function resize() {
@@ -154,7 +200,7 @@
         resize();
 
         class Ripple {
-            constructor(x, y) {
+            constructor(x, y, waveformIndex) {
                 this.x = x;
                 this.y = y;
                 this.radius = 0;
@@ -162,6 +208,8 @@
                 this.hue = hue % 360;
                 this.alpha = 1;
                 this.speed = 3;
+                this.waveformIndex = waveformIndex;
+                this.waveform = waveformTypes[waveformIndex];
                 hue += 30;
             }
 
@@ -171,30 +219,39 @@
             }
 
             draw() {
+                const { layers, softness } = this.waveform;
+                
                 ctx.save();
-                ctx.globalAlpha = this.alpha;
+                ctx.globalAlpha = this.alpha * softness + 0.2;
 
-                // Glow effect
-                const gradient = ctx.createRadialGradient(
-                    this.x, this.y, 0,
-                    this.x, this.y, this.radius
-                );
+                // Multiple layers based on waveform type
+                for (let i = 0; i < layers; i++) {
+                    const layerRadius = this.radius * (1 - i * 0.1);
+                    const layerAlpha = this.alpha * (1 - i * 0.15);
+                    
+                    // Glow effect
+                    const gradient = ctx.createRadialGradient(
+                        this.x, this.y, 0,
+                        this.x, this.y, layerRadius
+                    );
 
-                gradient.addColorStop(0, `hsla(${this.hue}, 80%, 60%, 0)`);
-                gradient.addColorStop(0.5, `hsla(${this.hue}, 80%, 60%, 0.3)`);
-                gradient.addColorStop(1, `hsla(${this.hue}, 80%, 60%, 0)`);
+                    const hue = (this.hue + i * 10) % 360;
+                    gradient.addColorStop(0, `hsla(${hue}, 80%, 60%, 0)`);
+                    gradient.addColorStop(0.4, `hsla(${hue}, 80%, 60%, ${layerAlpha * 0.3})`);
+                    gradient.addColorStop(1, `hsla(${hue}, 80%, 60%, 0)`);
 
-                ctx.fillStyle = gradient;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fill();
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, layerRadius, 0, Math.PI * 2);
+                    ctx.fill();
 
-                // Inner circle
-                ctx.strokeStyle = `hsla(${this.hue}, 80%, 70%, ${this.alpha * 0.8})`;
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius * 0.7, 0, Math.PI * 2);
-                ctx.stroke();
+                    // Ring
+                    ctx.strokeStyle = `hsla(${hue}, 80%, 70%, ${layerAlpha * 0.6})`;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, layerRadius * 0.8, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
 
                 // Outer glow ring
                 ctx.strokeStyle = `hsla(${this.hue}, 80%, 50%, ${this.alpha * 0.3})`;
@@ -212,9 +269,13 @@
         }
 
         function addRipple(x, y) {
-            const ripple = new Ripple(x, y);
+            const waveformIndex = getWaveformFromPosition(x);
+            const ripple = new Ripple(x, y, waveformIndex);
             ripples.push(ripple);
-            playNote(ripple.hue);
+            playNote(ripple.hue, waveformIndex);
+
+            // Update waveform indicator
+            waveformNameEl.textContent = `${ripple.waveform.emoji} ${ripple.waveform.name}`;
 
             if (ripples.length > 50) {
                 ripples.shift();
@@ -253,13 +314,22 @@
         // Start button
         startBtn.addEventListener('click', initAudio);
 
-        // Auto ripple
+        // Auto ripple with varying waveforms
         setInterval(() => {
             if (ripples.length < 3) {
-                addRipple(
-                    Math.random() * width,
-                    Math.random() * height
-                );
+                const waveformIndex = Math.floor(Math.random() * waveformTypes.length);
+                const x = (waveformIndex / waveformTypes.length) * width + (width / waveformTypes.length / 2);
+                const y = Math.random() * height;
+                
+                const ripple = new Ripple(x, y, waveformIndex);
+                ripples.push(ripple);
+                if (audioEnabled) {
+                    playNote(ripple.hue, waveformIndex);
+                }
+
+                if (ripples.length > 50) {
+                    ripples.shift();
+                }
             }
         }, 2000);
 
