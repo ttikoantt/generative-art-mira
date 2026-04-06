@@ -56,6 +56,9 @@
             display: flex;
             gap: 10px;
             z-index: 10;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 90%;
         }
 
         .control-btn {
@@ -74,6 +77,41 @@
         .control-btn:hover {
             transform: scale(1.05);
             background: rgba(102, 126, 234, 1);
+        }
+
+        .saved-patterns {
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            z-index: 10;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 90%;
+        }
+
+        .pattern-item {
+            background: rgba(0, 0, 0, 0.6);
+            color: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .pattern-item:hover {
+            background: rgba(102, 126, 234, 0.6);
+            color: white;
+        }
+
+        .pattern-item .delete {
+            margin-left: 8px;
+            color: rgba(239, 68, 68, 0.8);
+            cursor: pointer;
         }
 
         .start-btn {
@@ -120,9 +158,13 @@
     <div class="info">🎵 音に反応して幾何学パターンが広がります</div>
     <div class="stats">Volume: <span id="volumeLevel">0</span>% | Bass: <span id="bassLevel">0</span>% | Mid: <span id="midLevel">0</span>% | Treble: <span id="trebleLevel">0</span>%</div>
     
+    <div class="saved-patterns" id="savedPatterns"></div>
+    
     <div class="controls">
         <button class="control-btn" id="toggleBtn">🎨 図形切替</button>
         <button class="control-btn" id="colorBtn">🌈 色モード切替</button>
+        <button class="control-btn" id="saveBtn">💾 保存</button>
+        <button class="control-btn" id="clearBtn">🗑️ クリア</button>
     </div>
     
     <button class="start-btn" id="startBtn">🎤 マイクを開始</button>
@@ -138,6 +180,9 @@
         const startBtn = document.getElementById('startBtn');
         const toggleBtn = document.getElementById('toggleBtn');
         const colorBtn = document.getElementById('colorBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const savedPatternsEl = document.getElementById('savedPatterns');
 
         let width, height;
         let audioCtx = null;
@@ -151,21 +196,18 @@
 
         const shapeModes = ['circle', 'square', 'triangle', 'hexagon', 'star', 'cross', 'spiral', 'polygon'];
         const colorModes = ['rainbow', 'frequency', 'mono', 'gradient'];
+        let savedPatterns = JSON.parse(localStorage.getItem('sonicPatterns') || '[]');
 
         async function startAudio() {
             try {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 microphone = audioCtx.createMediaStreamSource(stream);
                 analyser = audioCtx.createAnalyser();
-                
                 analyser.fftSize = 512;
                 const bufferLength = analyser.frequencyBinCount;
                 dataArray = new Uint8Array(bufferLength);
-                
                 microphone.connect(analyser);
-                
                 isRunning = true;
                 startBtn.style.display = 'none';
                 animate();
@@ -182,9 +224,7 @@
 
         function getAverageVolume(data, start = 0, end = data.length) {
             let sum = 0;
-            for (let i = start; i < end; i++) {
-                sum += data[i];
-            }
+            for (let i = start; i < end; i++) sum += data[i];
             return sum / (end - start);
         }
 
@@ -192,7 +232,6 @@
             const bass = getAverageVolume(data, 0, Math.floor(data.length * 0.1));
             const mid = getAverageVolume(data, Math.floor(data.length * 0.1), Math.floor(data.length * 0.5));
             const treble = getAverageVolume(data, Math.floor(data.length * 0.5), data.length);
-            
             return { bass, mid, treble };
         }
 
@@ -216,7 +255,6 @@
             
             const alpha = 0.3 + (glowIntensity * 0.5);
             
-            // Outer glow
             const outerGradient = ctx.createRadialGradient(0, 0, radius * 0.8, 0, 0, radius * 1.5);
             outerGradient.addColorStop(0, `hsla(${hue}, 100%, 70%, ${alpha * 0.8})`);
             outerGradient.addColorStop(0.5, `hsla(${hue}, 100%, 50%, ${alpha * 0.3})`);
@@ -227,7 +265,6 @@
             ctx.arc(0, 0, radius * 1.5, 0, Math.PI * 2);
             ctx.fill();
             
-            // Main shape
             const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
             gradient.addColorStop(0, `hsla(${hue}, 100%, 80%, ${alpha})`);
             gradient.addColorStop(0.7, `hsla(${hue}, 100%, 60%, ${alpha * 0.6})`);
@@ -243,11 +280,9 @@
                 case 'circle':
                     ctx.arc(0, 0, radius, 0, Math.PI * 2);
                     break;
-                    
                 case 'square':
                     ctx.rect(-radius, -radius, radius * 2, radius * 2);
                     break;
-                    
                 case 'triangle':
                     for (let i = 0; i < 3; i++) {
                         const angle = (i * Math.PI * 2 / 3) - Math.PI / 2;
@@ -258,7 +293,6 @@
                     }
                     ctx.closePath();
                     break;
-                    
                 case 'hexagon':
                     for (let i = 0; i < 6; i++) {
                         const angle = (i * Math.PI * 2 / 6);
@@ -269,7 +303,6 @@
                     }
                     ctx.closePath();
                     break;
-                    
                 case 'star':
                     for (let i = 0; i < points * 2; i++) {
                         const angle = (i * Math.PI / points) - Math.PI / 2;
@@ -281,7 +314,6 @@
                     }
                     ctx.closePath();
                     break;
-                    
                 case 'cross':
                     const size = radius * 0.3;
                     ctx.moveTo(-size, -radius);
@@ -298,7 +330,6 @@
                     ctx.lineTo(-size, -size);
                     ctx.closePath();
                     break;
-                    
                 case 'spiral':
                     for (let i = 0; i < 100; i++) {
                         const angle = (i / 100) * Math.PI * 8;
@@ -309,7 +340,6 @@
                         else ctx.lineTo(px, py);
                     }
                     break;
-                    
                 case 'polygon':
                     const polyPoints = Math.max(5, Math.min(12, Math.floor(points)));
                     for (let i = 0; i < polyPoints; i++) {
@@ -325,8 +355,49 @@
             
             ctx.fill();
             ctx.stroke();
-            
             ctx.restore();
+        }
+
+        function updateSavedPatternsUI() {
+            savedPatternsEl.innerHTML = '';
+            savedPatterns.forEach((pattern, index) => {
+                const item = document.createElement('div');
+                item.className = 'pattern-item';
+                item.innerHTML = `
+                    🎵 ${pattern.name}
+                    <span class="delete" onclick="event.stopPropagation(); deletePattern(${index})">×</span>
+                `;
+                item.onclick = () => loadPattern(index);
+                savedPatternsEl.appendChild(item);
+            });
+        }
+
+        function loadPattern(index) {
+            const pattern = savedPatterns[index];
+            if (!pattern) return;
+            
+            shapeMode = pattern.shapeMode;
+            colorMode = pattern.colorMode;
+        }
+
+        function deletePattern(index) {
+            savedPatterns.splice(index, 1);
+            localStorage.setItem('sonicPatterns', JSON.stringify(savedPatterns));
+            updateSavedPatternsUI();
+        }
+
+        function savePattern() {
+            const pattern = {
+                id: Date.now(),
+                name: `パターン ${savedPatterns.length + 1}`,
+                shapeMode: shapeMode,
+                colorMode: colorMode,
+                createdAt: new Date().toISOString()
+            };
+            
+            savedPatterns.push(pattern);
+            localStorage.setItem('sonicPatterns', JSON.stringify(savedPatterns));
+            updateSavedPatternsUI();
         }
 
         function animate() {
@@ -357,18 +428,8 @@
             
             const rotation = Date.now() * 0.001;
             
-            // Main shape
-            drawShape(
-                width / 2, height / 2,
-                bassRadius,
-                shapeModes[shapeMode],
-                mainHue,
-                rotation,
-                bass / 255,
-                5 + Math.floor(shapeMode)
-            );
+            drawShape(width / 2, height / 2, bassRadius, shapeModes[shapeMode], mainHue, rotation, bass / 255, 5 + Math.floor(shapeMode));
             
-            // Mid shapes
             const midCount = 6;
             for (let i = 0; i < midCount; i++) {
                 const angle = (i / midCount) * Math.PI * 2 + rotation * 1.5;
@@ -377,18 +438,9 @@
                 const y = height / 2 + Math.sin(angle) * orbitRadius;
                 const hue = (mainHue + i * 40) % 360;
                 
-                drawShape(
-                    x, y,
-                    midRadius,
-                    shapeModes[(shapeMode + i + 1) % shapeModes.length],
-                    hue,
-                    rotation + i * 0.4,
-                    mid / 255,
-                    4 + ((shapeMode + i) % 5)
-                );
+                drawShape(x, y, midRadius, shapeModes[(shapeMode + i + 1) % shapeModes.length], hue, rotation + i * 0.4, mid / 255, 4 + ((shapeMode + i) % 5));
             }
             
-            // Treble shapes
             const trebleCount = 12;
             for (let i = 0; i < trebleCount; i++) {
                 const angle = (i / trebleCount) * Math.PI * 2 + rotation * 2.5;
@@ -397,18 +449,9 @@
                 const y = height / 2 + Math.sin(angle) * orbitRadius;
                 const hue = (mainHue + 180 + i * 15) % 360;
                 
-                drawShape(
-                    x, y,
-                    trebleRadius * 0.8,
-                    shapeModes[(shapeMode + i + 2) % shapeModes.length],
-                    hue,
-                    rotation * 4 + i * 0.3,
-                    treble / 255,
-                    3 + ((shapeMode + i) % 4)
-                );
+                drawShape(x, y, trebleRadius * 0.8, shapeModes[(shapeMode + i + 2) % shapeModes.length], hue, rotation * 4 + i * 0.3, treble / 255, 3 + ((shapeMode + i) % 4));
             }
             
-            // Frequency bars
             const barCount = 64;
             const barWidth = width / barCount;
             
@@ -437,6 +480,18 @@
         colorBtn.addEventListener('click', () => {
             colorMode = (colorMode + 1) % colorModes.length;
         });
+
+        saveBtn.addEventListener('click', savePattern);
+
+        clearBtn.addEventListener('click', () => {
+            if (confirm('全ての保存されたパターンを削除しますか？')) {
+                savedPatterns = [];
+                localStorage.setItem('sonicPatterns', '[]');
+                updateSavedPatternsUI();
+            }
+        });
+
+        updateSavedPatternsUI();
     </script>
 </body>
 </html>
