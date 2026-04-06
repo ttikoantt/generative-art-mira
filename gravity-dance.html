@@ -91,12 +91,13 @@
     </style>
 </head>
 <body>
-    <div class="info">🌌 マウス/タッチを動かすとパーティクルが引力に従います</div>
-    <div class="stats">Particles: <span id="particleCount">0</span> | Gravity: <span id="gravityStrength">1.0</span></div>
+    <div class="info">🌌 クリック/タップで引力ポイントを追加</div>
+    <div class="stats">Particles: <span id="particleCount">0</span> | Gravity Points: <span id="gravityCount">0</span></div>
     
     <div class="controls">
         <button class="control-btn" id="resetBtn">🔄 リセット</button>
         <button class="control-btn" id="toggleBtn">🎨 色モード切替</button>
+        <button class="control-btn" id="clearBtn">🗑️ 全消去</button>
     </div>
     
     <canvas id="canvas"></canvas>
@@ -105,23 +106,69 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const particleCountEl = document.getElementById('particleCount');
-        const gravityStrengthEl = document.getElementById('gravityStrength');
+        const gravityCountEl = document.getElementById('gravityCount');
         const resetBtn = document.getElementById('resetBtn');
         const toggleBtn = document.getElementById('toggleBtn');
+        const clearBtn = document.getElementById('clearBtn');
 
         let width, height;
         let particles = [];
-        let mouseX = 0;
-        let mouseY = 0;
-        let isMouseDown = false;
+        let gravityPoints = [];
         let colorMode = 0;
         let hueOffset = 0;
 
         // Physics constants
-        const GRAVITY_STRENGTH = 0.5;
+        const GRAVITY_STRENGTH = 0.8;
         const DAMPING = 0.98;
-        const PARTICLE_COUNT = 200;
+        const PARTICLE_COUNT = 300;
         const MAX_VELOCITY = 15;
+
+        class GravityPoint {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.strength = GRAVITY_STRENGTH;
+                this.hue = Math.random() * 360;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+            }
+
+            update() {
+                this.pulsePhase += 0.05;
+            }
+
+            draw() {
+                const pulse = Math.sin(this.pulsePhase) * 0.3 + 1;
+                const radius = 15 * pulse;
+
+                // Glow
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, radius * 2
+                );
+
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, 0.8)`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 100%, 50%, 0.3)`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 30%, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, radius * 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Core
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 90%, 1)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Ring
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, 60%, 0.5)`;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, radius * 1.5, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
 
         class Particle {
             constructor() {
@@ -135,24 +182,23 @@
                 this.vy = (Math.random() - 0.5) * 2;
                 this.radius = Math.random() * 3 + 1;
                 this.hue = Math.random() * 360;
-                this.life = 1;
-                this.maxLife = Math.random() * 0.5 + 0.5;
             }
 
             update() {
-                // Calculate distance to mouse
-                const dx = mouseX - this.x;
-                const dy = mouseY - this.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
+                // Apply gravity from all points
+                gravityPoints.forEach(point => {
+                    const dx = point.x - this.x;
+                    const dy = point.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
 
-                // Apply gravity
-                if (distance > 10) {
-                    const force = GRAVITY_STRENGTH / (distance * 0.01);
-                    const angle = Math.atan2(dy, dx);
-                    
-                    this.vx += Math.cos(angle) * force;
-                    this.vy += Math.sin(angle) * force;
-                }
+                    if (distance > 10) {
+                        const force = point.strength / (distance * 0.02);
+                        const angle = Math.atan2(dy, dx);
+                        
+                        this.vx += Math.cos(angle) * force;
+                        this.vy += Math.sin(angle) * force;
+                    }
+                });
 
                 // Apply damping
                 this.vx *= DAMPING;
@@ -241,6 +287,12 @@
             // Update hue offset for color cycling
             hueOffset = (hueOffset + 0.5) % 360;
 
+            // Update and draw gravity points
+            gravityPoints.forEach(point => {
+                point.update();
+                point.draw();
+            });
+
             // Update and draw particles
             particles.forEach(particle => {
                 particle.update();
@@ -274,7 +326,7 @@
 
             // Update stats
             particleCountEl.textContent = particles.length;
-            gravityStrengthEl.textContent = GRAVITY_STRENGTH.toFixed(1);
+            gravityCountEl.textContent = gravityPoints.length;
 
             requestAnimationFrame(animate);
         }
@@ -285,35 +337,16 @@
             initParticles();
         });
 
-        canvas.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-        });
-
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            mouseX = e.touches[0].clientX;
-            mouseY = e.touches[0].clientY;
-        }, { passive: false });
-
-        canvas.addEventListener('mousedown', () => {
-            isMouseDown = true;
-        });
-
-        canvas.addEventListener('mouseup', () => {
-            isMouseDown = false;
+        canvas.addEventListener('click', (e) => {
+            gravityPoints.push(new GravityPoint(e.clientX, e.clientY));
         });
 
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            isMouseDown = true;
-            mouseX = e.touches[0].clientX;
-            mouseY = e.touches[0].clientY;
+            for (let touch of e.touches) {
+                gravityPoints.push(new GravityPoint(touch.clientX, touch.clientY));
+            }
         }, { passive: false });
-
-        canvas.addEventListener('touchend', () => {
-            isMouseDown = false;
-        });
 
         resetBtn.addEventListener('click', () => {
             initParticles();
@@ -323,11 +356,17 @@
             colorMode = (colorMode + 1) % 3;
         });
 
+        clearBtn.addEventListener('click', () => {
+            gravityPoints = [];
+        });
+
         // Initialize
         resize();
         initParticles();
-        mouseX = width / 2;
-        mouseY = height / 2;
+        
+        // Add initial gravity point in center
+        gravityPoints.push(new GravityPoint(width / 2, height / 2));
+        
         animate();
     </script>
 </body>
