@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Floater - 浮遊障害物回避ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .overlay h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #00f5ff, #ff00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .overlay p {
+            color: #fff;
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            text-align: center;
+            max-width: 400px;
+            line-height: 1.6;
+        }
+
+        .overlay .score {
+            font-size: 4em;
+            margin-bottom: 30px;
+            color: #00f5ff;
+        }
+
+        button {
+            background: linear-gradient(135deg, #00f5ff, #ff00ff);
+            border: none;
+            color: #0a0a0a;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(0, 245, 255, 0.3);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .hud {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 1.5em;
+            z-index: 50;
+            text-shadow: 0 0 10px rgba(0, 245, 255, 0.5);
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-size: 0.9em;
+            opacity: 0.6;
+            z-index: 50;
+        }
+
+        @media (max-width: 768px) {
+            .overlay h1 {
+                font-size: 2em;
+            }
+
+            .overlay p {
+                font-size: 1em;
+                padding: 0 20px;
+            }
+
+            .overlay .score {
+                font-size: 3em;
+            }
+
+            button {
+                padding: 12px 30px;
+                font-size: 1em;
+            }
+
+            .hud {
+                font-size: 1.2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="hud">
+        スコア: <span id="score">0</span>
+    </div>
+
+    <div class="controls">
+        マウスドラッグ/スワイプで移動
+    </div>
+
+    <div id="startOverlay" class="overlay">
+        <h1>🎮 Floater</h1>
+        <p>障害物を避けてポイントを集めよう！<br>マウスドラッグ/スワイプで操作</p>
+        <button onclick="startGame()">スタート</button>
+    </div>
+
+    <div id="gameOverOverlay" class="overlay hidden">
+        <h1>ゲームオーバー</h1>
+        <div class="score" id="finalScore">0</div>
+        <p>ハイスコア: <span id="highScore">0</span></p>
+        <button onclick="startGame()">もう一度</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let gameRunning = false;
+        let score = 0;
+        let highScore = localStorage.getItem('floaterHighScore') || 0;
+        let player;
+        let obstacles = [];
+        let collectibles = [];
+        let particles = [];
+        let difficulty = 1;
+
+        // マウス/タッチ位置
+        let mouse = { x: 0, y: 0, active: false };
+
+        // プレイヤークラス
+        class Player {
+            constructor() {
+                this.x = width / 2;
+                this.y = height / 2;
+                this.targetX = this.x;
+                this.targetY = this.y;
+                this.radius = 20;
+                this.color = '#00f5ff';
+                this.trail = [];
+                this.trailLength = 10;
+            }
+
+            update() {
+                // スムーズな移動
+                this.x += (this.targetX - this.x) * 0.1;
+                this.y += (this.targetY - this.y) * 0.1;
+
+                // 画面内に制限
+                this.x = Math.max(this.radius, Math.min(width - this.radius, this.x));
+                this.y = Math.max(this.radius, Math.min(height - this.radius, this.y));
+
+                // トレイル記録
+                this.trail.unshift({ x: this.x, y: this.y });
+                if (this.trail.length > this.trailLength) {
+                    this.trail.pop();
+                }
+            }
+
+            draw() {
+                // トレイル描画
+                this.trail.forEach((pos, i) => {
+                    let alpha = (1 - i / this.trail.length) * 0.5;
+                    let size = this.radius * (1 - i / this.trail.length);
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(0, 245, 255, ${alpha})`;
+                    ctx.fill();
+                });
+
+                // 本体描画
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                
+                // グラデーション
+                let gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius
+                );
+                gradient.addColorStop(0, '#ffffff');
+                gradient.addColorStop(0.5, '#00f5ff');
+                gradient.addColorStop(1, '#0080ff');
+                
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // グロー
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#00f5ff';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // 障害物クラス
+        class Obstacle {
+            constructor() {
+                this.radius = Math.random() * 20 + 15;
+                this.x = Math.random() * (width - this.radius * 2) + this.radius;
+                this.y = -this.radius;
+                this.speed = (Math.random() * 2 + 1) * difficulty;
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+                this.sides = Math.floor(Math.random() * 3) + 3;
+                this.color = `hsl(${Math.random() * 60 + 300}, 100%, 50%)`;
+            }
+
+            update() {
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                ctx.beginPath();
+                for (let i = 0; i < this.sides; i++) {
+                    let angle = (i / this.sides) * Math.PI * 2;
+                    let x = Math.cos(angle) * this.radius;
+                    let y = Math.sin(angle) * this.radius;
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.closePath();
+
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = this.color + '40';
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            isOffScreen() {
+                return this.y > height + this.radius;
+            }
+
+            collidesWith(player) {
+                let dx = this.x - player.x;
+                let dy = this.y - player.y;
+                let distance = Math.sqrt(dx * dx + dy * dy);
+                return distance < this.radius + player.radius - 5;
+            }
+        }
+
+        // コレクタブルクラス
+        class Collectible {
+            constructor() {
+                this.radius = 12;
+                this.x = Math.random() * (width - this.radius * 2) + this.radius;
+                this.y = -this.radius;
+                this.speed = 2;
+                this.angle = 0;
+                this.color = '#ff00ff';
+            }
+
+            update() {
+                this.y += this.speed;
+                this.angle += 0.05;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                ctx.beginPath();
+                // 星形
+                for (let i = 0; i < 5; i++) {
+                    let angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+                    let x = Math.cos(angle) * this.radius;
+                    let y = Math.sin(angle) * this.radius;
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+
+                    let innerAngle = angle + Math.PI / 5;
+                    let innerX = Math.cos(innerAngle) * (this.radius * 0.5);
+                    let innerY = Math.sin(innerAngle) * (this.radius * 0.5);
+                    ctx.lineTo(innerX, innerY);
+                }
+                ctx.closePath();
+
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                ctx.restore();
+            }
+
+            isOffScreen() {
+                return this.y > height + this.radius;
+            }
+
+            collidesWith(player) {
+                let dx = this.x - player.x;
+                let dy = this.y - player.y;
+                let distance = Math.sqrt(dx * dx + dy * dy);
+                return distance < this.radius + player.radius;
+            }
+        }
+
+        // パーティクルクラス
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() - 0.5) * 8;
+                this.life = 1;
+                this.decay = Math.random() * 0.02 + 0.02;
+                this.color = color;
+                this.size = Math.random() * 4 + 2;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.1; // 重力
+                this.life -= this.decay;
+            }
+
+            draw() {
+                ctx.globalAlpha = this.life;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+
+        // 初期化
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+
+            player = new Player();
+            obstacles = [];
+            collectibles = [];
+            particles = [];
+            score = 0;
+            difficulty = 1;
+
+            document.getElementById('score').textContent = score;
+            document.getElementById('highScore').textContent = highScore;
+        }
+
+        // パーティクル生成
+        function createParticles(x, y, color, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        // ゲーム開始
+        function startGame() {
+            init();
+            gameRunning = true;
+            document.getElementById('startOverlay').classList.add('hidden');
+            document.getElementById('gameOverOverlay').classList.add('hidden');
+            animate();
+        }
+
+        // ゲームオーバー
+        function gameOver() {
+            gameRunning = false;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('floaterHighScore', highScore);
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('highScore').textContent = highScore;
+            document.getElementById('gameOverOverlay').classList.remove('hidden');
+        }
+
+        // アニメーション
+        function animate() {
+            if (!gameRunning) return;
+
+            // クリア
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            // プレイヤー更新
+            if (mouse.active) {
+                player.targetX = mouse.x;
+                player.targetY = mouse.y;
+            }
+            player.update();
+            player.draw();
+
+            // 障害物生成
+            if (Math.random() < 0.02 * difficulty) {
+                obstacles.push(new Obstacle());
+            }
+
+            // コレクタブル生成
+            if (Math.random() < 0.01) {
+                collectibles.push(new Collectible());
+            }
+
+            // 障害物更新
+            obstacles = obstacles.filter(obs => {
+                obs.update();
+                obs.draw();
+
+                if (obs.collidesWith(player)) {
+                    createParticles(player.x, player.y, '#ff0000', 30);
+                    gameOver();
+                    return false;
+                }
+
+                return !obs.isOffScreen();
+            });
+
+            // コレクタブル更新
+            collectibles = collectibles.filter(col => {
+                col.update();
+                col.draw();
+
+                if (col.collidesWith(player)) {
+                    score += 10;
+                    document.getElementById('score').textContent = score;
+                    createParticles(col.x, col.y, '#ff00ff', 15);
+                    return false;
+                }
+
+                return !col.isOffScreen();
+            });
+
+            // パーティクル更新
+            particles = particles.filter(p => {
+                p.update();
+                p.draw();
+                return !p.isDead();
+            });
+
+            // 難易度上昇
+            difficulty = 1 + score / 100;
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        window.addEventListener('resize', init);
+
+        canvas.addEventListener('mousedown', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (mouse.active) {
+                mouse.x = e.clientX;
+                mouse.y = e.clientY;
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            mouse.active = false;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            mouse.active = true;
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (mouse.active) {
+                mouse.x = e.touches[0].clientX;
+                mouse.y = e.touches[0].clientY;
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.active = false;
+        });
+
+        // 全画面表示
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'f' || e.key === 'F') {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                } else {
+                    canvas.requestFullscreen();
+                }
+            }
+        });
+
+        // 初期化
+        init();
+    </script>
+</body>
+</html>
