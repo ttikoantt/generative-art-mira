@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Color Memory - 色記憶ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            touch-action: manipulation;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 30px;
+            padding: 20px;
+        }
+
+        h1 {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 32px;
+            font-weight: 300;
+            letter-spacing: 4px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            max-width: 400px;
+        }
+
+        .tile {
+            width: 150px;
+            height: 150px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tile::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, transparent 100%);
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+
+        .tile:hover::before {
+            opacity: 1;
+        }
+
+        .tile.active {
+            transform: scale(0.95);
+            filter: brightness(1.8);
+        }
+
+        .tile:active {
+            transform: scale(0.9);
+        }
+
+        .tile.red { background: linear-gradient(135deg, #ff6b6b, #ee5a5a); }
+        .tile.blue { background: linear-gradient(135deg, #4dabf7, #339af0); }
+        .tile.green { background: linear-gradient(135deg, #51cf66, #40c057); }
+        .tile.yellow { background: linear-gradient(135deg, #ffd43b, #fab005); }
+
+        .stats {
+            display: flex;
+            gap: 40px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 18px;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.4);
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 600;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 20px;
+        }
+
+        button {
+            padding: 15px 40px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .start-btn {
+            background: rgba(255, 255, 255, 0.9);
+            color: #0a0a0f;
+        }
+
+        .start-btn:hover {
+            background: rgba(255, 255, 255, 1);
+            transform: scale(1.05);
+        }
+
+        .start-btn:active {
+            transform: scale(0.95);
+        }
+
+        .start-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .message {
+            min-height: 40px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 18px;
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 480px) {
+            .grid {
+                max-width: 320px;
+            }
+
+            .tile {
+                width: 120px;
+                height: 120px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>COLOR MEMORY</h1>
+
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-label">Level</div>
+                <div class="stat-value" id="level">1</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Best</div>
+                <div class="stat-value" id="best">1</div>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="tile red" data-color="0"></div>
+            <div class="tile blue" data-color="1"></div>
+            <div class="tile green" data-color="2"></div>
+            <div class="tile yellow" data-color="3"></div>
+        </div>
+
+        <div class="message" id="message">スタートボタンを押してね</div>
+
+        <div class="buttons">
+            <button class="start-btn" id="startBtn">START</button>
+        </div>
+    </div>
+
+    <script>
+        // ゲーム状態
+        let sequence = [];
+        let playerSequence = [];
+        let level = 1;
+        let bestLevel = parseInt(localStorage.getItem('colorMemoryBest')) || 1;
+        let isPlaying = false;
+        let isPlayerTurn = false;
+
+        // DOM要素
+        const tiles = document.querySelectorAll('.tile');
+        const startBtn = document.getElementById('startBtn');
+        const levelDisplay = document.getElementById('level');
+        const bestDisplay = document.getElementById('best');
+        const messageDisplay = document.getElementById('message');
+
+        // ベストレベルを表示
+        bestDisplay.textContent = bestLevel;
+
+        // オーディオコンテキスト
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // 音を再生
+        function playSound(colorIndex) {
+            initAudio();
+
+            const frequencies = [329.63, 392.00, 440.00, 523.25]; // E4, G4, A4, C5
+            const freq = frequencies[colorIndex];
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.3);
+        }
+
+        // タイルを光らせる
+        function flashTile(colorIndex) {
+            const tile = tiles[colorIndex];
+            tile.classList.add('active');
+            playSound(colorIndex);
+
+            setTimeout(() => {
+                tile.classList.remove('active');
+            }, 300);
+        }
+
+        // シーケンスを再生
+        async function playSequence() {
+            isPlayerTurn = false;
+            messageDisplay.textContent = 'よく見てね...';
+
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            for (let i = 0; i < sequence.length; i++) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                flashTile(sequence[i]);
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            isPlayerTurn = true;
+            playerSequence = [];
+            messageDisplay.textContent = '同じ順番でタップ！';
+        }
+
+        // 次のレベルへ
+        function nextLevel() {
+            level++;
+            levelDisplay.textContent = level;
+            sequence.push(Math.floor(Math.random() * 4));
+            setTimeout(() => playSequence(), 500);
+        }
+
+        // ゲームオーバー
+        function gameOver() {
+            isPlaying = false;
+            isPlayerTurn = false;
+            startBtn.disabled = false;
+            messageDisplay.textContent = `レベル ${level} でゲームオーバー`;
+
+            // ベストを更新
+            if (level > bestLevel) {
+                bestLevel = level;
+                localStorage.setItem('colorMemoryBest', bestLevel);
+                bestDisplay.textContent = bestLevel;
+                messageDisplay.textContent += ' 🎉 新記録！';
+            }
+
+            // 失敗音
+            playErrorSound();
+        }
+
+        // エラー音
+        function playErrorSound() {
+            initAudio();
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
+
+            gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.5);
+        }
+
+        // タイルクリック時の処理
+        function handleTileClick(colorIndex) {
+            if (!isPlaying || !isPlayerTurn) return;
+
+            flashTile(colorIndex);
+            playerSequence.push(colorIndex);
+
+            // 正誤判定
+            const currentIndex = playerSequence.length - 1;
+            if (playerSequence[currentIndex] !== sequence[currentIndex]) {
+                gameOver();
+                return;
+            }
+
+            // シーケンス完了チェック
+            if (playerSequence.length === sequence.length) {
+                isPlayerTurn = false;
+                messageDisplay.textContent = '正解！';
+                setTimeout(() => nextLevel(), 1000);
+            }
+        }
+
+        // イベントリスナー
+        tiles.forEach(tile => {
+            tile.addEventListener('click', () => {
+                const colorIndex = parseInt(tile.dataset.color);
+                handleTileClick(colorIndex);
+            });
+
+            tile.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const colorIndex = parseInt(tile.dataset.color);
+                handleTileClick(colorIndex);
+            });
+        });
+
+        startBtn.addEventListener('click', () => {
+            initAudio();
+
+            // ゲームをリセット
+            level = 1;
+            sequence = [Math.floor(Math.random() * 4)];
+            playerSequence = [];
+            isPlaying = true;
+            startBtn.disabled = true;
+            levelDisplay.textContent = level;
+            messageDisplay.textContent = '準備...';
+
+            setTimeout(() => playSequence(), 500);
+        });
+
+        // キーボード操作（R, B, G, Y）
+        document.addEventListener('keydown', (e) => {
+            if (!isPlaying || !isPlayerTurn) return;
+
+            const keyMap = {
+                'r': 0, 'R': 0,      // Red
+                'b': 1, 'B': 1,      // Blue
+                'g': 2, 'G': 2,      // Green
+                'y': 3, 'Y': 3       // Yellow
+            };
+
+            if (keyMap.hasOwnProperty(e.key)) {
+                handleTileClick(keyMap[e.key]);
+            }
+        });
+    </script>
+</body>
+</html>
