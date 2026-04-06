@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>流体の夢 - Liquid Dreams</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .controls {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+        }
+
+        .color-btn {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .color-btn:hover {
+            transform: scale(1.2);
+        }
+
+        .color-btn.active {
+            border: 3px solid #fff;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            color: rgba(255, 255, 255, 0.7);
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button class="color-btn active" style="background: #ff6b6b;" data-color="red"></button>
+        <button class="color-btn" style="background: #4ecdc4;" data-color="cyan"></button>
+        <button class="color-btn" style="background: #45b7d1;" data-color="blue"></button>
+        <button class="color-btn" style="background: #96e6a1;" data-color="green"></button>
+        <button class="color-btn" style="background: #ffd93d;" data-color="yellow"></button>
+        <button class="color-btn" style="background: #c44dff;" data-color="purple"></button>
+    </div>
+    <canvas id="canvas"></canvas>
+    <div class="info">クリックで流体を追加 • カラフルな液体のダンス</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // Fluid simulation parameters
+        const SCALE = 4;
+        const FLUID_WIDTH = Math.floor(width / SCALE);
+        const FLUID_HEIGHT = Math.floor(height / SCALE);
+        const ITERATIONS = 4;
+
+        // Colors with their RGBA values
+        const COLORS = {
+            red: { r: 255, g: 107, b: 107 },
+            cyan: { r: 78, g: 205, b: 196 },
+            blue: { r: 69, g: 183, b: 209 },
+            green: { r: 150, g: 230, b: 161 },
+            yellow: { r: 255, g: 217, b: 61 },
+            purple: { r: 196, g: 77, b: 255 }
+        };
+
+        let currentColor = 'red';
+
+        // Fluid arrays
+        let density = [];
+        let Vx = [];
+        let Vy = [];
+        let Vx0 = [];
+        let Vy0 = [];
+
+        // Color density arrays for each color
+        let colorDensity = {};
+
+        // Initialize arrays
+        function init() {
+            const size = FLUID_WIDTH * FLUID_HEIGHT;
+
+            density = new Float32Array(size);
+            Vx = new Float32Array(size);
+            Vy = new Float32Array(size);
+            Vx0 = new Float32Array(size);
+            Vy0 = new Float32Array(size);
+
+            // Initialize color density arrays
+            Object.keys(COLORS).forEach(color => {
+                colorDensity[color] = new Float32Array(size);
+            });
+        }
+
+        // Get index from x, y
+        function IX(x, y) {
+            return x + y * FLUID_WIDTH;
+        }
+
+        // Add dye at position
+        function addDye(x, y, amount, color) {
+            const cx = Math.floor(x / SCALE);
+            const cy = Math.floor(y / SCALE);
+
+            for (let i = -2; i <= 2; i++) {
+                for (let j = -2; j <= 2; j++) {
+                    const px = cx + i;
+                    const py = cy + j;
+
+                    if (px > 0 && px < FLUID_WIDTH - 1 && py > 0 && py < FLUID_HEIGHT - 1) {
+                        const idx = IX(px, py);
+                        const dist = Math.sqrt(i * i + j * j);
+                        const factor = Math.max(0, 1 - dist / 3);
+
+                        // Add to total density
+                        density[idx] += amount * factor;
+
+                        // Add to specific color density
+                        colorDensity[color][idx] += amount * factor;
+
+                        // Add velocity
+                        Vx[idx] += (Math.random() - 0.5) * 50 * factor;
+                        Vy[idx] += (Math.random() - 0.5) * 50 * factor;
+                    }
+                }
+            }
+        }
+
+        // Diffuse
+        function diffuse(b, x, x0, diff, dt) {
+            const a = dt * diff * (FLUID_WIDTH - 2) * (FLUID_HEIGHT - 2);
+            lin_solve(b, x, x0, a, 1 + 6 * a);
+        }
+
+        // Linear solver
+        function lin_solve(b, x, x0, a, c) {
+            const iter = 4;
+            for (let k = 0; k < iter; k++) {
+                for (let j = 1; j < FLUID_HEIGHT - 1; j++) {
+                    for (let i = 1; i < FLUID_WIDTH - 1; i++) {
+                        x[IX(i, j)] =
+                            (x0[IX(i, j)] +
+                                a * (x[IX(i + 1, j)] + x[IX(i - 1, j)] +
+                                     x[IX(i, j + 1)] + x[IX(i, j - 1)])) / c;
+                    }
+                }
+            }
+        }
+
+        // Project (make velocity divergence-free)
+        function project(Vx, Vy, p, div) {
+            for (let j = 1; j < FLUID_HEIGHT - 1; j++) {
+                for (let i = 1; i < FLUID_WIDTH - 1; i++) {
+                    div[IX(i, j)] = -0.5 * (
+                        Vx[IX(i + 1, j)] - Vx[IX(i - 1, j)] +
+                        Vy[IX(i, j + 1)] - Vy[IX(i, j - 1)]
+                    ) / FLUID_WIDTH;
+                    p[IX(i, j)] = 0;
+                }
+            }
+
+            lin_solve(0, p, div, 1, 6);
+
+            for (let j = 1; j < FLUID_HEIGHT - 1; j++) {
+                for (let i = 1; i < FLUID_WIDTH - 1; i++) {
+                    Vx[IX(i, j)] -= 0.5 * (p[IX(i + 1, j)] - p[IX(i - 1, j)]) * FLUID_WIDTH;
+                    Vy[IX(i, j)] -= 0.5 * (p[IX(i, j + 1)] - p[IX(i, j - 1)]) * FLUID_WIDTH;
+                }
+            }
+        }
+
+        // Advect
+        function advect(b, d, d0, Vx, Vy, dt) {
+            const dt0 = dt * (FLUID_WIDTH - 2);
+            const dt1 = dt * (FLUID_HEIGHT - 2);
+
+            for (let j = 1; j < FLUID_HEIGHT - 1; j++) {
+                for (let i = 1; i < FLUID_WIDTH - 1; i++) {
+                    let x = i - dt0 * Vx[IX(i, j)];
+                    let y = j - dt1 * Vy[IX(i, j)];
+
+                    if (x < 0.5) x = 0.5;
+                    if (x > FLUID_WIDTH - 1.5) x = FLUID_WIDTH - 1.5;
+                    if (y < 0.5) y = 0.5;
+                    if (y > FLUID_HEIGHT - 1.5) y = FLUID_HEIGHT - 1.5;
+
+                    const i0 = Math.floor(x);
+                    const i1 = i0 + 1;
+                    const j0 = Math.floor(y);
+                    const j1 = j0 + 1;
+
+                    const s1 = x - i0;
+                    const s0 = 1 - s1;
+                    const t1 = y - j0;
+                    const t0 = 1 - t1;
+
+                    d[IX(i, j)] =
+                        s0 * (t0 * d0[IX(i0, j0)] + t1 * d0[IX(i0, j1)]) +
+                        s1 * (t0 * d0[IX(i1, j0)] + t1 * d0[IX(i1, j1)]);
+                }
+            }
+        }
+
+        // Fluid step
+        function fluidStep(dt) {
+            const diff = 0.0001;
+            const visc = 0.00001;
+
+            // Velocity step
+            [Vx, Vx0] = [Vx0, Vx];
+            diffuse(1, Vx, Vx0, visc, dt);
+            [Vy, Vy0] = [Vy0, Vy];
+            diffuse(2, Vy, Vy0, visc, dt);
+
+            project(Vx, Vy, Vx0, Vy0);
+
+            [Vx, Vx0] = [Vx0, Vx];
+            [Vy, Vy0] = [Vy0, Vy];
+            advect(1, Vx, Vx0, Vx0, Vy0, dt);
+            advect(2, Vy, Vy0, Vx0, Vy0, dt);
+
+            project(Vx, Vy, Vx0, Vy0);
+
+            // Density step for each color
+            Object.keys(colorDensity).forEach(color => {
+                const d = colorDensity[color];
+                const d0 = new Float32Array(d);
+
+                diffuse(0, d, d0, diff, dt);
+                [d, d0] = [d0, d];
+                advect(0, d, d0, Vx, Vy, dt);
+            });
+        }
+
+        // Render
+        function render() {
+            const imageData = ctx.createImageData(width, height);
+            const data = imageData.data;
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const fx = Math.floor(x / SCALE);
+                    const fy = Math.floor(y / SCALE);
+                    const idx = IX(fx, fy);
+
+                    const pixelIdx = (y * width + x) * 4;
+
+                    // Mix colors
+                    let r = 0, g = 0, b = 0;
+                    let totalDensity = 0;
+
+                    Object.keys(colorDensity).forEach(color => {
+                        const colorDen = colorDensity[color][idx];
+                        if (colorDen > 0) {
+                            const rgb = COLORS[color];
+                            r += rgb.r * colorDen;
+                            g += rgb.g * colorDen;
+                            b += rgb.b * colorDen;
+                            totalDensity += colorDen;
+                        }
+                    });
+
+                    // Normalize and apply
+                    if (totalDensity > 0) {
+                        const factor = Math.min(1, totalDensity * 2);
+                        data[pixelIdx] = Math.min(255, r / totalDensity * factor * 255);
+                        data[pixelIdx + 1] = Math.min(255, g / totalDensity * factor * 255);
+                        data[pixelIdx + 2] = Math.min(255, b / totalDensity * factor * 255);
+                        data[pixelIdx + 3] = Math.min(255, factor * 255);
+                    } else {
+                        data[pixelIdx] = 0;
+                        data[pixelIdx + 1] = 0;
+                        data[pixelIdx + 2] = 0;
+                        data[pixelIdx + 3] = 255;
+                    }
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // Animation loop
+        let lastTime = performance.now();
+        function animate() {
+            const now = performance.now();
+            const dt = Math.min((now - lastTime) / 1000, 0.1);
+            lastTime = now;
+
+            // Auto-add dye occasionally for visual interest
+            if (Math.random() < 0.02) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                const colors = Object.keys(COLORS);
+                const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                addDye(x, y, 500, randomColor);
+            }
+
+            fluidStep(dt);
+            render();
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        let isMouseDown = false;
+
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            addDye(e.clientX, e.clientY, 1000, currentColor);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isMouseDown) {
+                addDye(e.clientX, e.clientY, 500, currentColor);
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isMouseDown = false;
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            addDye(touch.clientX, touch.clientY, 1000, currentColor);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            addDye(touch.clientX, touch.clientY, 500, currentColor);
+        });
+
+        // Color buttons
+        document.querySelectorAll('.color-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentColor = btn.dataset.color;
+            });
+        });
+
+        // Resize
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // Initialize and start
+        init();
+
+        // Add initial dye bursts
+        setTimeout(() => {
+            addDye(width * 0.3, height * 0.3, 1000, 'red');
+            addDye(width * 0.7, height * 0.7, 1000, 'cyan');
+            addDye(width * 0.5, height * 0.5, 1000, 'yellow');
+        }, 100);
+
+        animate();
+    </script>
+</body>
+</html>
