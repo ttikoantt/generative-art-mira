@@ -91,8 +91,8 @@
     </style>
 </head>
 <body>
-    <div class="info">🌱 セルをクリックして生命を誕生させます</div>
-    <div class="stats">Generation: <span id="generation">0</span> | Population: <span id="population">0</span> | Species: <span id="species">0</span></div>
+    <div class="info">🌱 緑: 植物産者 | 🦁 赤: 捕食者 | 🟡 黄: 雑食</div>
+    <div class="stats">Generation: <span id="generation">0</span> | Population: <span id="population">0</span> | Energy: <span id="energy">0</span></div>
     
     <div class="controls">
         <button class="control-btn" id="playBtn">▶️ 開始</button>
@@ -108,7 +108,7 @@
         const ctx = canvas.getContext('2d');
         const generationEl = document.getElementById('generation');
         const populationEl = document.getElementById('population');
-        const speciesEl = document.getElementById('species');
+        const energyEl = document.getElementById('energy');
         const playBtn = document.getElementById('playBtn');
         const stepBtn = document.getElementById('stepBtn');
         const clearBtn = document.getElementById('clearBtn');
@@ -124,13 +124,11 @@
         let lastUpdateTime = 0;
         const updateInterval = 100;
 
-        // Species types
+        // Species types with ecosystem roles
         const speciesTypes = [
-            { hue: 0, name: 'Red' },
-            { hue: 120, name: 'Green' },
-            { hue: 240, name: 'Blue' },
-            { hue: 60, name: 'Yellow' },
-            { hue: 300, name: 'Purple' }
+            { hue: 120, name: 'Producer', role: 'producer', energyGain: 2 },     // Green plants
+            { hue: 0, name: 'Predator', role: 'predator', energyGain: -1 },      // Red predators
+            { hue: 60, name: 'Omnivore', role: 'omnivore', energyGain: 0 }       // Yellow omnivores
         ];
 
         function resize() {
@@ -155,6 +153,7 @@
                         grid[i][j] = {
                             alive: true,
                             age: 0,
+                            energy: 50,
                             species: species
                         };
                     }
@@ -165,30 +164,41 @@
         }
 
         function countNeighbors(x, y) {
-            let sum = 0;
-            let speciesCount = {};
-            
-            speciesTypes.forEach(s => speciesCount[s.name] = 0);
+            let neighbors = {
+                total: 0,
+                producers: 0,
+                predators: 0,
+                omnivores: 0
+            };
             
             for (let i = -1; i < 2; i++) {
                 for (let j = -1; j < 2; j++) {
+                    if (i === 0 && j === 0) continue;
+                    
                     const col = (x + i + cols) % cols;
                     const row = (y + j + rows) % rows;
                     const cell = grid[col][row];
                     
                     if (cell && cell.alive) {
-                        sum++;
-                        speciesCount[cell.species.name]++;
+                        neighbors.total++;
+                        
+                        if (cell.species.role === 'producer') neighbors.producers++;
+                        else if (cell.species.role === 'predator') neighbors.predators++;
+                        else if (cell.species.role === 'omnivore') neighbors.omnivores++;
                     }
                 }
             }
             
-            if (grid[x][y] && grid[x][y].alive) {
-                sum--;
-                speciesCount[grid[x][y].species.name]--;
+            return neighbors;
+        }
+
+        function canEat(predatorRole, preyRole) {
+            if (predatorRole === 'predator') {
+                return preyRole === 'producer' || preyRole === 'omnivore';
+            } else if (predatorRole === 'omnivore') {
+                return preyRole === 'producer';
             }
-            
-            return { sum, speciesCount };
+            return false;
         }
 
         function update() {
@@ -197,45 +207,82 @@
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
                     const cell = grid[i][j];
-                    const { sum, speciesCount } = countNeighbors(i, j);
+                    const neighbors = countNeighbors(i, j);
                     
                     if (cell && cell.alive) {
-                        // Survival rules
-                        if (sum < 2 || sum > 3) {
+                        // Calculate energy change
+                        let energyChange = cell.species.energyGain;
+                        
+                        // Predation: predators gain energy from eating
+                        if (cell.species.role === 'predator' || cell.species.role === 'omnivore') {
+                            if (cell.species.role === 'predator' && neighbors.producers > 0) {
+                                energyChange += neighbors.producers * 3;
+                            } else if (cell.species.role === 'omnivore' && neighbors.producers > 0) {
+                                energyChange += neighbors.producers * 2;
+                            }
+                        }
+                        
+                        // Update energy
+                        cell.energy += energyChange;
+                        
+                        // Check survival
+                        if (cell.energy <= 0 || neighbors.total < 2 || neighbors.total > 3) {
                             // Death
-                            nextGrid[i][j] = { alive: false, age: 0, species: cell.species };
+                            nextGrid[i][j] = {
+                                alive: false,
+                                age: 0,
+                                energy: 0,
+                                species: cell.species
+                            };
                         } else {
-                            // Survival and age
+                            // Survival
                             nextGrid[i][j] = {
                                 alive: true,
                                 age: cell.age + 1,
+                                energy: Math.min(cell.energy, 100),
                                 species: cell.species
                             };
                             
-                            // Evolution: older cells can mutate
-                            if (cell.age > 50 && Math.random() < 0.01) {
-                                const newSpecies = speciesTypes[Math.floor(Math.random() * speciesTypes.length)];
-                                nextGrid[i][j].species = newSpecies;
+                            // Reproduction
+                            if (cell.energy >= 80 && neighbors.total < 3) {
+                                // Spawn offspring nearby
+                                const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+                                for (const [dx, dy] of dirs) {
+                                    const nx = (i + dx + cols) % cols;
+                                    const ny = (j + dy + rows) % rows;
+                                    
+                                    if (!nextGrid[nx][ny] || !nextGrid[nx][ny].alive) {
+                                        nextGrid[nx][ny] = {
+                                            alive: true,
+                                            age: 0,
+                                            energy: 40,
+                                            species: cell.species
+                                        };
+                                        cell.energy -= 40;
+                                        break;
+                                    }
+                                }
                             }
                         }
                     } else {
                         // Birth rules
-                        if (sum === 3) {
+                        if (neighbors.total === 3) {
                             // Determine species based on neighbors
-                            let maxCount = 0;
-                            let dominantSpecies = speciesTypes[0];
+                            let newSpecies = speciesTypes[0]; // Default to producer
                             
-                            for (const [name, count] of Object.entries(speciesCount)) {
-                                if (count > maxCount) {
-                                    maxCount = count;
-                                    dominantSpecies = speciesTypes.find(s => s.name === name);
-                                }
+                            // If there are predators nearby, new cell might be prey
+                            if (neighbors.predators > neighbors.producers) {
+                                newSpecies = speciesTypes[Math.floor(Math.random() * speciesTypes.length)];
+                            } else {
+                                // More producers, likely producer offspring
+                                newSpecies = speciesTypes[0];
                             }
                             
                             nextGrid[i][j] = {
                                 alive: true,
                                 age: 0,
-                                species: dominantSpecies
+                                energy: 50,
+                                species: newSpecies
                             };
                         }
                     }
@@ -251,20 +298,20 @@
             generationEl.textContent = generation;
             
             let population = 0;
-            const speciesSet = new Set();
+            let totalEnergy = 0;
             
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
                     const cell = grid[i][j];
                     if (cell && cell.alive) {
                         population++;
-                        speciesSet.add(cell.species.name);
+                        totalEnergy += cell.energy;
                     }
                 }
             }
             
             populationEl.textContent = population;
-            speciesEl.textContent = speciesSet.size;
+            energyEl.textContent = Math.round(totalEnergy / Math.max(population, 1));
         }
 
         function draw() {
@@ -278,12 +325,12 @@
                         const x = i * cellSize;
                         const y = j * cellSize;
                         
-                        // Calculate size based on age
-                        const ageSize = Math.min(cell.age / 50, 1);
-                        const size = cellSize * (0.8 + ageSize * 0.4);
+                        // Size based on energy
+                        const energySize = Math.min(cell.energy / 100, 1);
+                        const size = cellSize * (0.6 + energySize * 0.6);
                         
-                        // Calculate alpha based on age
-                        const alpha = 0.5 + Math.min(ageSize, 0.5);
+                        // Alpha based on energy
+                        const alpha = 0.4 + energySize * 0.5;
                         
                         // Cell glow
                         const gradient = ctx.createRadialGradient(
@@ -291,7 +338,7 @@
                             x + cellSize / 2, y + cellSize / 2, size
                         );
                         
-                        const hue = (cell.species.hue + generation * 0.2 + i * 2 + j * 2) % 360;
+                        const hue = (cell.species.hue + generation * 0.2 + i + j) % 360;
                         
                         gradient.addColorStop(0, `hsla(${hue}, 100%, 70%, ${alpha})`);
                         gradient.addColorStop(0.5, `hsla(${hue}, 100%, 50%, ${alpha * 0.6})`);
@@ -304,9 +351,9 @@
                         ctx.fillStyle = `hsla(${hue}, 100%, 90%, ${alpha * 0.9})`;
                         ctx.fillRect(x + 1, y + 1, size - 2, size - 2);
                         
-                        // Age indicator
-                        if (cell.age > 30) {
-                            ctx.strokeStyle = `hsla(${hue}, 100%, 80%, 0.3)`;
+                        // Energy indicator
+                        if (cell.energy > 70) {
+                            ctx.strokeStyle = `hsla(${hue}, 100%, 80%, 0.5)`;
                             ctx.lineWidth = 1;
                             ctx.strokeRect(x + 1, y + 1, size - 2, size - 2);
                         }
@@ -339,10 +386,10 @@
             if (x >= 0 && x < cols && y >= 0 && y < rows) {
                 const cell = grid[x][y];
                 if (cell && cell.alive) {
-                    grid[x][y] = { alive: false, age: 0, species: cell.species };
+                    grid[x][y] = { alive: false, age: 0, energy: 0, species: cell.species };
                 } else {
                     const species = speciesTypes[Math.floor(Math.random() * speciesTypes.length)];
-                    grid[x][y] = { alive: true, age: 0, species: species };
+                    grid[x][y] = { alive: true, age: 0, energy: 50, species: species };
                 }
                 updateStats();
                 draw();
@@ -359,10 +406,10 @@
                 if (x >= 0 && x < cols && y >= 0 && y < rows) {
                     const cell = grid[x][y];
                     if (cell && cell.alive) {
-                        grid[x][y] = { alive: false, age: 0, species: cell.species };
+                        grid[x][y] = { alive: false, age: 0, energy: 0, species: cell.species };
                     } else {
                         const species = speciesTypes[Math.floor(Math.random() * speciesTypes.length)];
-                        grid[x][y] = { alive: true, age: 0, species: species };
+                        grid[x][y] = { alive: true, age: 0, energy: 50, species: species };
                     }
                 }
             }
