@@ -67,6 +67,48 @@
             border-radius: 20px;
         }
 
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .control-btn {
+            background: rgba(102, 126, 234, 0.8);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .control-btn:hover {
+            transform: scale(1.05);
+            background: rgba(102, 126, 234, 1);
+        }
+
+        .control-btn.recording {
+            background: rgba(239, 68, 68, 0.8);
+            animation: pulse 1.5s infinite;
+        }
+
+        .control-btn.playing {
+            background: rgba(34, 197, 94, 0.8);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
         .stats {
             position: fixed;
             bottom: 20px;
@@ -98,6 +140,41 @@
             transform: translate(-50%, -50%) scale(1.05);
         }
 
+        .saved-patterns {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 90%;
+        }
+
+        .pattern-item {
+            background: rgba(0, 0, 0, 0.5);
+            color: rgba(255, 255, 255, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .pattern-item:hover {
+            background: rgba(102, 126, 234, 0.5);
+            color: white;
+        }
+
+        .pattern-item .delete {
+            margin-left: 8px;
+            color: rgba(239, 68, 68, 0.8);
+            cursor: pointer;
+        }
+
         @media (max-width: 768px) {
             .info {
                 font-size: 0.75rem;
@@ -107,6 +184,11 @@
             .waveform-indicator, .harmony-indicator {
                 font-size: 0.65rem;
                 padding: 6px 12px;
+            }
+
+            .control-btn {
+                padding: 10px 16px;
+                font-size: 0.8rem;
             }
 
             .start-btn {
@@ -121,6 +203,16 @@
     <div class="waveform-indicator">🎵 波形: <span id="waveformName">サイン波</span></div>
     <div class="harmony-indicator">🎶 和音: <span id="chordName">単音</span></div>
     <div class="stats">Ripples: <span id="rippleCount">0</span></div>
+    
+    <div class="saved-patterns" id="savedPatterns"></div>
+    
+    <div class="controls">
+        <button class="control-btn" id="recordBtn">⏺️ 録画</button>
+        <button class="control-btn" id="stopBtn" style="display: none;">⏹️ 停止</button>
+        <button class="control-btn" id="saveBtn" style="display: none;">💾 保存</button>
+        <button class="control-btn" id="clearBtn">🗑️ クリア</button>
+    </div>
+    
     <button class="start-btn" id="startBtn">🎵 音をオンにする</button>
     <canvas id="canvas"></canvas>
 
@@ -131,6 +223,11 @@
         const waveformNameEl = document.getElementById('waveformName');
         const chordNameEl = document.getElementById('chordName');
         const startBtn = document.getElementById('startBtn');
+        const recordBtn = document.getElementById('recordBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const savedPatternsEl = document.getElementById('savedPatterns');
 
         let width, height;
         let ripples = [];
@@ -139,21 +236,21 @@
         let audioCtx = null;
         let audioEnabled = false;
 
-        // Musical scales (pentatonic for harmony)
+        // Recording state
+        let isRecording = false;
+        let isPlaying = false;
+        let recordedTaps = [];
+        let recordingStartTime = 0;
+        let playbackTimeout = null;
+
+        // Saved patterns
+        let savedPatterns = JSON.parse(localStorage.getItem('gardenPatterns') || '[]');
+
         const pentatonicScale = [
-            261.63,  // C4
-            293.66,  // D4
-            329.63,  // E4
-            392.00,  // G4
-            440.00,  // A4
-            523.25,  // C5
-            587.33,  // D5
-            659.25,  // E5
-            783.99,  // G5
-            880.00   // A5
+            261.63, 293.66, 329.63, 392.00, 440.00,
+            523.25, 587.33, 659.25, 783.99, 880.00
         ];
 
-        // Chord progressions (for harmony)
         const chords = {
             'major': [0, 4, 7],
             'minor': [0, 3, 7],
@@ -166,7 +263,6 @@
             'single': [0]
         };
 
-        // Chord names for display
         const chordNames = {
             'major': 'メジャー',
             'minor': 'マイナー',
@@ -181,7 +277,6 @@
 
         const chordTypes = Object.keys(chords);
 
-        // Waveform types with visual characteristics
         const waveformTypes = [
             { type: 'sine', name: 'サイン波', emoji: '〰️', layers: 3, softness: 1.0 },
             { type: 'triangle', name: '三角波', emoji: '📐', layers: 4, softness: 0.8 },
@@ -250,7 +345,6 @@
         window.addEventListener('resize', resize);
         resize();
 
-        // Particle class for visual effects
         class Particle {
             constructor(x, y, hue) {
                 this.x = x;
@@ -279,7 +373,6 @@
                 ctx.rotate(this.rotation);
                 ctx.globalAlpha = this.alpha;
 
-                // Glowing particle
                 const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size);
                 gradient.addColorStop(0, `hsla(${this.hue}, 100%, 80%, ${this.alpha})`);
                 gradient.addColorStop(0.5, `hsla(${this.hue}, 100%, 60%, ${this.alpha * 0.5})`);
@@ -319,7 +412,6 @@
                 this.radius += this.speed;
                 this.alpha = 1 - (this.radius / this.maxRadius);
 
-                // Spawn particles
                 if (this.spawnParticles && this.radius < this.maxRadius * 0.5) {
                     for (let i = 0; i < 3; i++) {
                         const angle = Math.random() * Math.PI * 2;
@@ -338,14 +430,12 @@
                 ctx.save();
                 ctx.globalAlpha = this.alpha * softness + 0.2;
 
-                // Draw layers for each note in the chord
                 for (let n = 0; n < noteCount; n++) {
                     for (let i = 0; i < layers; i++) {
                         const layerOffset = n * 20;
                         const layerRadius = this.radius * (1 - i * 0.1) + layerOffset;
                         const layerAlpha = this.alpha * (1 - i * 0.15) * (1 - n * 0.1);
                         
-                        // Enhanced glow effect
                         const gradient = ctx.createRadialGradient(
                             this.x, this.y, 0,
                             this.x, this.y, layerRadius
@@ -353,7 +443,6 @@
 
                         const hue = (this.hue + i * 10 + n * 15) % 360;
                         
-                        // Inner glow (brighter)
                         gradient.addColorStop(0, `hsla(${hue}, 100%, 80%, ${layerAlpha * 0.5})`);
                         gradient.addColorStop(0.3, `hsla(${hue}, 90%, 60%, ${layerAlpha * 0.4})`);
                         gradient.addColorStop(0.6, `hsla(${hue}, 80%, 50%, ${layerAlpha * 0.2})`);
@@ -364,7 +453,6 @@
                         ctx.arc(this.x, this.y, layerRadius, 0, Math.PI * 2);
                         ctx.fill();
 
-                        // Multiple ring layers
                         for (let r = 0; r < 3; r++) {
                             const ringRadius = layerRadius * (0.7 + r * 0.1);
                             const ringAlpha = layerAlpha * (1 - r * 0.2);
@@ -376,7 +464,6 @@
                             ctx.stroke();
                         }
 
-                        // Sparkles
                         if (Math.random() > 0.95) {
                             const sparkleAngle = Math.random() * Math.PI * 2;
                             const sparkleDist = layerRadius * (0.6 + Math.random() * 0.4);
@@ -391,14 +478,12 @@
                     }
                 }
 
-                // Outer glow ring
                 ctx.strokeStyle = `hsla(${this.hue}, 80%, 50%, ${this.alpha * 0.4})`;
                 ctx.lineWidth = 6;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius * 1.15, 0, Math.PI * 2);
                 ctx.stroke();
 
-                // Central glow
                 const centralGradient = ctx.createRadialGradient(
                     this.x, this.y, 0,
                     this.x, this.y, this.radius * 0.3
@@ -419,7 +504,7 @@
             }
         }
 
-        function addRipple(x, y) {
+        function addRipple(x, y, isPlayback = false) {
             const waveformIndex = getWaveformFromPosition(x);
             const chordType = getChordFromPosition(y);
             const ripple = new Ripple(x, y, waveformIndex, chordType);
@@ -431,26 +516,33 @@
             waveformNameEl.textContent = `${ripple.waveform.emoji} ${ripple.waveform.name}`;
             chordNameEl.textContent = chordNames[chordType];
 
+            // Record tap if recording
+            if (isRecording && !isPlayback) {
+                const timeOffset = Date.now() - recordingStartTime;
+                recordedTaps.push({
+                    x: x / width,
+                    y: y / height,
+                    time: timeOffset
+                });
+            }
+
             if (ripples.length > 50) {
                 ripples.shift();
             }
         }
 
         function animate() {
-            // Enhanced fade effect with color shift
             const time = Date.now() * 0.001;
             const bgHue = (time * 2) % 360;
             ctx.fillStyle = `hsla(${bgHue}, 30%, 5%, 0.15)`;
             ctx.fillRect(0, 0, width, height);
 
-            // Update and draw particles
             particles = particles.filter(particle => {
                 particle.update();
                 particle.draw();
                 return !particle.isDead();
             });
 
-            // Update and draw ripples
             ripples = ripples.filter(ripple => {
                 ripple.update();
                 ripple.draw();
@@ -461,6 +553,88 @@
 
             requestAnimationFrame(animate);
         }
+
+        function updateSavedPatternsUI() {
+            savedPatternsEl.innerHTML = '';
+            savedPatterns.forEach((pattern, index) => {
+                const item = document.createElement('div');
+                item.className = 'pattern-item';
+                item.innerHTML = `
+                    🎵 パターン ${index + 1} (${pattern.taps.length}タップ)
+                    <span class="delete" onclick="event.stopPropagation(); deletePattern(${index})">×</span>
+                `;
+                item.onclick = () => playPattern(index);
+                savedPatternsEl.appendChild(item);
+            });
+        }
+
+        function playPattern(index) {
+            if (isPlaying) return;
+            
+            const pattern = savedPatterns[index];
+            if (!pattern) return;
+
+            isPlaying = true;
+            
+            pattern.taps.forEach(tap => {
+                playbackTimeout = setTimeout(() => {
+                    addRipple(tap.x * width, tap.y * height, true);
+                }, tap.time);
+            });
+
+            setTimeout(() => {
+                isPlaying = false;
+            }, Math.max(...pattern.taps.map(t => t.time)) + 2000);
+        }
+
+        function deletePattern(index) {
+            savedPatterns.splice(index, 1);
+            localStorage.setItem('gardenPatterns', JSON.stringify(savedPatterns));
+            updateSavedPatternsUI();
+        }
+
+        // Recording controls
+        recordBtn.onclick = () => {
+            isRecording = true;
+            recordedTaps = [];
+            recordingStartTime = Date.now();
+            recordBtn.style.display = 'none';
+            stopBtn.style.display = 'block';
+            recordBtn.classList.add('recording');
+        };
+
+        stopBtn.onclick = () => {
+            isRecording = false;
+            recordBtn.style.display = 'block';
+            stopBtn.style.display = 'none';
+            saveBtn.style.display = 'block';
+            recordBtn.classList.remove('recording');
+        };
+
+        saveBtn.onclick = () => {
+            if (recordedTaps.length === 0) return;
+            
+            const pattern = {
+                id: Date.now(),
+                taps: recordedTaps,
+                createdAt: new Date().toISOString()
+            };
+            
+            savedPatterns.push(pattern);
+            localStorage.setItem('gardenPatterns', JSON.stringify(savedPatterns));
+            updateSavedPatternsUI();
+            
+            recordedTaps = [];
+            saveBtn.style.display = 'none';
+        };
+
+        clearBtn.onclick = () => {
+            if (confirm('全ての保存されたパターンを削除しますか？')) {
+                savedPatterns = [];
+                localStorage.setItem('gardenPatterns', '[]');
+                updateSavedPatternsUI();
+            }
+        };
 
         canvas.addEventListener('click', (e) => {
             addRipple(e.clientX, e.clientY);
@@ -476,7 +650,7 @@
         startBtn.addEventListener('click', initAudio);
 
         setInterval(() => {
-            if (ripples.length < 3) {
+            if (ripples.length < 3 && !isRecording && !isPlaying) {
                 const waveformIndex = Math.floor(Math.random() * waveformTypes.length);
                 const chordType = chordTypes[Math.floor(Math.random() * chordTypes.length)];
                 const x = (waveformIndex / waveformTypes.length) * width + (width / waveformTypes.length / 2);
@@ -496,6 +670,7 @@
             }
         }, 2000);
 
+        updateSavedPatternsUI();
         animate();
     </script>
 </body>
