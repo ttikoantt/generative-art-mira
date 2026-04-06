@@ -118,7 +118,7 @@
 </head>
 <body>
     <div class="info">🎵 音に反応して幾何学パターンが広がります</div>
-    <div class="stats">Volume: <span id="volumeLevel">0</span>% | Frequency: <span id="freqLevel">0</span>Hz</div>
+    <div class="stats">Volume: <span id="volumeLevel">0</span>% | Bass: <span id="bassLevel">0</span>% | Mid: <span id="midLevel">0</span>% | Treble: <span id="trebleLevel">0</span>%</div>
     
     <div class="controls">
         <button class="control-btn" id="toggleBtn">🎨 図形切替</button>
@@ -132,7 +132,9 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const volumeLevelEl = document.getElementById('volumeLevel');
-        const freqLevelEl = document.getElementById('freqLevel');
+        const bassLevelEl = document.getElementById('bassLevel');
+        const midLevelEl = document.getElementById('midLevel');
+        const trebleLevelEl = document.getElementById('trebleLevel');
         const startBtn = document.getElementById('startBtn');
         const toggleBtn = document.getElementById('toggleBtn');
         const colorBtn = document.getElementById('colorBtn');
@@ -148,7 +150,7 @@
         let colorMode = 0;
 
         const shapeModes = ['circle', 'square', 'triangle', 'hexagon'];
-        const colorModes = ['rainbow', 'velocity', 'mono'];
+        const colorModes = ['rainbow', 'frequency', 'mono', 'gradient'];
 
         async function startAudio() {
             try {
@@ -158,7 +160,7 @@
                 microphone = audioCtx.createMediaStreamSource(stream);
                 analyser = audioCtx.createAnalyser();
                 
-                analyser.fftSize = 256;
+                analyser.fftSize = 512;
                 const bufferLength = analyser.frequencyBinCount;
                 dataArray = new Uint8Array(bufferLength);
                 
@@ -178,42 +180,77 @@
             height = canvas.height = window.innerHeight;
         }
 
-        function getAverageVolume(data) {
+        function getAverageVolume(data, start = 0, end = data.length) {
             let sum = 0;
-            for (let i = 0; i < data.length; i++) {
+            for (let i = start; i < end; i++) {
                 sum += data[i];
             }
-            return sum / data.length;
+            return sum / (end - start);
         }
 
-        function getDominantFrequency(data) {
-            let maxIndex = 0;
-            let maxValue = 0;
+        function getFrequencyBands(data) {
+            const bass = getAverageVolume(data, 0, Math.floor(data.length * 0.1));
+            const mid = getAverageVolume(data, Math.floor(data.length * 0.1), Math.floor(data.length * 0.5));
+            const treble = getAverageVolume(data, Math.floor(data.length * 0.5), data.length);
             
-            for (let i = 0; i < data.length; i++) {
-                if (data[i] > maxValue) {
-                    maxValue = data[i];
-                    maxIndex = i;
-                }
+            return { bass, mid, treble };
+        }
+
+        function getFrequencyColor(bass, mid, treble, mode) {
+            switch (mode) {
+                case 0: // rainbow
+                    return hueOffset;
+                    
+                case 1: // frequency-based
+                    const bassHue = 0;       // Red for bass
+                    const midHue = 120;      // Green for mid
+                    const trebleHue = 240;   // Blue for treble
+                    
+                    const total = bass + mid + treble;
+                    if (total === 0) return 0;
+                    
+                    return (bassHue * (bass / total) + 
+                           midHue * (mid / total) + 
+                           trebleHue * (treble / total));
+                    
+                case 2: // mono
+                    return 200;
+                    
+                case 3: // gradient
+                    return (hueOffset + (bass / 255) * 60) % 360;
+                    
+                default:
+                    return hueOffset;
             }
-            
-            const nyquist = audioCtx.sampleRate / 2;
-            return (maxIndex * nyquist) / data.length;
         }
 
-        function drawShape(x, y, radius, shape, hue, rotation) {
+        function drawShape(x, y, radius, shape, hue, rotation, glowIntensity = 1) {
             ctx.save();
             ctx.translate(x, y);
             ctx.rotate(rotation);
             
+            const alpha = 0.3 + (glowIntensity * 0.5);
+            
+            // Outer glow
+            const outerGradient = ctx.createRadialGradient(0, 0, radius * 0.8, 0, 0, radius * 1.5);
+            outerGradient.addColorStop(0, `hsla(${hue}, 100%, 70%, ${alpha * 0.8})`);
+            outerGradient.addColorStop(0.5, `hsla(${hue}, 100%, 50%, ${alpha * 0.3})`);
+            outerGradient.addColorStop(1, `hsla(${hue}, 100%, 30%, 0)`);
+            
+            ctx.fillStyle = outerGradient;
+            ctx.beginPath();
+            ctx.arc(0, 0, radius * 1.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Main shape
             const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
-            gradient.addColorStop(0, `hsla(${hue}, 100%, 70%, 0.8)`);
-            gradient.addColorStop(0.5, `hsla(${hue}, 100%, 50%, 0.4)`);
-            gradient.addColorStop(1, `hsla(${hue}, 100%, 30%, 0)`);
+            gradient.addColorStop(0, `hsla(${hue}, 100%, 80%, ${alpha})`);
+            gradient.addColorStop(0.7, `hsla(${hue}, 100%, 60%, ${alpha * 0.6})`);
+            gradient.addColorStop(1, `hsla(${hue}, 100%, 40%, ${alpha * 0.3})`);
             
             ctx.fillStyle = gradient;
-            ctx.strokeStyle = `hsla(${hue}, 100%, 80%, 0.6)`;
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = `hsla(${hue}, 100%, 90%, ${alpha * 0.8})`;
+            ctx.lineWidth = 3;
             
             ctx.beginPath();
             
@@ -270,10 +307,12 @@
             analyser.getByteFrequencyData(dataArray);
             
             const volume = getAverageVolume(dataArray);
-            const frequency = getDominantFrequency(dataArray);
+            const { bass, mid, treble } = getFrequencyBands(dataArray);
             
             volumeLevelEl.textContent = Math.round((volume / 255) * 100);
-            freqLevelEl.textContent = Math.round(frequency);
+            bassLevelEl.textContent = Math.round((bass / 255) * 100);
+            midLevelEl.textContent = Math.round((mid / 255) * 100);
+            trebleLevelEl.textContent = Math.round((treble / 255) * 100);
             
             // Clear canvas with fade effect
             ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
@@ -282,64 +321,79 @@
             // Update hue offset
             hueOffset = (hueOffset + 0.5) % 360;
             
-            // Calculate radius based on volume
-            const baseRadius = 50 + (volume / 255) * 200;
+            // Get color based on frequency
+            const mainHue = getFrequencyColor(bass, mid, treble, colorMode);
             
-            // Calculate color based on mode
-            let hue;
-            switch (colorModes[colorMode]) {
-                case 'rainbow':
-                    hue = hueOffset;
-                    break;
-                case 'velocity':
-                    hue = (volume / 255) * 360;
-                    break;
-                case 'mono':
-                    hue = 200;
-                    break;
-            }
+            // Calculate radius based on frequency bands
+            const bassRadius = 50 + (bass / 255) * 150;
+            const midRadius = 30 + (mid / 255) * 100;
+            const trebleRadius = 20 + (treble / 255) * 80;
             
-            // Draw main shape
+            // Draw main shape with bass
             const rotation = Date.now() * 0.001;
             drawShape(
                 width / 2,
                 height / 2,
-                baseRadius,
+                bassRadius,
                 shapeModes[shapeMode],
-                hue,
-                rotation
+                mainHue,
+                rotation,
+                bass / 255
             );
             
-            // Draw satellite shapes
-            const satelliteCount = 6;
-            const orbitRadius = 150 + (volume / 255) * 100;
-            
-            for (let i = 0; i < satelliteCount; i++) {
-                const angle = (i / satelliteCount) * Math.PI * 2 + rotation;
+            // Draw mid-range shapes
+            const midCount = 4;
+            for (let i = 0; i < midCount; i++) {
+                const angle = (i / midCount) * Math.PI * 2 + rotation * 1.5;
+                const orbitRadius = 100 + (mid / 255) * 80;
                 const x = width / 2 + Math.cos(angle) * orbitRadius;
                 const y = height / 2 + Math.sin(angle) * orbitRadius;
-                const satelliteRadius = 20 + (dataArray[i * 4] / 255) * 40;
-                const satelliteHue = (hue + i * 30) % 360;
+                const hue = (mainHue + i * 30) % 360;
                 
                 drawShape(
                     x,
                     y,
-                    satelliteRadius,
+                    midRadius,
                     shapeModes[(shapeMode + i) % shapeModes.length],
-                    satelliteHue,
-                    rotation + i * 0.2
+                    hue,
+                    rotation + i * 0.3,
+                    mid / 255
+                );
+            }
+            
+            // Draw treble shapes
+            const trebleCount = 8;
+            for (let i = 0; i < trebleCount; i++) {
+                const angle = (i / trebleCount) * Math.PI * 2 + rotation * 2;
+                const orbitRadius = 200 + (treble / 255) * 60;
+                const x = width / 2 + Math.cos(angle) * orbitRadius;
+                const y = height / 2 + Math.sin(angle) * orbitRadius;
+                const hue = (mainHue + 180 + i * 20) % 360;
+                
+                drawShape(
+                    x,
+                    y,
+                    trebleRadius,
+                    'circle',
+                    hue,
+                    rotation * 3 + i * 0.2,
+                    treble / 255
                 );
             }
             
             // Draw frequency bars
-            const barCount = 32;
+            const barCount = 64;
             const barWidth = width / barCount;
             
             for (let i = 0; i < barCount; i++) {
-                const barHeight = (dataArray[i] / 255) * 100;
-                const barHue = (hue + (i / barCount) * 180) % 360;
+                const barHeight = (dataArray[i] / 255) * 150;
+                const barHue = (mainHue + (i / barCount) * 120) % 360;
                 
-                ctx.fillStyle = `hsla(${barHue}, 100%, 60%, 0.5)`;
+                const gradient = ctx.createLinearGradient(0, height - barHeight, 0, height);
+                gradient.addColorStop(0, `hsla(${barHue}, 100%, 70%, 0.8)`);
+                gradient.addColorStop(1, `hsla(${barHue}, 100%, 50%, 0.2)`);
+                
+                ctx.fillStyle = gradient;
                 ctx.fillRect(
                     i * barWidth,
                     height - barHeight,
