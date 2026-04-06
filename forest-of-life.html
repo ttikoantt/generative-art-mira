@@ -92,7 +92,7 @@
 </head>
 <body>
     <div class="info">🌱 セルをクリックして生命を誕生させます</div>
-    <div class="stats">Generation: <span id="generation">0</span> | Population: <span id="population">0</span></div>
+    <div class="stats">Generation: <span id="generation">0</span> | Population: <span id="population">0</span> | Species: <span id="species">0</span></div>
     
     <div class="controls">
         <button class="control-btn" id="playBtn">▶️ 開始</button>
@@ -108,6 +108,7 @@
         const ctx = canvas.getContext('2d');
         const generationEl = document.getElementById('generation');
         const populationEl = document.getElementById('population');
+        const speciesEl = document.getElementById('species');
         const playBtn = document.getElementById('playBtn');
         const stepBtn = document.getElementById('stepBtn');
         const clearBtn = document.getElementById('clearBtn');
@@ -121,7 +122,16 @@
         let animationId = null;
         let generation = 0;
         let lastUpdateTime = 0;
-        const updateInterval = 100; // Update every 100ms
+        const updateInterval = 100;
+
+        // Species types
+        const speciesTypes = [
+            { hue: 0, name: 'Red' },
+            { hue: 120, name: 'Green' },
+            { hue: 240, name: 'Blue' },
+            { hue: 60, name: 'Yellow' },
+            { hue: 300, name: 'Purple' }
+        ];
 
         function resize() {
             width = canvas.width = window.innerWidth;
@@ -132,7 +142,7 @@
         }
 
         function initGrid() {
-            grid = new Array(cols).fill(null).map(() => new Array(rows).fill(0));
+            grid = new Array(cols).fill(null).map(() => new Array(rows).fill(null));
             generation = 0;
             updateStats();
         }
@@ -140,7 +150,14 @@
         function randomize() {
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
-                    grid[i][j] = Math.random() > 0.7 ? 1 : 0;
+                    if (Math.random() > 0.7) {
+                        const species = speciesTypes[Math.floor(Math.random() * speciesTypes.length)];
+                        grid[i][j] = {
+                            alive: true,
+                            age: 0,
+                            species: species
+                        };
+                    }
                 }
             }
             generation = 0;
@@ -149,31 +166,78 @@
 
         function countNeighbors(x, y) {
             let sum = 0;
+            let speciesCount = {};
+            
+            speciesTypes.forEach(s => speciesCount[s.name] = 0);
+            
             for (let i = -1; i < 2; i++) {
                 for (let j = -1; j < 2; j++) {
                     const col = (x + i + cols) % cols;
                     const row = (y + j + rows) % rows;
-                    sum += grid[col][row];
+                    const cell = grid[col][row];
+                    
+                    if (cell && cell.alive) {
+                        sum++;
+                        speciesCount[cell.species.name]++;
+                    }
                 }
             }
-            sum -= grid[x][y];
-            return sum;
+            
+            if (grid[x][y] && grid[x][y].alive) {
+                sum--;
+                speciesCount[grid[x][y].species.name]--;
+            }
+            
+            return { sum, speciesCount };
         }
 
         function update() {
-            const nextGrid = new Array(cols).fill(null).map(() => new Array(rows).fill(0));
+            const nextGrid = new Array(cols).fill(null).map(() => new Array(rows).fill(null));
 
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
-                    const state = grid[i][j];
-                    const neighbors = countNeighbors(i, j);
-
-                    if (state === 0 && neighbors === 3) {
-                        nextGrid[i][j] = 1;
-                    } else if (state === 1 && (neighbors < 2 || neighbors > 3)) {
-                        nextGrid[i][j] = 0;
+                    const cell = grid[i][j];
+                    const { sum, speciesCount } = countNeighbors(i, j);
+                    
+                    if (cell && cell.alive) {
+                        // Survival rules
+                        if (sum < 2 || sum > 3) {
+                            // Death
+                            nextGrid[i][j] = { alive: false, age: 0, species: cell.species };
+                        } else {
+                            // Survival and age
+                            nextGrid[i][j] = {
+                                alive: true,
+                                age: cell.age + 1,
+                                species: cell.species
+                            };
+                            
+                            // Evolution: older cells can mutate
+                            if (cell.age > 50 && Math.random() < 0.01) {
+                                const newSpecies = speciesTypes[Math.floor(Math.random() * speciesTypes.length)];
+                                nextGrid[i][j].species = newSpecies;
+                            }
+                        }
                     } else {
-                        nextGrid[i][j] = state;
+                        // Birth rules
+                        if (sum === 3) {
+                            // Determine species based on neighbors
+                            let maxCount = 0;
+                            let dominantSpecies = speciesTypes[0];
+                            
+                            for (const [name, count] of Object.entries(speciesCount)) {
+                                if (count > maxCount) {
+                                    maxCount = count;
+                                    dominantSpecies = speciesTypes.find(s => s.name === name);
+                                }
+                            }
+                            
+                            nextGrid[i][j] = {
+                                alive: true,
+                                age: 0,
+                                species: dominantSpecies
+                            };
+                        }
                     }
                 }
             }
@@ -187,45 +251,65 @@
             generationEl.textContent = generation;
             
             let population = 0;
+            const speciesSet = new Set();
+            
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
-                    population += grid[i][j];
+                    const cell = grid[i][j];
+                    if (cell && cell.alive) {
+                        population++;
+                        speciesSet.add(cell.species.name);
+                    }
                 }
             }
+            
             populationEl.textContent = population;
+            speciesEl.textContent = speciesSet.size;
         }
 
         function draw() {
-            // Background with fade effect
             ctx.fillStyle = 'rgba(10, 10, 15, 1)';
             ctx.fillRect(0, 0, width, height);
 
-            // Draw grid
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
-                    if (grid[i][j] === 1) {
+                    const cell = grid[i][j];
+                    if (cell && cell.alive) {
                         const x = i * cellSize;
                         const y = j * cellSize;
                         
-                        // Calculate color based on position and time
-                        const hue = (generation * 0.5 + i * 2 + j * 2) % 360;
+                        // Calculate size based on age
+                        const ageSize = Math.min(cell.age / 50, 1);
+                        const size = cellSize * (0.8 + ageSize * 0.4);
+                        
+                        // Calculate alpha based on age
+                        const alpha = 0.5 + Math.min(ageSize, 0.5);
                         
                         // Cell glow
                         const gradient = ctx.createRadialGradient(
                             x + cellSize / 2, y + cellSize / 2, 0,
-                            x + cellSize / 2, y + cellSize / 2, cellSize
+                            x + cellSize / 2, y + cellSize / 2, size
                         );
                         
-                        gradient.addColorStop(0, `hsla(${hue}, 100%, 70%, 1)`);
-                        gradient.addColorStop(0.5, `hsla(${hue}, 100%, 50%, 0.6)`);
+                        const hue = (cell.species.hue + generation * 0.2 + i * 2 + j * 2) % 360;
+                        
+                        gradient.addColorStop(0, `hsla(${hue}, 100%, 70%, ${alpha})`);
+                        gradient.addColorStop(0.5, `hsla(${hue}, 100%, 50%, ${alpha * 0.6})`);
                         gradient.addColorStop(1, `hsla(${hue}, 100%, 30%, 0)`);
                         
                         ctx.fillStyle = gradient;
-                        ctx.fillRect(x - 2, y - 2, cellSize + 4, cellSize + 4);
+                        ctx.fillRect(x - 2, y - 2, size + 4, size + 4);
                         
                         // Cell core
-                        ctx.fillStyle = `hsla(${hue}, 100%, 90%, 0.9)`;
-                        ctx.fillRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
+                        ctx.fillStyle = `hsla(${hue}, 100%, 90%, ${alpha * 0.9})`;
+                        ctx.fillRect(x + 1, y + 1, size - 2, size - 2);
+                        
+                        // Age indicator
+                        if (cell.age > 30) {
+                            ctx.strokeStyle = `hsla(${hue}, 100%, 80%, 0.3)`;
+                            ctx.lineWidth = 1;
+                            ctx.strokeRect(x + 1, y + 1, size - 2, size - 2);
+                        }
                     }
                 }
             }
@@ -244,7 +328,6 @@
             draw();
         }
 
-        // Event listeners
         window.addEventListener('resize', resize);
         resize();
 
@@ -254,7 +337,13 @@
             const y = Math.floor((e.clientY - rect.top) / cellSize);
             
             if (x >= 0 && x < cols && y >= 0 && y < rows) {
-                grid[x][y] = grid[x][y] === 0 ? 1 : 0;
+                const cell = grid[x][y];
+                if (cell && cell.alive) {
+                    grid[x][y] = { alive: false, age: 0, species: cell.species };
+                } else {
+                    const species = speciesTypes[Math.floor(Math.random() * speciesTypes.length)];
+                    grid[x][y] = { alive: true, age: 0, species: species };
+                }
                 updateStats();
                 draw();
             }
@@ -268,7 +357,13 @@
                 const y = Math.floor((touch.clientY - rect.top) / cellSize);
                 
                 if (x >= 0 && x < cols && y >= 0 && y < rows) {
-                    grid[x][y] = grid[x][y] === 0 ? 1 : 0;
+                    const cell = grid[x][y];
+                    if (cell && cell.alive) {
+                        grid[x][y] = { alive: false, age: 0, species: cell.species };
+                    } else {
+                        const species = speciesTypes[Math.floor(Math.random() * speciesTypes.length)];
+                        grid[x][y] = { alive: true, age: 0, species: species };
+                    }
                 }
             }
             updateStats();
@@ -304,7 +399,6 @@
             draw();
         });
 
-        // Initial draw
         draw();
     </script>
 </body>
