@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>音の幾何学 - Sonic Geometry</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            touch-action: manipulation;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.9rem;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .stats {
+            position: fixed;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.75rem;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .control-btn {
+            background: rgba(102, 126, 234, 0.8);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .control-btn:hover {
+            transform: scale(1.05);
+            background: rgba(102, 126, 234, 1);
+        }
+
+        .start-btn {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            border-radius: 50px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 100;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .start-btn:hover {
+            transform: translate(-50%, -50%) scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 0.75rem;
+                padding: 0 20px;
+            }
+
+            .control-btn {
+                padding: 10px 16px;
+                font-size: 0.8rem;
+            }
+
+            .start-btn {
+                padding: 15px 30px;
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="info">🎵 音に反応して幾何学パターンが広がります</div>
+    <div class="stats">Volume: <span id="volumeLevel">0</span>% | Frequency: <span id="freqLevel">0</span>Hz</div>
+    
+    <div class="controls">
+        <button class="control-btn" id="toggleBtn">🎨 図形切替</button>
+        <button class="control-btn" id="colorBtn">🌈 色モード切替</button>
+    </div>
+    
+    <button class="start-btn" id="startBtn">🎤 マイクを開始</button>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const volumeLevelEl = document.getElementById('volumeLevel');
+        const freqLevelEl = document.getElementById('freqLevel');
+        const startBtn = document.getElementById('startBtn');
+        const toggleBtn = document.getElementById('toggleBtn');
+        const colorBtn = document.getElementById('colorBtn');
+
+        let width, height;
+        let audioCtx = null;
+        let analyser = null;
+        let microphone = null;
+        let dataArray = null;
+        let isRunning = false;
+        let hueOffset = 0;
+        let shapeMode = 0;
+        let colorMode = 0;
+
+        const shapeModes = ['circle', 'square', 'triangle', 'hexagon'];
+        const colorModes = ['rainbow', 'velocity', 'mono'];
+
+        async function startAudio() {
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioCtx.createMediaStreamSource(stream);
+                analyser = audioCtx.createAnalyser();
+                
+                analyser.fftSize = 256;
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                
+                microphone.connect(analyser);
+                
+                isRunning = true;
+                startBtn.style.display = 'none';
+                animate();
+            } catch (err) {
+                console.error('マイクアクセスエラー:', err);
+                alert('マイクへのアクセスが許可されていません。');
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function getAverageVolume(data) {
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) {
+                sum += data[i];
+            }
+            return sum / data.length;
+        }
+
+        function getDominantFrequency(data) {
+            let maxIndex = 0;
+            let maxValue = 0;
+            
+            for (let i = 0; i < data.length; i++) {
+                if (data[i] > maxValue) {
+                    maxValue = data[i];
+                    maxIndex = i;
+                }
+            }
+            
+            const nyquist = audioCtx.sampleRate / 2;
+            return (maxIndex * nyquist) / data.length;
+        }
+
+        function drawShape(x, y, radius, shape, hue, rotation) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rotation);
+            
+            const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+            gradient.addColorStop(0, `hsla(${hue}, 100%, 70%, 0.8)`);
+            gradient.addColorStop(0.5, `hsla(${hue}, 100%, 50%, 0.4)`);
+            gradient.addColorStop(1, `hsla(${hue}, 100%, 30%, 0)`);
+            
+            ctx.fillStyle = gradient;
+            ctx.strokeStyle = `hsla(${hue}, 100%, 80%, 0.6)`;
+            ctx.lineWidth = 2;
+            
+            ctx.beginPath();
+            
+            switch (shape) {
+                case 'circle':
+                    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+                    break;
+                    
+                case 'square':
+                    ctx.rect(-radius, -radius, radius * 2, radius * 2);
+                    break;
+                    
+                case 'triangle':
+                    for (let i = 0; i < 3; i++) {
+                        const angle = (i * Math.PI * 2 / 3) - Math.PI / 2;
+                        const x = Math.cos(angle) * radius;
+                        const y = Math.sin(angle) * radius;
+                        if (i === 0) {
+                            ctx.moveTo(x, y);
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    }
+                    ctx.closePath();
+                    break;
+                    
+                case 'hexagon':
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (i * Math.PI * 2 / 6);
+                        const x = Math.cos(angle) * radius;
+                        const y = Math.sin(angle) * radius;
+                        if (i === 0) {
+                            ctx.moveTo(x, y);
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    }
+                    ctx.closePath();
+                    break;
+            }
+            
+            ctx.fill();
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+
+        function animate() {
+            if (!isRunning) return;
+            
+            requestAnimationFrame(animate);
+            
+            // Get audio data
+            analyser.getByteFrequencyData(dataArray);
+            
+            const volume = getAverageVolume(dataArray);
+            const frequency = getDominantFrequency(dataArray);
+            
+            volumeLevelEl.textContent = Math.round((volume / 255) * 100);
+            freqLevelEl.textContent = Math.round(frequency);
+            
+            // Clear canvas with fade effect
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Update hue offset
+            hueOffset = (hueOffset + 0.5) % 360;
+            
+            // Calculate radius based on volume
+            const baseRadius = 50 + (volume / 255) * 200;
+            
+            // Calculate color based on mode
+            let hue;
+            switch (colorModes[colorMode]) {
+                case 'rainbow':
+                    hue = hueOffset;
+                    break;
+                case 'velocity':
+                    hue = (volume / 255) * 360;
+                    break;
+                case 'mono':
+                    hue = 200;
+                    break;
+            }
+            
+            // Draw main shape
+            const rotation = Date.now() * 0.001;
+            drawShape(
+                width / 2,
+                height / 2,
+                baseRadius,
+                shapeModes[shapeMode],
+                hue,
+                rotation
+            );
+            
+            // Draw satellite shapes
+            const satelliteCount = 6;
+            const orbitRadius = 150 + (volume / 255) * 100;
+            
+            for (let i = 0; i < satelliteCount; i++) {
+                const angle = (i / satelliteCount) * Math.PI * 2 + rotation;
+                const x = width / 2 + Math.cos(angle) * orbitRadius;
+                const y = height / 2 + Math.sin(angle) * orbitRadius;
+                const satelliteRadius = 20 + (dataArray[i * 4] / 255) * 40;
+                const satelliteHue = (hue + i * 30) % 360;
+                
+                drawShape(
+                    x,
+                    y,
+                    satelliteRadius,
+                    shapeModes[(shapeMode + i) % shapeModes.length],
+                    satelliteHue,
+                    rotation + i * 0.2
+                );
+            }
+            
+            // Draw frequency bars
+            const barCount = 32;
+            const barWidth = width / barCount;
+            
+            for (let i = 0; i < barCount; i++) {
+                const barHeight = (dataArray[i] / 255) * 100;
+                const barHue = (hue + (i / barCount) * 180) % 360;
+                
+                ctx.fillStyle = `hsla(${barHue}, 100%, 60%, 0.5)`;
+                ctx.fillRect(
+                    i * barWidth,
+                    height - barHeight,
+                    barWidth - 2,
+                    barHeight
+                );
+            }
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+        resize();
+
+        startBtn.addEventListener('click', startAudio);
+
+        toggleBtn.addEventListener('click', () => {
+            shapeMode = (shapeMode + 1) % shapeModes.length;
+        });
+
+        colorBtn.addEventListener('click', () => {
+            colorMode = (colorMode + 1) % colorModes.length;
+        });
+    </script>
+</body>
+</html>
