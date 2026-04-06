@@ -52,6 +52,21 @@
             border-radius: 20px;
         }
 
+        .harmony-indicator {
+            position: fixed;
+            top: 95px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.75rem;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px 16px;
+            border-radius: 20px;
+        }
+
         .stats {
             position: fixed;
             bottom: 20px;
@@ -89,7 +104,7 @@
                 padding: 0 20px;
             }
 
-            .waveform-indicator {
+            .waveform-indicator, .harmony-indicator {
                 font-size: 0.65rem;
                 padding: 6px 12px;
             }
@@ -104,6 +119,7 @@
 <body>
     <div class="info">🌸 タップすると光と音が広がります</div>
     <div class="waveform-indicator">🎵 波形: <span id="waveformName">サイン波</span></div>
+    <div class="harmony-indicator">🎶 和音: <span id="chordName">単音</span></div>
     <div class="stats">Ripples: <span id="rippleCount">0</span></div>
     <button class="start-btn" id="startBtn">🎵 音をオンにする</button>
     <canvas id="canvas"></canvas>
@@ -113,6 +129,7 @@
         const ctx = canvas.getContext('2d');
         const rippleCountEl = document.getElementById('rippleCount');
         const waveformNameEl = document.getElementById('waveformName');
+        const chordNameEl = document.getElementById('chordName');
         const startBtn = document.getElementById('startBtn');
 
         let width, height;
@@ -134,6 +151,34 @@
             783.99,  // G5
             880.00   // A5
         ];
+
+        // Chord progressions (for harmony)
+        const chords = {
+            'major': [0, 4, 7],      // Major chord
+            'minor': [0, 3, 7],      // Minor chord
+            'sus4': [0, 5, 7],       // Suspended 4th
+            'sus2': [0, 2, 7],       // Suspended 2nd
+            'add9': [0, 4, 7, 14],   // Add 9th
+            'maj7': [0, 4, 7, 11],   // Major 7th
+            'min7': [0, 3, 7, 10],   // Minor 7th
+            'power': [0, 7],         // Power chord
+            'single': [0]            // Single note
+        };
+
+        // Chord names for display
+        const chordNames = {
+            'major': 'メジャー',
+            'minor': 'マイナー',
+            'sus4': 'サスペンド4',
+            'sus2': 'サスペンド2',
+            'add9': 'アド9',
+            'maj7': 'メジャー7',
+            'min7': 'マイナー7',
+            'power': 'パワー',
+            'single': '単音'
+        };
+
+        const chordTypes = Object.keys(chords);
 
         // Waveform types with visual characteristics
         const waveformTypes = [
@@ -157,38 +202,49 @@
             return Math.min(index, waveformTypes.length - 1);
         }
 
-        function playNote(hue, waveformIndex) {
+        function getChordFromPosition(y) {
+            // Map Y position to chord type
+            const index = Math.floor((y / height) * chordTypes.length);
+            return chordTypes[Math.min(index, chordTypes.length - 1)];
+        }
+
+        function playHarmony(noteIndex, chordType, waveformIndex) {
             if (!audioEnabled || !audioCtx) return;
 
-            // Map hue to scale note
-            const noteIndex = Math.floor((hue % 360) / 36) % pentatonicScale.length;
-            const frequency = pentatonicScale[noteIndex];
-
-            // Create oscillator
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            const filterNode = audioCtx.createBiquadFilter();
-
-            oscillator.connect(filterNode);
-            filterNode.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
+            const baseFreq = pentatonicScale[noteIndex];
+            const chord = chords[chordType];
             const waveform = waveformTypes[waveformIndex];
-            oscillator.type = waveform.type;
-            oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
 
-            // Filter to soften harsh waveforms
-            filterNode.type = 'lowpass';
-            filterNode.frequency.setValueAtTime(2000, audioCtx.currentTime);
-            filterNode.Q.setValueAtTime(1, audioCtx.currentTime);
+            // Play each note in the chord
+            chord.forEach((interval, i) => {
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                const filterNode = audioCtx.createBiquadFilter();
 
-            // Envelope
-            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-            gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.01);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.5);
+                oscillator.connect(filterNode);
+                filterNode.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
 
-            oscillator.start(audioCtx.currentTime);
-            oscillator.stop(audioCtx.currentTime + 1.5);
+                // Calculate frequency with interval
+                const freq = baseFreq * Math.pow(2, interval / 12);
+                
+                oscillator.type = waveform.type;
+                oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+                // Filter to soften harsh waveforms
+                filterNode.type = 'lowpass';
+                filterNode.frequency.setValueAtTime(2000 + (i * 500), audioCtx.currentTime);
+                filterNode.Q.setValueAtTime(1, audioCtx.currentTime);
+
+                // Envelope (slightly longer for harmony)
+                const volume = chord.length > 1 ? 0.15 : 0.2;
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(volume, audioCtx.currentTime + 0.02);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 2);
+
+                oscillator.start(audioCtx.currentTime + i * 0.01); // Slight delay for arpeggio effect
+                oscillator.stop(audioCtx.currentTime + 2);
+            });
         }
 
         function resize() {
@@ -200,7 +256,7 @@
         resize();
 
         class Ripple {
-            constructor(x, y, waveformIndex) {
+            constructor(x, y, waveformIndex, chordType) {
                 this.x = x;
                 this.y = y;
                 this.radius = 0;
@@ -210,6 +266,8 @@
                 this.speed = 3;
                 this.waveformIndex = waveformIndex;
                 this.waveform = waveformTypes[waveformIndex];
+                this.chordType = chordType;
+                this.chord = chords[chordType];
                 hue += 30;
             }
 
@@ -220,37 +278,41 @@
 
             draw() {
                 const { layers, softness } = this.waveform;
+                const noteCount = this.chord.length;
                 
                 ctx.save();
                 ctx.globalAlpha = this.alpha * softness + 0.2;
 
-                // Multiple layers based on waveform type
-                for (let i = 0; i < layers; i++) {
-                    const layerRadius = this.radius * (1 - i * 0.1);
-                    const layerAlpha = this.alpha * (1 - i * 0.15);
-                    
-                    // Glow effect
-                    const gradient = ctx.createRadialGradient(
-                        this.x, this.y, 0,
-                        this.x, this.y, layerRadius
-                    );
+                // Draw layers for each note in the chord
+                for (let n = 0; n < noteCount; n++) {
+                    for (let i = 0; i < layers; i++) {
+                        const layerOffset = n * 20;
+                        const layerRadius = this.radius * (1 - i * 0.1) + layerOffset;
+                        const layerAlpha = this.alpha * (1 - i * 0.15) * (1 - n * 0.1);
+                        
+                        // Glow effect
+                        const gradient = ctx.createRadialGradient(
+                            this.x, this.y, 0,
+                            this.x, this.y, layerRadius
+                        );
 
-                    const hue = (this.hue + i * 10) % 360;
-                    gradient.addColorStop(0, `hsla(${hue}, 80%, 60%, 0)`);
-                    gradient.addColorStop(0.4, `hsla(${hue}, 80%, 60%, ${layerAlpha * 0.3})`);
-                    gradient.addColorStop(1, `hsla(${hue}, 80%, 60%, 0)`);
+                        const hue = (this.hue + i * 10 + n * 15) % 360;
+                        gradient.addColorStop(0, `hsla(${hue}, 80%, 60%, 0)`);
+                        gradient.addColorStop(0.4, `hsla(${hue}, 80%, 60%, ${layerAlpha * 0.3})`);
+                        gradient.addColorStop(1, `hsla(${hue}, 80%, 60%, 0)`);
 
-                    ctx.fillStyle = gradient;
-                    ctx.beginPath();
-                    ctx.arc(this.x, this.y, layerRadius, 0, Math.PI * 2);
-                    ctx.fill();
+                        ctx.fillStyle = gradient;
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, layerRadius, 0, Math.PI * 2);
+                        ctx.fill();
 
-                    // Ring
-                    ctx.strokeStyle = `hsla(${hue}, 80%, 70%, ${layerAlpha * 0.6})`;
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.arc(this.x, this.y, layerRadius * 0.8, 0, Math.PI * 2);
-                    ctx.stroke();
+                        // Ring
+                        ctx.strokeStyle = `hsla(${hue}, 80%, 70%, ${layerAlpha * 0.6})`;
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, layerRadius * 0.8, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
                 }
 
                 // Outer glow ring
@@ -270,12 +332,16 @@
 
         function addRipple(x, y) {
             const waveformIndex = getWaveformFromPosition(x);
-            const ripple = new Ripple(x, y, waveformIndex);
+            const chordType = getChordFromPosition(y);
+            const ripple = new Ripple(x, y, waveformIndex, chordType);
             ripples.push(ripple);
-            playNote(ripple.hue, waveformIndex);
+            
+            const noteIndex = Math.floor((ripple.hue % 360) / 36) % pentatonicScale.length;
+            playHarmony(noteIndex, chordType, waveformIndex);
 
-            // Update waveform indicator
+            // Update indicators
             waveformNameEl.textContent = `${ripple.waveform.emoji} ${ripple.waveform.name}`;
+            chordNameEl.textContent = chordNames[chordType];
 
             if (ripples.length > 50) {
                 ripples.shift();
@@ -314,17 +380,20 @@
         // Start button
         startBtn.addEventListener('click', initAudio);
 
-        // Auto ripple with varying waveforms
+        // Auto ripple with varying waveforms and chords
         setInterval(() => {
             if (ripples.length < 3) {
                 const waveformIndex = Math.floor(Math.random() * waveformTypes.length);
+                const chordType = chordTypes[Math.floor(Math.random() * chordTypes.length)];
                 const x = (waveformIndex / waveformTypes.length) * width + (width / waveformTypes.length / 2);
                 const y = Math.random() * height;
                 
-                const ripple = new Ripple(x, y, waveformIndex);
+                const ripple = new Ripple(x, y, waveformIndex, chordType);
                 ripples.push(ripple);
+                
                 if (audioEnabled) {
-                    playNote(ripple.hue, waveformIndex);
+                    const noteIndex = Math.floor((ripple.hue % 360) / 36) % pentatonicScale.length;
+                    playHarmony(noteIndex, chordType, waveformIndex);
                 }
 
                 if (ripples.length > 50) {
