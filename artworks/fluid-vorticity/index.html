@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fluid Vorticity - 渦度の可視化</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #title {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 18px;
+            z-index: 100;
+            pointer-events: none;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px 16px;
+            border-radius: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="title">🌀 Fluid Vorticity</div>
+    <div id="info">Click & Drag to create vortices</div>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const info = document.getElementById('info');
+
+        let width, height;
+        const particles = [];
+        const vortices = [];
+        const trailCanvas = document.createElement('canvas');
+        const trailCtx = trailCanvas.getContext('2d');
+
+        // 設定
+        const config = {
+            particleCount: 8000,
+            trailDecay: 0.96,
+            particleSpeed: 2,
+            vortexStrength: 300,
+            vortexDecay: 0.98,
+            maxVortices: 5
+        };
+
+        // 渦クラス
+        class Vortex {
+            constructor(x, y, strength) {
+                this.x = x;
+                this.y = y;
+                this.strength = strength;
+                this.radius = 0;
+                this.maxRadius = 200;
+                this.growth = 2;
+                this.decay = 1;
+                this.age = 0;
+            }
+
+            update() {
+                this.age++;
+                if (this.radius < this.maxRadius) {
+                    this.radius += this.growth;
+                }
+                this.strength *= config.vortexDecay;
+                this.decay *= 0.99;
+                return Math.abs(this.strength) > 0.5;
+            }
+
+            draw(ctx) {
+                const intensity = Math.abs(this.strength) / config.vortexStrength;
+                const hue = this.strength > 0 ? 200 : 340;
+                const alpha = intensity * 0.3 * this.decay;
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        // パーティクルクラス
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.life = Math.random() * 200 + 100;
+                this.maxLife = this.life;
+                this.hue = Math.random() * 60 + 180;
+            }
+
+            update() {
+                let dx = 0, dy = 0;
+
+                // 全ての渦の影響を受ける
+                for (const vortex of vortices) {
+                    const vx = this.x - vortex.x;
+                    const vy = this.y - vortex.y;
+                    const dist = Math.sqrt(vx * vx + vy * vy) + 1;
+                    
+                    // 渦による力（回転）
+                    const force = vortex.strength / (dist * 0.5 + 10);
+                    const angle = Math.atan2(vy, vx) + Math.PI / 2;
+                    
+                    dx += Math.cos(angle) * force;
+                    dy += Math.sin(angle) * force;
+
+                    // 渦中心への吸引力
+                    const pull = vortex.strength * 0.3 / (dist + 20);
+                    dx -= vx / dist * pull;
+                    dy -= vy / dist * pull;
+                }
+
+                // 速度更新
+                this.vx += dx * 0.1;
+                this.vy += dy * 0.1;
+
+                // 減衰
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+
+                // 速度制限
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > config.particleSpeed * 3) {
+                    this.vx = (this.vx / speed) * config.particleSpeed * 3;
+                    this.vy = (this.vy / speed) * config.particleSpeed * 3;
+                }
+
+                // 移動
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 色の更新（速度に応じて変化）
+                this.hue = 180 + speed * 40;
+
+                // 寿命
+                this.life--;
+                if (this.life <= 0 || this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.reset();
+                }
+            }
+
+            draw(ctx) {
+                const alpha = (this.life / this.maxLife) * 0.8;
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const size = 1 + speed * 0.5;
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        // 初期化
+        function init() {
+            resize();
+            
+            for (let i = 0; i < config.particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            trailCanvas.width = width;
+            trailCanvas.height = height;
+        }
+
+        // マウス操作
+        let isMouseDown = false;
+        let lastX = 0;
+        let lastY = 0;
+        let mouseSpeed = 0;
+
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            lastX = e.clientX;
+            lastY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isMouseDown) return;
+            
+            const dx = e.clientX - lastX;
+            const dy = e.clientY - lastY;
+            mouseSpeed = Math.sqrt(dx * dx + dy * dy);
+            
+            // マウス速度に応じて渦を作成
+            if (mouseSpeed > 5 && vortices.length < config.maxVortices) {
+                const strength = (e.shiftKey ? -1 : 1) * config.vortexStrength * Math.min(mouseSpeed / 20, 2);
+                vortices.push(new Vortex(e.clientX, e.clientY, strength));
+            }
+            
+            lastX = e.clientX;
+            lastY = e.clientY;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isMouseDown = true;
+            lastX = e.touches[0].clientX;
+            lastY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!isMouseDown) return;
+            
+            const dx = e.touches[0].clientX - lastX;
+            const dy = e.touches[0].clientY - lastY;
+            mouseSpeed = Math.sqrt(dx * dx + dy * dy);
+            
+            if (mouseSpeed > 5 && vortices.length < config.maxVortices) {
+                const strength = config.vortexStrength * Math.min(mouseSpeed / 20, 2);
+                vortices.push(new Vortex(e.touches[0].clientX, e.touches[0].clientY, strength));
+            }
+            
+            lastX = e.touches[0].clientX;
+            lastY = e.touches[0].clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isMouseDown = false;
+        });
+
+        // アニメーション
+        function animate() {
+            // トレイルをフェードアウト
+            trailCtx.fillStyle = `rgba(10, 10, 15, ${1 - config.trailDecay})`;
+            trailCtx.fillRect(0, 0, width, height);
+
+            // パーティクル更新と描画
+            for (const p of particles) {
+                p.update();
+                p.draw(trailCtx);
+            }
+
+            // 渦の更新
+            for (let i = vortices.length - 1; i >= 0; i--) {
+                if (!vortices[i].update()) {
+                    vortices.splice(i, 1);
+                }
+            }
+
+            // メインキャンバスにトレイルをコピー
+            ctx.drawImage(trailCanvas, 0, 0);
+
+            // 渦を描画
+            for (const v of vortices) {
+                v.draw(ctx);
+            }
+
+            // 情報更新
+            info.textContent = `Click & Drag to create vortices | Shift+Click for reverse | Particles: ${particles.length} | Vortices: ${vortices.length}`;
+
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', resize);
+        init();
+        animate();
+    </script>
+</body>
+</html>
