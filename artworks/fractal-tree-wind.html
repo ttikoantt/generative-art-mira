@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fractal Tree Wind - 風に揺れるフラクタルツリー</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            color: white;
+            position: relative;
+            z-index: 1;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(45deg, #00d4ff, #7b2cbf);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #a0a0a0;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .info {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px 25px;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .info p {
+            margin: 5px 0;
+            font-size: 0.85rem;
+        }
+
+        canvas {
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 212, 255, 0.3);
+            cursor: crosshair;
+            max-width: 100%;
+            height: auto;
+        }
+
+        .controls {
+            margin-top: 1rem;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(45deg, #00d4ff, #7b2cbf);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            font-size: 0.85rem;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+            canvas {
+                max-height: 60vh;
+            }
+            .fullscreen-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+    
+    <div class="container">
+        <h1>🌳 Fractal Tree Wind</h1>
+        <p class="subtitle">風に揺れるフラクタルツリー - マウスで左右に動かしてみよう！</p>
+        
+        <div class="info">
+            <p>🖱️ マウス位置: 枝の広がり方を変える</p>
+            <p>🍃 風の強さ: 自動変化</p>
+            <p>🎨 カラー: 再帰の深さで変化</p>
+        </div>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="controls">
+            <button onclick="resetTree()">🔄 リセット</button>
+            <button onclick="toggleWind()">💨 風: ON/OFF</button>
+            <button onclick="changeStyle()">🎨 スタイル変更</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = 700;
+        let height = 500;
+
+        function resizeCanvas() {
+            if (window.innerWidth < 768) {
+                width = window.innerWidth - 40;
+                height = Math.min(500, window.innerHeight * 0.5);
+            } else {
+                width = Math.min(700, window.innerWidth - 40);
+                height = 500;
+            }
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Tree parameters
+        let mouseX = width / 2;
+        let mouseY = height / 3;
+        let windEnabled = true;
+        let styleIndex = 0;
+        let time = 0;
+
+        const styles = [
+            { name: 'Gradient Rainbow', gradient: true },
+            { name: 'Pink Sakura', gradient: false, colors: ['#ffb7c5', '#ff69b4', '#ff1493'] },
+            { name: 'Blue Ice', gradient: false, colors: ['#00d4ff', '#0099ff', '#0066cc'] },
+            { name: 'Golden Autumn', gradient: false, colors: ['#ffd700', '#ff8c00', '#ff6347'] },
+            { name: 'Mystic Purple', gradient: false, colors: ['#9b59b6', '#8e44ad', '#6c3483'] }
+        ];
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.touches[0].clientX - rect.left;
+            mouseY = e.touches[0].clientY - rect.top;
+        });
+
+        function drawBranch(x, y, length, angle, depth, maxDepth) {
+            if (depth === 0 || length < 2) return;
+
+            // Wind effect
+            let windOffset = 0;
+            if (windEnabled) {
+                const windForce = Math.sin(time * 0.02 + depth * 0.5) * 0.03 * (maxDepth - depth + 1);
+                windOffset = windForce;
+            }
+
+            // Mouse influence
+            const mouseInfluence = ((mouseX - width / 2) / width) * 0.5;
+
+            const finalAngle = angle + windOffset + mouseInfluence * 0.1 * (maxDepth - depth);
+
+            const endX = x + length * Math.cos(finalAngle);
+            const endY = y + length * Math.sin(finalAngle);
+
+            // Color based on depth
+            const style = styles[styleIndex];
+            let strokeColor;
+            if (style.gradient) {
+                const hue = (depth / maxDepth) * 360 + time * 0.5;
+                const saturation = 70 + depth * 3;
+                const lightness = 50 + depth * 2;
+                strokeColor = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+            } else {
+                strokeColor = style.colors[depth % style.colors.length];
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(endX, endY);
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = depth * 1.5;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            // Leaf/flower at end
+            if (depth <= 2) {
+                ctx.beginPath();
+                ctx.arc(endX, endY, 3, 0, Math.PI * 2);
+                ctx.fillStyle = strokeColor;
+                ctx.fill();
+
+                // Glow effect
+                ctx.beginPath();
+                ctx.arc(endX, endY, 6, 0, Math.PI * 2);
+                ctx.fillStyle = strokeColor + '30';
+                ctx.fill();
+            }
+
+            // Recursive branches
+            const newLength = length * 0.7;
+            const angleSpread = 0.4 + (mouseY / height) * 0.3;
+
+            drawBranch(endX, endY, newLength, finalAngle - angleSpread, depth - 1, maxDepth);
+            drawBranch(endX, endY, newLength, finalAngle + angleSpread, depth - 1, maxDepth);
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw tree
+            const startX = width / 2;
+            const startY = height - 30;
+            const initialLength = height * 0.25;
+            const maxDepth = 10;
+
+            drawBranch(startX, startY, initialLength, -Math.PI / 2, maxDepth, maxDepth);
+
+            // Ground
+            ctx.fillStyle = '#2d3748';
+            ctx.fillRect(0, height - 20, width, 20);
+
+            // Ground glow
+            const groundGlow = ctx.createRadialGradient(
+                width / 2, height - 20, 0,
+                width / 2, height - 20, width / 2
+            );
+            groundGlow.addColorStop(0, 'rgba(0, 212, 255, 0.3)');
+            groundGlow.addColorStop(1, 'rgba(0, 212, 255, 0)');
+            ctx.fillStyle = groundGlow;
+            ctx.fillRect(0, height - 50, width, 30);
+
+            time++;
+            requestAnimationFrame(draw);
+        }
+
+        function resetTree() {
+            time = 0;
+            mouseX = width / 2;
+            mouseY = height / 3;
+        }
+
+        function toggleWind() {
+            windEnabled = !windEnabled;
+        }
+
+        function changeStyle() {
+            styleIndex = (styleIndex + 1) % styles.length;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Start animation
+        draw();
+    </script>
+</body>
+</html>
