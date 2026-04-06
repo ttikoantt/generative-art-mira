@@ -46,27 +46,104 @@
             pointer-events: none;
         }
 
+        .start-btn {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            border-radius: 50px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 100;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .start-btn:hover {
+            transform: translate(-50%, -50%) scale(1.05);
+        }
+
         @media (max-width: 768px) {
             .info {
                 font-size: 0.75rem;
                 padding: 0 20px;
             }
+
+            .start-btn {
+                padding: 15px 30px;
+                font-size: 1rem;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="info">🌸 タップすると光が広がります</div>
+    <div class="info">🌸 タップすると光と音が広がります</div>
     <div class="stats">Ripples: <span id="rippleCount">0</span></div>
+    <button class="start-btn" id="startBtn">🎵 音をオンにする</button>
     <canvas id="canvas"></canvas>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const rippleCountEl = document.getElementById('rippleCount');
+        const startBtn = document.getElementById('startBtn');
 
         let width, height;
         let ripples = [];
         let hue = 0;
+        let audioCtx = null;
+        let audioEnabled = false;
+
+        // Musical scales (pentatonic for harmony)
+        const pentatonicScale = [
+            261.63,  // C4
+            293.66,  // D4
+            329.63,  // E4
+            392.00,  // G4
+            440.00,  // A4
+            523.25,  // C5
+            587.33,  // D5
+            659.25,  // E5
+            783.99,  // G5
+            880.00   // A5
+        ];
+
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            audioEnabled = true;
+            startBtn.style.display = 'none';
+        }
+
+        function playNote(hue) {
+            if (!audioEnabled || !audioCtx) return;
+
+            // Map hue to scale note
+            const noteIndex = Math.floor((hue % 360) / 36) % pentatonicScale.length;
+            const frequency = pentatonicScale[noteIndex];
+
+            // Create oscillator
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+
+            // Envelope
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1);
+
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + 1);
+        }
 
         function resize() {
             width = canvas.width = window.innerWidth;
@@ -119,6 +196,13 @@
                 ctx.arc(this.x, this.y, this.radius * 0.7, 0, Math.PI * 2);
                 ctx.stroke();
 
+                // Outer glow ring
+                ctx.strokeStyle = `hsla(${this.hue}, 80%, 50%, ${this.alpha * 0.3})`;
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 1.1, 0, Math.PI * 2);
+                ctx.stroke();
+
                 ctx.restore();
             }
 
@@ -128,7 +212,10 @@
         }
 
         function addRipple(x, y) {
-            ripples.push(new Ripple(x, y));
+            const ripple = new Ripple(x, y);
+            ripples.push(ripple);
+            playNote(ripple.hue);
+
             if (ripples.length > 50) {
                 ripples.shift();
             }
@@ -162,6 +249,9 @@
                 addRipple(touch.clientX, touch.clientY);
             }
         }, { passive: false });
+
+        // Start button
+        startBtn.addEventListener('click', initAudio);
 
         // Auto ripple
         setInterval(() => {
