@@ -49,6 +49,18 @@
             z-index: 10;
         }
 
+        .environment {
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.7rem;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
         .controls {
             position: fixed;
             bottom: 20px;
@@ -93,6 +105,7 @@
 <body>
     <div class="info">🌱 緑: 植物産者 | 🦁 赤: 捕食者 | 🟡 黄: 雑食</div>
     <div class="stats">Generation: <span id="generation">0</span> | Population: <span id="population">0</span> | Energy: <span id="energy">0</span></div>
+    <div class="environment">🌸 季節: <span id="season">春</span> | 🌡️ 温度: <span id="temperature">20</span>°C | 💧 湿度: <span id="humidity">50</span>%</div>
     
     <div class="controls">
         <button class="control-btn" id="playBtn">▶️ 開始</button>
@@ -109,6 +122,9 @@
         const generationEl = document.getElementById('generation');
         const populationEl = document.getElementById('population');
         const energyEl = document.getElementById('energy');
+        const seasonEl = document.getElementById('season');
+        const temperatureEl = document.getElementById('temperature');
+        const humidityEl = document.getElementById('humidity');
         const playBtn = document.getElementById('playBtn');
         const stepBtn = document.getElementById('stepBtn');
         const clearBtn = document.getElementById('clearBtn');
@@ -124,11 +140,20 @@
         let lastUpdateTime = 0;
         const updateInterval = 100;
 
+        // Environment variables
+        let season = 0; // 0: Spring, 1: Summer, 2: Fall, 3: Winter
+        let temperature = 20;
+        let humidity = 50;
+        let seasonTimer = 0;
+        const seasonDuration = 500; // Generations per season
+
+        const seasonNames = ['春', '夏', '秋', '冬'];
+
         // Species types with ecosystem roles
         const speciesTypes = [
-            { hue: 120, name: 'Producer', role: 'producer', energyGain: 2 },     // Green plants
-            { hue: 0, name: 'Predator', role: 'predator', energyGain: -1 },      // Red predators
-            { hue: 60, name: 'Omnivore', role: 'omnivore', energyGain: 0 }       // Yellow omnivores
+            { hue: 120, name: 'Producer', role: 'producer', energyGain: 2 },
+            { hue: 0, name: 'Predator', role: 'predator', energyGain: -1 },
+            { hue: 60, name: 'Omnivore', role: 'omnivore', energyGain: 0 }
         ];
 
         function resize() {
@@ -142,6 +167,10 @@
         function initGrid() {
             grid = new Array(cols).fill(null).map(() => new Array(rows).fill(null));
             generation = 0;
+            season = 0;
+            temperature = 20;
+            humidity = 50;
+            seasonTimer = 0;
             updateStats();
         }
 
@@ -161,6 +190,52 @@
             }
             generation = 0;
             updateStats();
+        }
+
+        function updateEnvironment() {
+            seasonTimer++;
+            
+            // Change season
+            if (seasonTimer >= seasonDuration) {
+                seasonTimer = 0;
+                season = (season + 1) % 4;
+            }
+            
+            // Temperature based on season
+            const baseTemps = [15, 30, 20, 5];
+            const tempVariation = Math.sin(generation * 0.1) * 5;
+            temperature = Math.round(baseTemps[season] + tempVariation);
+            
+            // Humidity based on season
+            const baseHumidity = [60, 40, 50, 70];
+            const humidityVariation = Math.cos(generation * 0.15) * 10;
+            humidity = Math.round(baseHumidity[season] + humidityVariation);
+            
+            seasonEl.textContent = seasonNames[season];
+            temperatureEl.textContent = temperature;
+            humidityEl.textContent = humidity;
+        }
+
+        function getEnvironmentMultiplier() {
+            let multiplier = 1;
+            
+            // Temperature effects
+            if (temperature < 10) multiplier *= 0.7; // Cold
+            else if (temperature > 35) multiplier *= 0.8; // Hot
+            else if (temperature >= 20 && temperature <= 25) multiplier *= 1.2; // Optimal
+            
+            // Humidity effects
+            if (humidity < 30) multiplier *= 0.8; // Dry
+            else if (humidity > 80) multiplier *= 0.9; // Too wet
+            else if (humidity >= 50 && humidity <= 60) multiplier *= 1.1; // Optimal
+            
+            // Season effects
+            if (season === 0) multiplier *= 1.3; // Spring: growth
+            else if (season === 1) multiplier *= 1.1; // Summer: active
+            else if (season === 2) multiplier *= 0.9; // Fall: decline
+            else if (season === 3) multiplier *= 0.6; // Winter: dormancy
+            
+            return multiplier;
         }
 
         function countNeighbors(x, y) {
@@ -192,17 +267,11 @@
             return neighbors;
         }
 
-        function canEat(predatorRole, preyRole) {
-            if (predatorRole === 'predator') {
-                return preyRole === 'producer' || preyRole === 'omnivore';
-            } else if (predatorRole === 'omnivore') {
-                return preyRole === 'producer';
-            }
-            return false;
-        }
-
         function update() {
             const nextGrid = new Array(cols).fill(null).map(() => new Array(rows).fill(null));
+            const envMultiplier = getEnvironmentMultiplier();
+            
+            updateEnvironment();
 
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
@@ -210,24 +279,29 @@
                     const neighbors = countNeighbors(i, j);
                     
                     if (cell && cell.alive) {
-                        // Calculate energy change
-                        let energyChange = cell.species.energyGain;
+                        let energyChange = cell.species.energyGain * envMultiplier;
                         
-                        // Predation: predators gain energy from eating
-                        if (cell.species.role === 'predator' || cell.species.role === 'omnivore') {
-                            if (cell.species.role === 'predator' && neighbors.producers > 0) {
+                        // Producers benefit from good conditions
+                        if (cell.species.role === 'producer') {
+                            if (season === 0 && humidity >= 50) energyChange += 2;
+                            if (season === 3) energyChange -= 1;
+                        }
+                        
+                        // Predation
+                        if (cell.species.role === 'predator') {
+                            if (neighbors.producers > 0) {
                                 energyChange += neighbors.producers * 3;
-                            } else if (cell.species.role === 'omnivore' && neighbors.producers > 0) {
+                            }
+                        } else if (cell.species.role === 'omnivore') {
+                            if (neighbors.producers > 0) {
                                 energyChange += neighbors.producers * 2;
                             }
                         }
                         
-                        // Update energy
                         cell.energy += energyChange;
                         
-                        // Check survival
+                        // Survival check
                         if (cell.energy <= 0 || neighbors.total < 2 || neighbors.total > 3) {
-                            // Death
                             nextGrid[i][j] = {
                                 alive: false,
                                 age: 0,
@@ -235,7 +309,6 @@
                                 species: cell.species
                             };
                         } else {
-                            // Survival
                             nextGrid[i][j] = {
                                 alive: true,
                                 age: cell.age + 1,
@@ -244,8 +317,8 @@
                             };
                             
                             // Reproduction
-                            if (cell.energy >= 80 && neighbors.total < 3) {
-                                // Spawn offspring nearby
+                            const reproductionThreshold = season === 0 ? 60 : 80;
+                            if (cell.energy >= reproductionThreshold && neighbors.total < 3) {
                                 const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
                                 for (const [dx, dy] of dirs) {
                                     const nx = (i + dx + cols) % cols;
@@ -265,23 +338,17 @@
                             }
                         }
                     } else {
-                        // Birth rules
+                        // Birth
                         if (neighbors.total === 3) {
-                            // Determine species based on neighbors
-                            let newSpecies = speciesTypes[0]; // Default to producer
-                            
-                            // If there are predators nearby, new cell might be prey
+                            let newSpecies = speciesTypes[0];
                             if (neighbors.predators > neighbors.producers) {
                                 newSpecies = speciesTypes[Math.floor(Math.random() * speciesTypes.length)];
-                            } else {
-                                // More producers, likely producer offspring
-                                newSpecies = speciesTypes[0];
                             }
                             
                             nextGrid[i][j] = {
                                 alive: true,
                                 age: 0,
-                                energy: 50,
+                                energy: 50 * envMultiplier,
                                 species: newSpecies
                             };
                         }
@@ -315,7 +382,15 @@
         }
 
         function draw() {
-            ctx.fillStyle = 'rgba(10, 10, 15, 1)';
+            // Background based on season
+            const bgColors = [
+                'rgba(20, 30, 20, 1)',   // Spring: greenish
+                'rgba(30, 30, 20, 1)',   // Summer: yellowish
+                'rgba(30, 20, 15, 1)',   // Fall: brownish
+                'rgba(15, 20, 30, 1)'    // Winter: bluish
+            ];
+            
+            ctx.fillStyle = bgColors[season];
             ctx.fillRect(0, 0, width, height);
 
             for (let i = 0; i < cols; i++) {
@@ -325,14 +400,10 @@
                         const x = i * cellSize;
                         const y = j * cellSize;
                         
-                        // Size based on energy
                         const energySize = Math.min(cell.energy / 100, 1);
                         const size = cellSize * (0.6 + energySize * 0.6);
-                        
-                        // Alpha based on energy
                         const alpha = 0.4 + energySize * 0.5;
                         
-                        // Cell glow
                         const gradient = ctx.createRadialGradient(
                             x + cellSize / 2, y + cellSize / 2, 0,
                             x + cellSize / 2, y + cellSize / 2, size
@@ -347,11 +418,9 @@
                         ctx.fillStyle = gradient;
                         ctx.fillRect(x - 2, y - 2, size + 4, size + 4);
                         
-                        // Cell core
                         ctx.fillStyle = `hsla(${hue}, 100%, 90%, ${alpha * 0.9})`;
                         ctx.fillRect(x + 1, y + 1, size - 2, size - 2);
                         
-                        // Energy indicator
                         if (cell.energy > 70) {
                             ctx.strokeStyle = `hsla(${hue}, 100%, 80%, 0.5)`;
                             ctx.lineWidth = 1;
