@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音符の幾何学 - Musical Geometry</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            pointer-events: none;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="info">
+        <div>🎵 音符の幾何学</div>
+        <div id="noteCount">音符: 0</div>
+    </div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">全画面</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const noteCountDiv = document.getElementById('noteCount');
+
+        let width, height;
+        let notes = [];
+        let hue = 0;
+        let frameCount = 0;
+
+        const musicalSymbols = ['♪', '♫', '♬', '♩', '𝅘𝅥𝅮', '𝅘𝅥𝅯', '𝅘𝅥𝅰', '♭', '♮', '♯'];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Note {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.speedX = (Math.random() - 0.5) * 4;
+                this.speedY = (Math.random() - 0.5) * 4;
+                this.size = 20 + Math.random() * 40;
+                this.symbol = musicalSymbols[Math.floor(Math.random() * musicalSymbols.length)];
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+                this.hue = (hue + Math.random() * 60) % 360;
+                this.life = 0;
+                this.maxLife = 200 + Math.random() * 200;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.rotation += this.rotationSpeed;
+                this.life++;
+
+                // 螺旋運動
+                const time = this.life * 0.02;
+                this.speedX += Math.sin(time) * 0.05;
+                this.speedY += Math.cos(time) * 0.05;
+
+                // 画面端で反射
+                if (this.x < 0 || this.x > width) this.speedX *= -1;
+                if (this.y < 0 || this.y > height) this.speedY *= -1;
+
+                // 速度制限
+                const maxSpeed = 5;
+                this.speedX = Math.max(-maxSpeed, Math.min(maxSpeed, this.speedX));
+                this.speedY = Math.max(-maxSpeed, Math.min(maxSpeed, this.speedY));
+            }
+
+            draw() {
+                const alpha = Math.sin((this.life / this.maxLife) * Math.PI);
+                const size = this.size * (0.8 + Math.sin(this.life * 0.05) * 0.2);
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // グロー効果
+                ctx.shadowColor = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.shadowBlur = 20;
+
+                ctx.font = `${size}px "Courier New", monospace`;
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${alpha})`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.symbol, 0, 0);
+
+                ctx.restore();
+
+                // 幾何学パターン（トレイル）
+                if (this.life > 10) {
+                    ctx.save();
+                    ctx.globalAlpha = alpha * 0.3;
+                    ctx.strokeStyle = `hsl(${this.hue}, 100%, 60%)`;
+                    ctx.lineWidth = 1;
+
+                    // 複数の音符との間に線を引く
+                    notes.forEach(note => {
+                        const dx = note.x - this.x;
+                        const dy = note.y - this.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if (dist < 150 && dist > 0) {
+                            ctx.beginPath();
+                            ctx.moveTo(this.x, this.y);
+                            ctx.lineTo(note.x, note.y);
+                            ctx.stroke();
+                        }
+                    });
+
+                    ctx.restore();
+                }
+            }
+
+            isDead() {
+                return this.life >= this.maxLife;
+            }
+        }
+
+        function init() {
+            resize();
+            for (let i = 0; i < 25; i++) {
+                notes.push(new Note());
+            }
+        }
+
+        function animate() {
+            // トレイル効果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            hue = (hue + 0.3) % 360;
+            frameCount++;
+
+            // 新しい音符を追加
+            if (frameCount % 3 === 0 && notes.length < 50) {
+                notes.push(new Note());
+            }
+
+            // 音符を更新・描画
+            notes.forEach(note => {
+                note.update();
+                note.draw();
+            });
+
+            // 死んだ音符を削除
+            notes = notes.filter(note => !note.isDead());
+
+            noteCountDiv.textContent = `音符: ${notes.length}`;
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        window.addEventListener('resize', resize);
+        init();
+        animate();
+    </script>
+</body>
+</html>
