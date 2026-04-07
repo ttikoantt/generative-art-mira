@@ -5,12 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>流体の夢 - Liquid Dreams</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             background: #0a0a0f;
             min-height: 100vh;
@@ -18,12 +13,7 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             touch-action: manipulation;
         }
-
-        canvas {
-            display: block;
-            cursor: crosshair;
-        }
-
+        canvas { display: block; cursor: crosshair; }
         .info {
             position: fixed;
             top: 20px;
@@ -36,7 +26,6 @@
             z-index: 10;
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
         }
-
         .stats {
             position: fixed;
             top: 50px;
@@ -48,7 +37,6 @@
             pointer-events: none;
             z-index: 10;
         }
-
         .controls {
             position: fixed;
             bottom: 20px;
@@ -58,7 +46,6 @@
             gap: 10px;
             z-index: 10;
         }
-
         .control-btn {
             background: rgba(102, 126, 234, 0.8);
             color: white;
@@ -71,12 +58,7 @@
             transition: all 0.3s ease;
             box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
         }
-
-        .control-btn:hover {
-            transform: scale(1.05);
-            background: rgba(102, 126, 234, 1);
-        }
-
+        .control-btn:hover { transform: scale(1.05); background: rgba(102, 126, 234, 1); }
         .color-palette {
             position: fixed;
             bottom: 70px;
@@ -86,7 +68,6 @@
             gap: 8px;
             z-index: 10;
         }
-
         .color-btn {
             width: 40px;
             height: 40px;
@@ -95,40 +76,29 @@
             cursor: pointer;
             transition: all 0.3s ease;
         }
-
         .color-btn:hover, .color-btn.active {
             transform: scale(1.1);
             border-color: white;
             box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
         }
-
         @media (max-width: 768px) {
-            .info {
-                font-size: 0.75rem;
-                padding: 0 20px;
-            }
-
-            .control-btn {
-                padding: 10px 16px;
-                font-size: 0.8rem;
-            }
-
-            .color-btn {
-                width: 35px;
-                height: 35px;
-            }
+            .info { font-size: 0.75rem; padding: 0 20px; }
+            .control-btn { padding: 10px 16px; font-size: 0.8rem; }
+            .color-btn { width: 35px; height: 35px; }
         }
     </style>
 </head>
 <body>
-    <div class="info">💧 マウス/タッチで流体を操作します</div>
-    <div class="stats">Particles: <span id="particleCount">0</span> | Color: <span id="colorName">Rainbow</span></div>
+    <div class="info">💧 複数の色を混ぜて新しい色を作ります</div>
+    <div class="stats">Particles: <span id="particleCount">0</span> | Viscosity: <span id="viscosityLevel">水</span> | Blend: <span id="blendMode">通常</span></div>
     
     <div class="color-palette" id="colorPalette"></div>
     
     <div class="controls">
         <button class="control-btn" id="resetBtn">🔄 リセット</button>
         <button class="control-btn" id="randomBtn">🎲 ランダム色</button>
+        <button class="control-btn" id="viscosityBtn">💧 粘度切替</button>
+        <button class="control-btn" id="blendBtn">🎨 混色モード</button>
     </div>
     
     <canvas id="canvas"></canvas>
@@ -137,10 +107,13 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const particleCountEl = document.getElementById('particleCount');
-        const colorNameEl = document.getElementById('colorName');
+        const viscosityLevelEl = document.getElementById('viscosityLevel');
+        const blendModeEl = document.getElementById('blendMode');
         const colorPaletteEl = document.getElementById('colorPalette');
         const resetBtn = document.getElementById('resetBtn');
         const randomBtn = document.getElementById('randomBtn');
+        const viscosityBtn = document.getElementById('viscosityBtn');
+        const blendBtn = document.getElementById('blendBtn');
 
         let width, height;
         let particles = [];
@@ -148,20 +121,25 @@
         let mouseY = 0;
         let isMouseDown = false;
         let colorMode = 0;
+        let viscosityMode = 0;
+        let colorBlending = false;
         let hueOffset = 0;
 
         const PARTICLE_COUNT = 500;
-        const GRAVITY = 0.5;
-        const DAMPING = 0.98;
+        const viscosityModes = [
+            { name: '水', damping: 0.98, gravity: 0.5 },
+            { name: '油', damping: 0.95, gravity: 0.3 },
+            { name: '蜂蜜', damping: 0.90, gravity: 0.2 },
+            { name: '溶岩', damping: 0.85, gravity: 0.8 }
+        ];
 
-        // Color palettes
         const colorPalettes = [
-            { name: 'Rainbow', getHue: (i, x, y, speed) => (hueOffset + x * 0.1 + y * 0.1) % 360 },
-            { name: 'Ocean', getHue: (i, x, y, speed) => 200 + (y / height) * 40 },
-            { name: 'Fire', getHue: (i, x, y, speed) => 20 + speed * 30 },
-            { name: 'Forest', getHue: (i, x, y, speed) => 100 + (x / width) * 40 },
-            { name: 'Sunset', getHue: (i, x, y, speed) => 280 + (x / width) * 60 },
-            { name: 'Neon', getHue: (i, x, y, speed) => (i * 13 + hueOffset) % 360 }
+            { name: 'Rainbow', hue: 0, getHue: (i, x, y, speed) => (hueOffset + x * 0.1 + y * 0.1) % 360 },
+            { name: 'Ocean', hue: 200, getHue: (i, x, y, speed) => 200 + (y / height) * 40 },
+            { name: 'Fire', hue: 20, getHue: (i, x, y, speed) => 20 + speed * 30 },
+            { name: 'Forest', hue: 100, getHue: (i, x, y, speed) => 100 + (x / width) * 40 },
+            { name: 'Sunset', hue: 280, getHue: (i, x, y, speed) => 280 + (x / width) * 60 },
+            { name: 'Neon', hue: 180, getHue: (i, x, y, speed) => (i * 13 + hueOffset) % 360 }
         ];
 
         function initColorPalette() {
@@ -169,102 +147,124 @@
             colorPalettes.forEach((palette, index) => {
                 const btn = document.createElement('button');
                 btn.className = 'color-btn' + (index === 0 ? ' active' : '');
-                const hue = palette.getHue(0, 50, 50, 5);
-                btn.style.background = `hsl(${hue}, 80%, 50%)`;
+                btn.style.background = `hsl(${palette.hue}, 80%, 50%)`;
                 btn.onclick = () => {
                     colorMode = index;
                     document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
-                    colorNameEl.textContent = palette.name;
                 };
                 colorPaletteEl.appendChild(btn);
             });
+        }
+
+        function blendColors(hue1, hue2, ratio) {
+            const h1 = hue1 * Math.PI / 180;
+            const h2 = hue2 * Math.PI / 180;
+            
+            const x1 = Math.cos(h1);
+            const y1 = Math.sin(h1);
+            const x2 = Math.cos(h2);
+            const y2 = Math.sin(h2);
+            
+            const x = x1 * (1 - ratio) + x2 * ratio;
+            const y = y1 * (1 - ratio) + y2 * ratio;
+            
+            const blendedHue = Math.atan2(y, x) * 180 / Math.PI;
+            return (blendedHue + 360) % 360;
         }
 
         class Particle {
             constructor() {
                 this.reset();
             }
-
             reset() {
                 this.x = Math.random() * width;
                 this.y = Math.random() * height;
                 this.vx = (Math.random() - 0.5) * 2;
                 this.vy = (Math.random() - 0.5) * 2;
                 this.radius = Math.random() * 3 + 2;
-                this.hue = Math.random() * 360;
                 this.density = Math.random() * 0.5 + 0.5;
                 this.index = Math.floor(Math.random() * 100);
+                this.hue = colorPalettes[0].hue;
+                this.life = 0;
             }
-
             update() {
-                this.vy += GRAVITY * this.density;
-
+                const viscosity = viscosityModes[viscosityMode];
+                this.vy += viscosity.gravity * this.density;
+                
                 if (isMouseDown) {
                     const dx = mouseX - this.x;
                     const dy = mouseY - this.y;
                     const distance = Math.sqrt(dx * dx + dy * dy);
-
                     if (distance < 150) {
                         const force = (150 - distance) / 150;
                         const angle = Math.atan2(dy, dx);
-                        
                         this.vx += Math.cos(angle) * force * 2;
                         this.vy += Math.sin(angle) * force * 2;
                     }
                 }
-
-                this.vx *= DAMPING;
-                this.vy *= DAMPING;
-
+                
+                this.vx *= viscosity.damping;
+                this.vy *= viscosity.damping;
                 this.x += this.vx;
                 this.y += this.vy;
-
-                if (this.x < this.radius) {
-                    this.x = this.radius;
-                    this.vx *= -0.8;
-                }
-                if (this.x > width - this.radius) {
-                    this.x = width - this.radius;
-                    this.vx *= -0.8;
-                }
-                if (this.y < this.radius) {
-                    this.y = this.radius;
-                    this.vy *= -0.8;
-                }
-                if (this.y > height - this.radius) {
-                    this.y = height - this.radius;
-                    this.vy *= -0.6;
+                
+                if (this.x < this.radius) { this.x = this.radius; this.vx *= -0.8; }
+                if (this.x > width - this.radius) { this.x = width - this.radius; this.vx *= -0.8; }
+                if (this.y < this.radius) { this.y = this.radius; this.vy *= -0.8; }
+                if (this.y > height - this.radius) { this.y = height - this.radius; this.vy *= -0.6; }
+                
+                this.life++;
+                
+                if (colorBlending) {
+                    let nearbyCount = 0;
+                    let blendedHue = this.hue;
+                    
+                    for (let i = 0; i < particles.length; i += 10) {
+                        if (i === this.index) continue;
+                        const other = particles[i];
+                        const dx = other.x - this.x;
+                        const dy = other.y - this.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (dist < 50) {
+                            const ratio = 1 - (dist / 50);
+                            blendedHue = blendColors(blendedHue, other.hue, ratio * 0.3);
+                            nearbyCount++;
+                        }
+                    }
+                    
+                    this.hue = blendedHue;
+                } else {
+                    this.hue = colorPalettes[colorMode].getHue(this.index, this.x, this.y, Math.sqrt(this.vx * this.vx + this.vy * this.vy));
                 }
             }
-
             draw() {
                 const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
                 const alpha = 0.4 + Math.min(speed / 10, 0.5);
-                const hue = colorPalettes[colorMode].getHue(this.index, this.x, this.y, speed);
-
+                const hue = this.hue;
+                
                 ctx.save();
                 ctx.globalAlpha = alpha;
-
+                
                 const gradient = ctx.createRadialGradient(
                     this.x, this.y, 0,
                     this.x, this.y, this.radius * 3
                 );
-
                 gradient.addColorStop(0, `hsla(${hue}, 100%, 70%, ${alpha})`);
                 gradient.addColorStop(0.5, `hsla(${hue}, 100%, 50%, ${alpha * 0.5})`);
                 gradient.addColorStop(1, `hsla(${hue}, 100%, 30%, 0)`);
-
+                
                 ctx.fillStyle = gradient;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius * 3, 0, Math.PI * 2);
                 ctx.fill();
-
+                
                 ctx.fillStyle = `hsla(${hue}, 100%, 90%, ${alpha * 0.8})`;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 ctx.fill();
-
+                
                 ctx.restore();
             }
         }
@@ -284,25 +284,24 @@
         function animate() {
             ctx.fillStyle = 'rgba(10, 10, 15, 0.2)';
             ctx.fillRect(0, 0, width, height);
-
             hueOffset = (hueOffset + 0.3) % 360;
-
+            
             particles.forEach(particle => {
                 particle.update();
                 particle.draw();
             });
-
+            
             ctx.save();
             ctx.globalAlpha = 0.1;
             ctx.strokeStyle = `hsla(${hueOffset}, 100%, 50%, 0.3)`;
             ctx.lineWidth = 1;
-
+            
             for (let i = 0; i < particles.length; i += 5) {
                 for (let j = i + 1; j < particles.length; j += 5) {
                     const dx = particles[i].x - particles[j].x;
                     const dy = particles[i].y - particles[j].y;
                     const distance = Math.sqrt(dx * dx + dy * dy);
-
+                    
                     if (distance < 80) {
                         const alpha = (1 - distance / 80) * 0.3;
                         ctx.strokeStyle = `hsla(${hueOffset}, 100%, 50%, ${alpha})`;
@@ -313,61 +312,45 @@
                     }
                 }
             }
-
+            
             ctx.restore();
-
+            
             particleCountEl.textContent = particles.length;
-
+            viscosityLevelEl.textContent = viscosityModes[viscosityMode].name;
+            blendModeEl.textContent = colorBlending ? '混色ON' : '通常';
+            
             requestAnimationFrame(animate);
         }
 
-        window.addEventListener('resize', () => {
-            resize();
-            initParticles();
-        });
-
-        canvas.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-        });
-
-        canvas.addEventListener('mousedown', () => {
-            isMouseDown = true;
-        });
-
-        canvas.addEventListener('mouseup', () => {
-            isMouseDown = false;
-        });
-
+        window.addEventListener('resize', () => { resize(); initParticles(); });
+        canvas.addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; });
+        canvas.addEventListener('mousedown', () => { isMouseDown = true; });
+        canvas.addEventListener('mouseup', () => { isMouseDown = false; });
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             isMouseDown = true;
             mouseX = e.touches[0].clientX;
             mouseY = e.touches[0].clientY;
         }, { passive: false });
-
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
             mouseX = e.touches[0].clientX;
             mouseY = e.touches[0].clientY;
         }, { passive: false });
-
-        canvas.addEventListener('touchend', () => {
-            isMouseDown = false;
-        });
-
-        resetBtn.addEventListener('click', () => {
-            initParticles();
-        });
-
+        canvas.addEventListener('touchend', () => { isMouseDown = false; });
+        resetBtn.addEventListener('click', () => { initParticles(); });
         randomBtn.addEventListener('click', () => {
             colorMode = Math.floor(Math.random() * colorPalettes.length);
             document.querySelectorAll('.color-btn').forEach((b, i) => {
                 b.classList.toggle('active', i === colorMode);
             });
-            colorNameEl.textContent = colorPalettes[colorMode].name;
         });
-
+        viscosityBtn.addEventListener('click', () => {
+            viscosityMode = (viscosityMode + 1) % viscosityModes.length;
+        });
+        blendBtn.addEventListener('click', () => {
+            colorBlending = !colorBlending;
+        });
         resize();
         initParticles();
         initColorPalette();
