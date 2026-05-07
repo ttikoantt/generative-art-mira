@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chronos Particles - Temporal Flow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 50%, #0a0a1a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        h1 {
+            color: #e0e0ff;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            text-shadow: 0 0 20px rgba(200, 200, 255, 0.5);
+            letter-spacing: 0.3em;
+        }
+
+        .subtitle {
+            color: #a0a0c0;
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+            letter-spacing: 0.2em;
+        }
+
+        canvas {
+            border: 1px solid rgba(200, 200, 255, 0.2);
+            border-radius: 10px;
+            box-shadow: 0 0 40px rgba(100, 100, 200, 0.3);
+            background: radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a1a 100%);
+        }
+
+        .info {
+            margin-top: 1.5rem;
+            color: #8080a0;
+            font-size: 0.8rem;
+            letter-spacing: 0.15em;
+        }
+
+        .stats {
+            display: flex;
+            gap: 2rem;
+            justify-content: center;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .stat {
+            color: #a0a0c0;
+            font-size: 0.75rem;
+        }
+
+        .stat-value {
+            color: #e0e0ff;
+            font-weight: bold;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+
+        .pulse {
+            animation: pulse 3s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="pulse">CHRONOS PARTICLES</h1>
+        <p class="subtitle">Temporal Flow Visualization</p>
+        <canvas id="canvas" width="900" height="600"></canvas>
+        <div class="info">
+            <div class="stats">
+                <div class="stat">Particles: <span class="stat-value" id="particleCount">0</span></div>
+                <div class="stat">Time Scale: <span class="stat-value" id="timeScale">1.0x</span></div>
+                <div class="stat">Connections: <span class="stat-value" id="connectionCount">0</span></div>
+            </div>
+            <p style="margin-top: 1rem;">Move your mouse to influence the temporal field</p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const particleCountEl = document.getElementById('particleCount');
+        const timeScaleEl = document.getElementById('timeScale');
+        const connectionCountEl = document.getElementById('connectionCount');
+
+        // Configuration
+        const config = {
+            particleCount: 150,
+            connectionDistance: 120,
+            baseSpeed: 0.5,
+            mouseInfluenceRadius: 150,
+            timeSpeed: 0.001
+        };
+
+        let time = 0;
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let timeScale = 1.0;
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * config.baseSpeed * 2;
+                this.vy = (Math.random() - 0.5) * config.baseSpeed * 2;
+                this.radius = Math.random() * 2 + 1;
+                this.baseRadius = this.radius;
+                this.hue = Math.random() * 60 + 200; // Blue to purple range
+                this.life = Math.random() * Math.PI * 2;
+                this.phaseOffset = Math.random() * Math.PI * 2;
+            }
+
+            update(deltaTime) {
+                // Time-based oscillation
+                this.life += deltaTime * timeScale * 0.5;
+                
+                // Pulsating radius
+                this.radius = this.baseRadius * (1 + Math.sin(this.life + this.phaseOffset) * 0.3);
+                
+                // Calculate distance to mouse
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                // Mouse influence
+                if (dist < config.mouseInfluenceRadius) {
+                    const influence = (1 - dist / config.mouseInfluenceRadius) * 0.02;
+                    this.vx += dx * influence;
+                    this.vy += dy * influence;
+                }
+                
+                // Temporal flow
+                const flowAngle = Math.sin(time * 0.5 + this.phaseOffset) * 0.02;
+                this.vx += Math.cos(flowAngle) * 0.01;
+                this.vy += Math.sin(flowAngle) * 0.01;
+                
+                // Apply velocity with damping
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+                
+                // Boundary wrap
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y < 0) this.y = canvas.height;
+                if (this.y > canvas.height) this.y = 0;
+                
+                // Dynamic hue shift based on time
+                this.hue = 200 + Math.sin(this.life * 0.5) * 30 + Math.sin(time) * 20;
+            }
+
+            draw() {
+                const alpha = 0.6 + Math.sin(this.life) * 0.3;
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.radius * 3
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 80%, 70%, ${alpha})`);
+                gradient.addColorStop(0.5, `hsla(${this.hue}, 70%, 50%, ${alpha * 0.5})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 60%, 30%, 0)`);
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 3, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+
+        // Initialize particles
+        const particles = [];
+        for (let i = 0; i < config.particleCount; i++) {
+            particles.push(new Particle());
+        }
+
+        function drawConnections() {
+            let connectionCount = 0;
+            
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < config.connectionDistance) {
+                        connectionCount++;
+                        const alpha = (1 - dist / config.connectionDistance) * 0.3;
+                        const avgHue = (particles[i].hue + particles[j].hue) / 2;
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `hsla(${avgHue}, 60%, 60%, ${alpha})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+            
+            connectionCountEl.textContent = connectionCount;
+        }
+
+        function drawBackground() {
+            // Subtle temporal grid
+            const gridSize = 50;
+            const offset = (time * 10) % gridSize;
+            
+            ctx.strokeStyle = 'rgba(100, 100, 150, 0.05)';
+            ctx.lineWidth = 1;
+            
+            for (let x = offset; x < canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            
+            for (let y = offset; y < canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        let lastTime = performance.now();
+
+        function animate(currentTime) {
+            const deltaTime = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+            time += deltaTime * timeScale;
+            
+            // Clear canvas
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.15)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw background
+            drawBackground();
+            
+            // Update and draw particles
+            particles.forEach(p => {
+                p.update(deltaTime);
+                p.draw();
+            });
+            
+            // Draw connections
+            drawConnections();
+            
+            // Update stats
+            particleCountEl.textContent = particles.length;
+            timeScaleEl.textContent = timeScale.toFixed(1) + 'x';
+            
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouseX = canvas.width / 2;
+            mouseY = canvas.height / 2;
+        });
+
+        canvas.addEventListener('click', () => {
+            // Create burst effect
+            particles.forEach(p => {
+                const dx = p.x - mouseX;
+                const dy = p.y - mouseY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 200) {
+                    const force = (200 - dist) / 200 * 5;
+                    p.vx += (dx / dist) * force;
+                    p.vy += (dy / dist) * force;
+                }
+            });
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp') {
+                timeScale = Math.min(timeScale + 0.5, 5);
+            } else if (e.key === 'ArrowDown') {
+                timeScale = Math.max(timeScale - 0.5, 0.5);
+            } else if (e.key === ' ') {
+                // Reset time scale
+                timeScale = 1.0;
+            }
+        });
+
+        // Start animation
+        animate(performance.now());
+    </script>
+</body>
+</html>
