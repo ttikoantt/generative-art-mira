@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Dreamcatcher - Generative Art by Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0015;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 200, 255, 0.7);
+            font-size: 12px;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(200, 100, 255, 0.5);
+        }
+
+        .title {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 220, 255, 0.8);
+            font-size: 24px;
+            letter-spacing: 8px;
+            text-transform: uppercase;
+            pointer-events: none;
+            text-shadow: 0 0 20px rgba(180, 100, 255, 0.8), 0 0 40px rgba(100, 50, 255, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="title">Cosmic Dreamcatcher</div>
+    <div class="info">Click to release captured dreams | Move mouse to disturb the cosmic web</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height, centerX, centerY;
+        let mouse = { x: 0, y: 0 };
+        let dreams = [];
+        let capturedDreams = [];
+        let webNodes = [];
+        let feathers = [];
+
+        const palette = {
+            dream: ['#ff6ec7', '#c084fc', '#818cf8', '#38bdf8', '#c4b5fd'],
+            web: ['#7c3aed', '#6d28d9', '#5b21b6'],
+            glow: 'rgba(180, 100, 255, 0.3)'
+        };
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+            initWeb();
+        }
+
+        class WebNode {
+            constructor(x, y, layer, angle) {
+                this.x = x;
+                this.y = y;
+                this.originX = x;
+                this.originY = y;
+                this.layer = layer;
+                this.angle = angle;
+                this.radius = Math.random() * 3 + 2;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+                this.connections = [];
+            }
+
+            update(time) {
+                const pulse = Math.sin(time * 2 + this.pulsePhase) * 0.5 + 0.5;
+                this.radius = 2 + pulse * 2;
+
+                // Gentle sway
+                this.x = this.originX + Math.sin(time * 0.5 + this.angle) * 5;
+                this.y = this.originY + Math.cos(time * 0.3 + this.angle) * 5;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(180, 150, 255, ${0.5 + this.radius * 0.1})`;
+                ctx.fill();
+
+                // Glow
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 3, 0, Math.PI * 2);
+                ctx.fillStyle = palette.glow;
+                ctx.fill();
+            }
+        }
+
+        function initWeb() {
+            webNodes = [];
+            feathers = [];
+
+            const layers = 5;
+            const nodesPerLayer = 12;
+            const maxRadius = Math.min(width, height) * 0.35;
+
+            for (let layer = 0; layer < layers; layer++) {
+                const radius = (layer + 1) * (maxRadius / layers);
+                for (let i = 0; i < nodesPerLayer; i++) {
+                    const angle = (i / nodesPerLayer) * Math.PI * 2 + layer * 0.2;
+                    const x = centerX + Math.cos(angle) * radius;
+                    const y = centerY + Math.sin(angle) * radius;
+                    webNodes.push(new WebNode(x, y, layer, angle));
+                }
+            }
+
+            // Create connections
+            webNodes.forEach(node => {
+                webNodes.forEach(other => {
+                    if (node !== other) {
+                        const dist = Math.hypot(node.x - other.x, node.y - other.y);
+                        if (dist < maxRadius / layers * 1.5) {
+                            node.connections.push(other);
+                        }
+                    }
+                });
+            });
+
+            // Add feathers
+            for (let i = 0; i < 8; i++) {
+                feathers.push({
+                    angle: (i / 8) * Math.PI * 2,
+                    length: 40 + Math.random() * 30,
+                    swingSpeed: 0.5 + Math.random() * 0.5,
+                    swingAmount: 0.1 + Math.random() * 0.1,
+                    phase: Math.random() * Math.PI * 2,
+                    colors: [palette.dream[Math.floor(Math.random() * palette.dream.length)]]
+                });
+            }
+        }
+
+        class Dream {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.targetNode = null;
+                this.speed = 1 + Math.random() * 2;
+                this.size = 2 + Math.random() * 3;
+                this.color = palette.dream[Math.floor(Math.random() * palette.dream.length)];
+                this.trail = [];
+                this.captured = false;
+                this.capturedTime = 0;
+                this.capturedNode = null;
+            }
+
+            findTarget() {
+                let closestDist = Infinity;
+                let closest = null;
+
+                webNodes.forEach(node => {
+                    const dist = Math.hypot(node.x - this.x, node.y - this.y);
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closest = node;
+                    }
+                });
+
+                return closest;
+            }
+
+            update(time) {
+                if (!this.captured) {
+                    this.targetNode = this.findTarget();
+
+                    if (this.targetNode) {
+                        const dx = this.targetNode.x - this.x;
+                        const dy = this.targetNode.y - this.y;
+                        const dist = Math.hypot(dx, dy);
+
+                        if (dist < 10) {
+                            this.captured = true;
+                            this.capturedNode = this.targetNode;
+                            this.capturedTime = time;
+                        } else {
+                            this.x += (dx / dist) * this.speed;
+                            this.y += (dy / dist) * this.speed;
+                        }
+                    }
+
+                    // Trail
+                    this.trail.unshift({ x: this.x, y: this.y });
+                    if (this.trail.length > 20) this.trail.pop();
+                } else {
+                    // Orbit captured node
+                    const orbitRadius = 15 + Math.sin(time * 3 + this.capturedTime) * 5;
+                    const orbitSpeed = 2;
+                    const orbitAngle = (time - this.capturedTime) * orbitSpeed;
+
+                    this.x = this.capturedNode.x + Math.cos(orbitAngle) * orbitRadius;
+                    this.y = this.capturedNode.y + Math.sin(orbitAngle) * orbitRadius;
+
+                    this.trail.unshift({ x: this.x, y: this.y });
+                    if (this.trail.length > 30) this.trail.pop();
+                }
+            }
+
+            draw() {
+                // Draw trail
+                if (this.trail.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.trail[0].x, this.trail[0].y);
+
+                    for (let i = 1; i < this.trail.length; i++) {
+                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    }
+
+                    ctx.strokeStyle = this.color + Math.floor((this.captured ? 0.6 : 0.3) * 255).toString(16).padStart(2, '0');
+                    ctx.lineWidth = this.size * 0.5;
+                    ctx.stroke();
+                }
+
+                // Draw dream
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // Glow
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 2);
+                gradient.addColorStop(0, this.color + 'aa');
+                gradient.addColorStop(1, this.color + '00');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+
+        function spawnDream() {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = Math.max(width, height) * 0.6;
+            const x = centerX + Math.cos(angle) * dist;
+            const y = centerY + Math.sin(angle) * dist;
+            dreams.push(new Dream(x, y));
+        }
+
+        function drawWeb(time) {
+            ctx.lineWidth = 1;
+
+            webNodes.forEach(node => {
+                node.connections.forEach(other => {
+                    const dist = Math.hypot(node.x - other.x, node.y - other.y);
+                    const alpha = Math.max(0, 1 - dist / 200) * 0.3;
+                    ctx.beginPath();
+                    ctx.moveTo(node.x, node.y);
+                    ctx.lineTo(other.x, other.y);
+                    ctx.strokeStyle = `rgba(140, 100, 255, ${alpha})`;
+                    ctx.stroke();
+                });
+            });
+        }
+
+        function drawFeathers(time, nodeIndex) {
+            const maxRadius = Math.min(width, height) * 0.35;
+            const radius = maxRadius * 1.1;
+
+            feathers.forEach((feather, i) => {
+                const swing = Math.sin(time * feather.swingSpeed + feather.phase) * feather.swingAmount;
+                const angle = feather.angle + swing;
+
+                const startX = centerX + Math.cos(angle) * radius * 0.9;
+                const startY = centerY + Math.sin(angle) * radius * 0.9;
+                const endX = centerX + Math.cos(angle) * (radius * 0.9 + feather.length);
+                const endY = centerY + Math.sin(angle) * (radius * 0.9 + feather.length);
+
+                // Feather string
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(endX, endY);
+                ctx.strokeStyle = `rgba(180, 150, 255, 0.6)`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // Feather
+                ctx.save();
+                ctx.translate(endX, endY);
+                ctx.rotate(angle + Math.PI / 2 + swing * 2);
+
+                ctx.beginPath();
+                ctx.moveTo(0, -feather.length * 0.3);
+                ctx.quadraticCurveTo(feather.length * 0.15, 0, 0, feather.length * 0.3);
+                ctx.quadraticCurveTo(-feather.length * 0.15, 0, 0, -feather.length * 0.3);
+
+                const gradient = ctx.createLinearGradient(0, -feather.length * 0.3, 0, feather.length * 0.3);
+                gradient.addColorStop(0, feather.colors[0] + 'cc');
+                gradient.addColorStop(0.5, feather.colors[0] + '88');
+                gradient.addColorStop(1, feather.colors[0] + '44');
+
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                ctx.restore();
+            });
+        }
+
+        function drawCenter(time) {
+            // Center glow
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 50);
+            gradient.addColorStop(0, 'rgba(180, 100, 255, 0.3)');
+            gradient.addColorStop(0.5, 'rgba(140, 80, 255, 0.1)');
+            gradient.addColorStop(1, 'rgba(100, 50, 255, 0)');
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 50, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Pulsing center
+            const pulse = Math.sin(time * 2) * 0.5 + 0.5;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 8 + pulse * 4, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(200, 180, 255, ${0.5 + pulse * 0.3})`;
+            ctx.fill();
+        }
+
+        let lastTime = 0;
+        let dreamSpawnTimer = 0;
+
+        function animate(time) {
+            const deltaTime = (time - lastTime) / 1000;
+            lastTime = time;
+            const seconds = time / 1000;
+
+            // Clear with fade effect
+            ctx.fillStyle = 'rgba(10, 0, 21, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Spawn dreams
+            dreamSpawnTimer += deltaTime;
+            if (dreamSpawnTimer > 0.8) {
+                spawnDream();
+                dreamSpawnTimer = 0;
+            }
+
+            // Update and draw web
+            drawWeb(seconds);
+            drawFeathers(seconds);
+            drawCenter(seconds);
+
+            // Update and draw web nodes
+            webNodes.forEach(node => {
+                node.update(seconds);
+                node.draw();
+            });
+
+            // Update and draw dreams
+            dreams.forEach((dream, index) => {
+                dream.update(seconds);
+                dream.draw();
+
+                // Remove old captured dreams
+                if (dream.captured && seconds - dream.capturedTime > 15) {
+                    dreams.splice(index, 1);
+                }
+            });
+
+            // Mouse interaction - disturb nearby dreams
+            dreams.forEach(dream => {
+                if (!dream.captured) {
+                    const dist = Math.hypot(mouse.x - dream.x, mouse.y - dream.y);
+                    if (dist < 100) {
+                        const pushAngle = Math.atan2(dream.y - mouse.y, dream.x - mouse.x);
+                        dream.x += Math.cos(pushAngle) * 5;
+                        dream.y += Math.sin(pushAngle) * 5;
+                    }
+                }
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('click', () => {
+            // Release captured dreams
+            dreams.forEach(dream => {
+                if (dream.captured) {
+                    dream.captured = false;
+                    dream.capturedNode = null;
+                    // Give them a burst of speed away from center
+                    const angle = Math.random() * Math.PI * 2;
+                    dream.x += Math.cos(angle) * 50;
+                    dream.y += Math.sin(angle) * 50;
+                }
+            });
+        });
+
+        window.addEventListener('resize', resize);
+        resize();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
