@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Botanical Garden | Generative Art by Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        canvas {
+            display: block;
+        }
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #00ffaa;
+            font-size: 14px;
+            text-shadow: 0 0 10px #00ffaa;
+            pointer-events: none;
+            opacity: 0.8;
+        }
+        .info h1 {
+            font-size: 18px;
+            margin-bottom: 5px;
+            letter-spacing: 2px;
+        }
+        .info p {
+            font-size: 12px;
+            opacity: 0.7;
+        }
+        .stats {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #ff00aa;
+            font-size: 12px;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="info">
+        <h1>NEURAL BOTANICAL GARDEN</h1>
+        <p>Click to plant seeds • Watch them grow and connect</p>
+    </div>
+    <div class="stats" id="stats"></div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let plants = [];
+        let particles = [];
+        let connections = [];
+        let seeds = [];
+        let nutrients = [];
+        let time = 0;
+        let mouseX = 0, mouseY = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Color palettes for different plant types
+        const palettes = [
+            { primary: '#00ffaa', secondary: '#00ff88', glow: 'rgba(0, 255, 170, 0.3)' },
+            { primary: '#ff00aa', secondary: '#ff4488', glow: 'rgba(255, 0, 170, 0.3)' },
+            { primary: '#00aaff', secondary: '#4488ff', glow: 'rgba(0, 170, 255, 0.3)' },
+            { primary: '#ffaa00', secondary: '#ffcc44', glow: 'rgba(255, 170, 0, 0.3)' },
+            { primary: '#aa00ff', secondary: '#cc44ff', glow: 'rgba(170, 0, 255, 0.3)' }
+        ];
+
+        class Nutrient {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 3 + 2;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.life = 1;
+                this.color = `hsl(${Math.random() * 60 + 100}, 80%, 60%)`;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 0.002;
+
+                // Wrap around edges
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life * 0.5;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class Seed {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = 0;
+                this.targetSize = 8;
+                this.growing = true;
+                this.palette = palettes[Math.floor(Math.random() * palettes.length)];
+                this.type = Math.floor(Math.random() * 3);
+                this.age = 0;
+            }
+
+            update() {
+                if (this.growing) {
+                    this.size += (this.targetSize - this.size) * 0.1;
+                    if (Math.abs(this.size - this.targetSize) < 0.1) {
+                        this.growing = false;
+                        // Germinate into plant
+                        plants.push(new Plant(this.x, this.y, this.palette, this.type));
+                    }
+                }
+                this.age++;
+            }
+
+            draw() {
+                const pulse = Math.sin(this.age * 0.1) * 2;
+                
+                ctx.save();
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.palette.primary;
+                ctx.fillStyle = this.palette.primary;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size + pulse, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Inner glow
+                ctx.fillStyle = this.palette.secondary;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class Plant {
+            constructor(x, y, palette, type) {
+                this.x = x;
+                this.y = y;
+                this.palette = palette;
+                this.type = type;
+                this.branches = [];
+                this.nodes = [];
+                this.age = 0;
+                this.maxDepth = 6;
+                this.growthRate = 0.02;
+                
+                // Create root node
+                this.nodes.push({
+                    x: x,
+                    y: y,
+                    angle: -Math.PI / 2,
+                    depth: 0,
+                    parent: null,
+                    length: 0,
+                    maxLength: 60 + Math.random() * 40,
+                    width: 4,
+                    grown: true
+                });
+
+                // Start growth
+                this.growFromNode(this.nodes[0]);
+            }
+
+            growFromNode(node) {
+                if (node.depth >= this.maxDepth) return;
+
+                const numBranches = 2 + Math.floor(Math.random() * 2);
+                const spread = 0.8 + Math.random() * 0.5;
+
+                for (let i = 0; i < numBranches; i++) {
+                    const offset = (i - (numBranches - 1) / 2) * spread;
+                    const angle = node.angle + offset + (Math.random() - 0.5) * 0.3;
+                    
+                    const newNode = {
+                        x: node.x,
+                        y: node.y,
+                        angle: angle,
+                        depth: node.depth + 1,
+                        parent: node,
+                        length: 0,
+                        maxLength: node.maxLength * (0.7 + Math.random() * 0.2),
+                        width: Math.max(0.5, node.width * 0.7),
+                        grown: false
+                    };
+
+                    this.nodes.push(newNode);
+                }
+            }
+
+            grow() {
+                let allGrown = true;
+
+                for (const node of this.nodes) {
+                    if (!node.grown) {
+                        allGrown = false;
+                        node.length += this.growthRate * node.maxLength;
+                        
+                        const growth = Math.min(1, node.length / node.maxLength);
+                        node.x = node.parent.x + Math.cos(node.angle) * node.length;
+                        node.y = node.parent.y + Math.sin(node.angle) * node.length;
+
+                        if (node.length >= node.maxLength) {
+                            node.grown = true;
+                            this.growFromNode(node);
+
+                            // Create particle at new growth tip
+                            if (Math.random() < 0.3) {
+                                particles.push(new Particle(node.x, node.y, this.palette));
+                            }
+                        }
+                    }
+                }
+
+                this.age++;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.lineCap = 'round';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.palette.primary;
+
+                for (const node of this.nodes) {
+                    if (node.parent) {
+                        const gradient = ctx.createLinearGradient(
+                            node.parent.x, node.parent.y,
+                            node.x, node.y
+                        );
+                        gradient.addColorStop(0, this.palette.primary);
+                        gradient.addColorStop(1, this.palette.secondary);
+
+                        ctx.strokeStyle = gradient;
+                        ctx.lineWidth = node.width;
+                        ctx.beginPath();
+                        ctx.moveTo(node.parent.x, node.parent.y);
+                        ctx.lineTo(node.x, node.y);
+                        ctx.stroke();
+                    }
+                }
+
+                // Draw glowing tips
+                for (const node of this.nodes) {
+                    if (node.grown && node.depth > 2) {
+                        const pulse = Math.sin(time * 0.05 + node.depth) * 3;
+                        ctx.fillStyle = this.palette.glow;
+                        ctx.beginPath();
+                        ctx.arc(node.x, node.y, 4 + pulse, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+
+                ctx.restore();
+            }
+
+            getNodes() {
+                return this.nodes.filter(n => n.grown && n.depth > 2);
+            }
+        }
+
+        class Particle {
+            constructor(x, y, palette) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.life = 1;
+                this.decay = 0.01 + Math.random() * 0.02;
+                this.size = 2 + Math.random() * 3;
+                this.color = palette.primary;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function drawConnections() {
+            const allNodes = [];
+            for (const plant of plants) {
+                allNodes.push(...plant.getNodes());
+            }
+
+            for (let i = 0; i < allNodes.length; i++) {
+                for (let j = i + 1; j < allNodes.length; j++) {
+                    const dx = allNodes[j].x - allNodes[i].x;
+                    const dy = allNodes[j].y - allNodes[i].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 150) {
+                        const alpha = (1 - dist / 150) * 0.3;
+                        ctx.save();
+                        ctx.globalAlpha = alpha;
+                        ctx.strokeStyle = '#00ffaa';
+                        ctx.lineWidth = 0.5;
+                        ctx.beginPath();
+                        ctx.moveTo(allNodes[i].x, allNodes[i].y);
+                        ctx.lineTo(allNodes[j].x, allNodes[j].y);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+            }
+        }
+
+        function drawBackground() {
+            // Dark gradient background
+            const gradient = ctx.createRadialGradient(
+                width / 2, height / 2, 0,
+                width / 2, height / 2, Math.max(width, height)
+            );
+            gradient.addColorStop(0, '#0d1a2d');
+            gradient.addColorStop(1, '#0a0a12');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // Subtle grid
+            ctx.save();
+            ctx.globalAlpha = 0.03;
+            ctx.strokeStyle = '#00ffaa';
+            ctx.lineWidth = 1;
+            const gridSize = 50;
+            for (let x = 0; x < width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        function updateStats() {
+            const stats = document.getElementById('stats');
+            stats.textContent = `Plants: ${plants.length} | Seeds: ${seeds.length} | Particles: ${particles.length}`;
+        }
+
+        function animate() {
+            time++;
+
+            // Update and draw background
+            drawBackground();
+
+            // Spawn nutrients
+            if (Math.random() < 0.02) {
+                nutrients.push(new Nutrient(
+                    Math.random() * width,
+                    Math.random() * height
+                ));
+            }
+
+            // Update nutrients
+            nutrients = nutrients.filter(n => {
+                n.update();
+                return n.life > 0;
+            });
+            nutrients.forEach(n => n.draw());
+
+            // Update seeds
+            seeds = seeds.filter(s => {
+                s.update();
+                s.draw();
+                return s.growing;
+            });
+
+            // Grow plants
+            for (const plant of plants) {
+                plant.grow();
+            }
+
+            // Update particles
+            particles = particles.filter(p => {
+                p.update();
+                p.draw();
+                return p.life > 0;
+            });
+
+            // Draw connections between plants
+            drawConnections();
+
+            // Draw plants
+            for (const plant of plants) {
+                plant.draw();
+            }
+
+            updateStats();
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        canvas.addEventListener('click', (e) => {
+            seeds.push(new Seed(e.clientX, e.clientY));
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        // Initialize with a few seeds
+        function init() {
+            for (let i = 0; i < 3; i++) {
+                seeds.push(new Seed(
+                    width * 0.2 + Math.random() * width * 0.6,
+                    height * 0.6 + Math.random() * height * 0.3
+                ));
+            }
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
