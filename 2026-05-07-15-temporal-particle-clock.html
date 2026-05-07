@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Temporal Particle Clock - 時の粒子</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .time-display {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 120px;
+            font-weight: bold;
+            color: rgba(255, 255, 255, 0.03);
+            pointer-events: none;
+            text-align: center;
+            z-index: 1;
+        }
+
+        .info {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            text-align: center;
+            z-index: 2;
+        }
+
+        .title {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 18px;
+            letter-spacing: 8px;
+            text-transform: uppercase;
+            z-index: 2;
+        }
+    </style>
+</head>
+<body>
+    <div class="title">Temporal Particle Clock</div>
+    <div class="time-display" id="timeDisplay">00:00:00</div>
+    <div class="info">時間の流れを粒子で視覚化 | Move mouse to interact</div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const timeDisplay = document.getElementById('timeDisplay');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // Mouse interaction
+        const mouse = { x: width / 2, y: height / 2, active: false };
+
+        // Particle class representing a moment in time
+        class TimeParticle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                const now = new Date();
+                const hours = now.getHours();
+                const minutes = now.getMinutes();
+                const seconds = now.getSeconds();
+                const milliseconds = now.getMilliseconds();
+
+                // Position based on time
+                const angle = (seconds + milliseconds / 1000) * (Math.PI * 2) / 60 - Math.PI / 2;
+                const radius = Math.min(width, height) * 0.35;
+
+                this.x = width / 2 + Math.cos(angle) * radius;
+                this.y = height / 2 + Math.sin(angle) * radius;
+
+                // Color based on hour
+                const hue = (hours * 15 + minutes * 0.25) % 360;
+                this.color = `hsla(${hue}, 70%, 60%,`;
+                this.size = Math.random() * 4 + 1;
+
+                // Velocity based on time urgency
+                const urgency = (minutes / 60) * 2 + 0.5;
+                const vx = (Math.random() - 0.5) * urgency;
+                const vy = (Math.random() - 0.5) * urgency;
+                this.vx = vx;
+                this.vy = vy;
+
+                this.life = 1;
+                this.decay = Math.random() * 0.005 + 0.002;
+                this.gravity = 0.01;
+            }
+
+            update() {
+                this.vy += this.gravity;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+
+                // Mouse interaction
+                if (mouse.active) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 150) {
+                        const force = (150 - dist) / 150;
+                        this.vx -= (dx / dist) * force * 0.5;
+                        this.vy -= (dy / dist) * force * 0.5;
+                    }
+                }
+
+                if (this.life <= 0 || this.y > height + 50) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color + this.life + ')';
+                ctx.fill();
+
+                // Glow effect
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                ctx.fillStyle = this.color + (this.life * 0.3) + ')';
+                ctx.fill();
+            }
+        }
+
+        // Particles representing different time scales
+        class SecondParticle extends TimeParticle {
+            reset() {
+                super.reset();
+                const now = new Date();
+                const seconds = now.getSeconds();
+                const ms = now.getMilliseconds();
+                const angle = (seconds + ms / 1000) * (Math.PI * 2) / 60 - Math.PI / 2;
+                const radius = Math.min(width, height) * 0.35;
+                this.x = width / 2 + Math.cos(angle) * radius;
+                this.y = height / 2 + Math.sin(angle) * radius;
+                this.color = `hsla(${seconds * 6}, 80%, 65%,`;
+                this.size = Math.random() * 3 + 2;
+                this.decay = 0.01;
+            }
+        }
+
+        class MinuteParticle extends TimeParticle {
+            reset() {
+                super.reset();
+                const now = new Date();
+                const minutes = now.getMinutes();
+                const seconds = now.getSeconds();
+                const angle = (minutes + seconds / 60) * (Math.PI * 2) / 60 - Math.PI / 2;
+                const radius = Math.min(width, height) * 0.25;
+                this.x = width / 2 + Math.cos(angle) * radius;
+                this.y = height / 2 + Math.sin(angle) * radius;
+                this.color = `hsla(${minutes * 6 + 180}, 60%, 55%,`;
+                this.size = Math.random() * 5 + 3;
+                this.decay = 0.005;
+                this.gravity = 0.005;
+            }
+        }
+
+        class HourParticle extends TimeParticle {
+            reset() {
+                super.reset();
+                const now = new Date();
+                const hours = now.getHours() % 12;
+                const minutes = now.getMinutes();
+                const angle = (hours + minutes / 60) * (Math.PI * 2) / 12 - Math.PI / 2;
+                const radius = Math.min(width, height) * 0.15;
+                this.x = width / 2 + Math.cos(angle) * radius;
+                this.y = height / 2 + Math.sin(angle) * radius;
+                this.color = `hsla(${hours * 30 + 90}, 50%, 70%,`;
+                this.size = Math.random() * 7 + 5;
+                this.decay = 0.003;
+                this.gravity = 0.002;
+            }
+        }
+
+        // Create particle systems
+        const secondParticles = [];
+        const minuteParticles = [];
+        const hourParticles = [];
+
+        for (let i = 0; i < 60; i++) {
+            secondParticles.push(new SecondParticle());
+        }
+        for (let i = 0; i < 30; i++) {
+            minuteParticles.push(new MinuteParticle());
+        }
+        for (let i = 0; i < 12; i++) {
+            hourParticles.push(new HourParticle());
+        }
+
+        // Connection lines between nearby particles
+        function drawConnections(particles, maxDist) {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < maxDist) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        const alpha = (1 - dist / maxDist) * 0.2 * Math.min(particles[i].life, particles[j].life);
+                        ctx.strokeStyle = particles[i].color + alpha + ')';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // Draw clock face
+        function drawClockFace() {
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const radius = Math.min(width, height) * 0.4;
+
+            // Outer ring
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Hour markers
+            for (let i = 0; i < 12; i++) {
+                const angle = (i * Math.PI * 2) / 12 - Math.PI / 2;
+                const innerR = radius - 20;
+                const outerR = radius;
+
+                ctx.beginPath();
+                ctx.moveTo(centerX + Math.cos(angle) * innerR, centerY + Math.sin(angle) * innerR);
+                ctx.lineTo(centerX + Math.cos(angle) * outerR, centerY + Math.sin(angle) * outerR);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // Concentric circles for each time scale
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius * 0.875, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius * 0.625, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius * 0.375, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        // Update time display
+        function updateTimeDisplay() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            timeDisplay.textContent = `${hours}:${minutes}:${seconds}`;
+        }
+
+        // Animation loop
+        function animate() {
+            // Create trail effect
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            drawClockFace();
+            updateTimeDisplay();
+
+            // Update and draw particles
+            [...hourParticles, ...minuteParticles, ...secondParticles].forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // Draw connections
+            drawConnections(hourParticles, 100);
+            drawConnections(minuteParticles, 80);
+            drawConnections(secondParticles, 60);
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.active = false;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            mouse.active = true;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.active = false;
+        });
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>
