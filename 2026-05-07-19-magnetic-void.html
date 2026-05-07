@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magnetic Void - Interactive Particle Field</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 100;
+        }
+        
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 18px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            pointer-events: none;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div class="title">Magnetic Void</div>
+    <div class="info">Move mouse to influence particles • Click to create attraction point</div>
+    <canvas id="canvas"></canvas>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+        
+        // Mouse position
+        let mouse = {
+            x: width / 2,
+            y: height / 2,
+            active: false,
+            attractionMode: false
+        };
+        
+        // Particles
+        const particles = [];
+        const particleCount = 1500;
+        const connectionDistance = 80;
+        const repulsionRadius = 150;
+        const attractionStrength = 0.5;
+        const repulsionStrength = 2;
+        
+        // Colors - deep space palette
+        const colors = [
+            'hsla(280, 70%, 60%, 0.8)',
+            'hsla(260, 60%, 50%, 0.7)',
+            'hsla(300, 80%, 65%, 0.6)',
+            'hsla(240, 50%, 55%, 0.5)',
+            'hsla(320, 70%, 60%, 0.7)'
+        ];
+        
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 2 + 1;
+                this.baseRadius = this.radius;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.life = Math.random() * Math.PI * 2;
+                this.decay = Math.random() * 0.02 + 0.01;
+                this.originalX = this.x;
+                this.originalY = this.y;
+                this.returnStrength = Math.random() * 0.01 + 0.005;
+            }
+            
+            update() {
+                // Calculate distance to mouse
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (mouse.active) {
+                    if (mouse.attractionMode) {
+                        // Attraction mode - pull particles towards mouse
+                        if (distance < 300) {
+                            const force = (300 - distance) / 300 * attractionStrength;
+                            this.vx += (dx / distance) * force;
+                            this.vy += (dy / distance) * force;
+                        }
+                    } else {
+                        // Repulsion mode - push particles away
+                        if (distance < repulsionRadius) {
+                            const force = (repulsionRadius - distance) / repulsionRadius * repulsionStrength;
+                            this.vx -= (dx / distance) * force;
+                            this.vy -= (dy / distance) * force;
+                            this.radius = this.baseRadius * (1 + force);
+                        }
+                    }
+                }
+                
+                // Apply velocity with damping
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+                
+                // Gentle return to original position
+                const returnDx = this.originalX - this.x;
+                const returnDy = this.originalY - this.y;
+                this.vx += returnDx * this.returnStrength;
+                this.vy += returnDy * this.returnStrength;
+                
+                // Add subtle motion
+                this.life += this.decay;
+                this.vx += Math.sin(this.life) * 0.02;
+                this.vy += Math.cos(this.life) * 0.02;
+                
+                // Wrap around edges
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+                
+                // Reset radius gradually
+                this.radius += (this.baseRadius - this.radius) * 0.1;
+            }
+            
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                
+                // Glow effect
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+            }
+        }
+        
+        // Initialize particles
+        for (let i = 0; i < particleCount; i++) {
+            particles.push(new Particle());
+        }
+        
+        // Draw connections between nearby particles
+        function drawConnections() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < connectionDistance) {
+                        const opacity = (1 - distance / connectionDistance) * 0.3;
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(180, 150, 255, ${opacity})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+        
+        // Draw magnetic field visualization
+        function drawMagneticField() {
+            if (!mouse.active) return;
+            
+            const gradient = ctx.createRadialGradient(
+                mouse.x, mouse.y, 0,
+                mouse.x, mouse.y, mouse.attractionMode ? 300 : repulsionRadius
+            );
+            
+            if (mouse.attractionMode) {
+                gradient.addColorStop(0, 'rgba(255, 100, 150, 0.1)');
+                gradient.addColorStop(1, 'rgba(255, 100, 150, 0)');
+            } else {
+                gradient.addColorStop(0, 'rgba(100, 150, 255, 0.15)');
+                gradient.addColorStop(1, 'rgba(100, 150, 255, 0)');
+            }
+            
+            ctx.beginPath();
+            ctx.fillStyle = gradient;
+            ctx.arc(mouse.x, mouse.y, mouse.attractionMode ? 300 : repulsionRadius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Animation loop
+        function animate() {
+            // Semi-transparent black for trail effect
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            ctx.shadowBlur = 0;
+            
+            // Draw magnetic field
+            drawMagneticField();
+            
+            // Draw connections
+            drawConnections();
+            
+            // Update and draw particles
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+            
+            ctx.shadowBlur = 0;
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // Event listeners
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            mouse.active = false;
+        });
+        
+        canvas.addEventListener('mousedown', () => {
+            mouse.attractionMode = true;
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            mouse.attractionMode = false;
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            mouse.active = true;
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        });
+        
+        canvas.addEventListener('touchend', () => {
+            mouse.active = false;
+        });
+        
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            
+            // Reset particles to new dimensions
+            particles.forEach(particle => {
+                particle.originalX = Math.random() * width;
+                particle.originalY = Math.random() * height;
+            });
+        });
+        
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>
