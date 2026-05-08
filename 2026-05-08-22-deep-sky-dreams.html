@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Sky Dreams - 深空の夢</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Georgia', serif;
+        }
+        canvas {
+            display: block;
+        }
+        #story {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffd700;
+            font-size: 24px;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 2s ease;
+            pointer-events: none;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+            max-width: 80%;
+        }
+        #story.visible {
+            opacity: 1;
+        }
+        #hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 14px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="story"></div>
+    <div id="hint">星をクリックして繋げていってください</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const storyEl = document.getElementById('story');
+        const hintEl = document.getElementById('hint');
+
+        let width, height;
+        let stars = [];
+        let constellations = [];
+        let currentConstellation = [];
+        let stardust = [];
+        let mouse = { x: 0, y: 0 };
+
+        // 星座の物語ライブラリ
+        const constellationStories = [
+            "旅人の剣：迷える者を導く光となれ",
+            "夢見る魚：空を泳ぐ彼らの願いを聞け",
+            "時の車輪：永遠に回る運命の輪",
+            "風の翼：自由を求めて空を翔ける",
+            "心の琴：静寂の中で奏でる愛の歌",
+            "守護の盾：愛する者を守る聖なる盾",
+            "知恵の書：宇宙の真理が記されている",
+            "希望の灯：闇の中で輝く光の集い",
+            "勇気の冠：恐れを知らぬ者の証",
+            "調和の竪琴：天と地を繋く調和の音"
+        ];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initStars();
+        }
+
+        function initStars() {
+            stars = [];
+            const numStars = Math.floor((width * height) / 8000);
+            
+            for (let i = 0; i < numStars; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    size: Math.random() * 2 + 0.5,
+                    brightness: Math.random(),
+                    twinkleSpeed: Math.random() * 0.02 + 0.01,
+                    twinklePhase: Math.random() * Math.PI * 2,
+                    isConstellationStar: false,
+                    constellationId: null
+                });
+            }
+        }
+
+        function initConstellation() {
+            currentConstellation = [];
+        }
+
+        function getDistance(p1, p2) {
+            return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
+        }
+
+        function findNearestStar(x, y, maxDist = 30) {
+            let nearest = null;
+            let minDist = maxDist;
+
+            for (let star of stars) {
+                const dist = getDistance({ x, y }, star);
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearest = star;
+                }
+            }
+
+            return nearest;
+        }
+
+        function drawStars(time) {
+            for (let star of stars) {
+                const twinkle = Math.sin(time * star.twinkleSpeed + star.twinklePhase);
+                const brightness = star.brightness * 0.5 + 0.5 + twinkle * 0.3;
+                
+                let alpha;
+                if (star.isConstellationStar) {
+                    alpha = 0.9 + brightness * 0.1;
+                } else {
+                    alpha = brightness * 0.7;
+                }
+
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.fill();
+
+                // 星座の星はグロー効果
+                if (star.isConstellationStar) {
+                    const glow = ctx.createRadialGradient(
+                        star.x, star.y, 0,
+                        star.x, star.y, star.size * 8
+                    );
+                    glow.addColorStop(0, `rgba(255, 215, 0, ${0.3 * alpha})`);
+                    glow.addColorStop(1, 'rgba(255, 215, 0, 0)');
+                    ctx.beginPath();
+                    ctx.arc(star.x, star.y, star.size * 8, 0, Math.PI * 2);
+                    ctx.fillStyle = glow;
+                    ctx.fill();
+                }
+            }
+        }
+
+        function drawConstellationLines() {
+            // 既存の星座を描画
+            for (let constellation of constellations) {
+                if (constellation.stars.length < 2) continue;
+
+                ctx.beginPath();
+                ctx.moveTo(constellation.stars[0].x, constellation.stars[0].y);
+
+                for (let i = 1; i < constellation.stars.length; i++) {
+                    ctx.lineTo(constellation.stars[i].x, constellation.stars[i].y);
+                }
+
+                ctx.strokeStyle = 'rgba(255, 215, 0, 0.4)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            // 現在作成中の星座を描画
+            if (currentConstellation.length > 0) {
+                ctx.beginPath();
+                ctx.moveTo(currentConstellation[0].x, currentConstellation[0].y);
+
+                for (let i = 1; i < currentConstellation.length; i++) {
+                    ctx.lineTo(currentConstellation[i].x, currentConstellation[i].y);
+                }
+
+                // マウスへの線も描画
+                ctx.lineTo(mouse.x, mouse.y);
+
+                ctx.strokeStyle = 'rgba(255, 215, 0, 0.6)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+        }
+
+        function drawStardust() {
+            for (let i = stardust.length - 1; i >= 0; i--) {
+                const dust = stardust[i];
+                dust.x += dust.vx;
+                dust.y += dust.vy;
+                dust.life -= 0.02;
+                dust.vy += 0.02; // 軽い重力
+
+                if (dust.life <= 0) {
+                    stardust.splice(i, 1);
+                    continue;
+                }
+
+                ctx.beginPath();
+                ctx.arc(dust.x, dust.y, dust.size * dust.life, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${dust.life * 0.5})`;
+                ctx.fill();
+            }
+        }
+
+        function drawBackground(time) {
+            // 深淵のグラデーション
+            const gradient = ctx.createRadialGradient(
+                width / 2, height / 2, 0,
+                width / 2, height / 2, Math.max(width, height) / 1.5
+            );
+
+            const pulse = Math.sin(time * 0.0001) * 0.05;
+            gradient.addColorStop(0, `rgba(20, 10, 40, 1)`);
+            gradient.addColorStop(0.5, `rgba(10, 5, 30${pulse}, 1)`);
+            gradient.addColorStop(1, 'rgba(0, 0, 10, 1)');
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        function completeConstellation() {
+            if (currentConstellation.length < 3) {
+                initConstellation();
+                return;
+            }
+
+            // 星座を保存
+            const story = constellationStories[constellations.length % constellationStories.length];
+            const constellation = {
+                stars: [...currentConstellation],
+                story: story,
+                completedAt: Date.now()
+            };
+
+            // 星を星座の星としてマーク
+            for (let star of currentConstellation) {
+                star.isConstellationStar = true;
+                star.constellationId = constellations.length;
+            }
+
+            constellations.push(constellation);
+
+            // 物語を表示
+            showStory(story);
+
+            initConstellation();
+            hintEl.textContent = `${constellations.length}個目の星座が完成！`;
+        }
+
+        function showStory(text) {
+            storyEl.textContent = text;
+            storyEl.classList.add('visible');
+
+            setTimeout(() => {
+                storyEl.classList.remove('visible');
+            }, 4000);
+        }
+
+        function addStardust(x, y, count = 10) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 1 + 0.5;
+                stardust.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: Math.random() * 2 + 1,
+                    life: 1
+                });
+            }
+        }
+
+        function handleClick(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            const nearestStar = findNearestStar(x, y);
+
+            if (nearestStar) {
+                // 星をクリックした場合
+                if (currentConstellation.length > 0 && 
+                    currentConstellation[currentConstellation.length - 1] === nearestStar) {
+                    // 同じ星をもう一度クリック → 星座完成
+                    completeConstellation();
+                } else {
+                    // 星を星座に追加
+                    currentConstellation.push(nearestStar);
+                    nearestStar.isConstellationStar = true;
+                    addStardust(nearestStar.x, nearestStar.y, 15);
+                }
+            } else {
+                // 空白をクリック → 星座リセット
+                if (currentConstellation.length > 0) {
+                    // 作成中の星座の星をリセット
+                    for (let star of currentConstellation) {
+                        if (star.constellationId === null) {
+                            star.isConstellationStar = false;
+                        }
+                    }
+                    initConstellation();
+                }
+            }
+        }
+
+        function handleMouseMove(e) {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+
+            // マウス移動で微量の星屑を生成
+            if (Math.random() < 0.3) {
+                addStardust(mouse.x, mouse.y, 1);
+            }
+        }
+
+        function animate(time) {
+            drawBackground(time);
+            drawStars(time);
+            drawConstellationLines();
+            drawStardust();
+
+            requestAnimationFrame(animate);
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('click', handleClick);
+        canvas.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('resize', resize);
+
+        // 初期化
+        resize();
+        initConstellation();
+        animate(0);
+
+        // 5秒後にヒントを消す
+        setTimeout(() => {
+            hintEl.style.opacity = '0';
+            hintEl.style.transition = 'opacity 2s';
+        }, 5000);
+    </script>
+</body>
+</html>
