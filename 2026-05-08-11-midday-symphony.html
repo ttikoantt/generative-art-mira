@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Midday Symphony - Generative Art by Mira</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        canvas {
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 14px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            z-index: 10;
+        }
+
+        .info h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .info p {
+            opacity: 0.8;
+            margin-bottom: 4px;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .controls button {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h1>🎨 Midday Symphony</h1>
+        <p>Generative Art by Mira</p>
+        <p>Move your mouse to interact!</p>
+        <p id="time"></p>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <button id="reset">Reset</button>
+        <button id="pause">Pause</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas size
+        canvas.width = Math.min(window.innerWidth - 40, 900);
+        canvas.height = Math.min(window.innerHeight - 150, 700);
+
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let isPaused = false;
+        let time = 0;
+
+        // Color palette for midday
+        const colors = [
+            { h: 45, s: 100, l: 60 },  // Golden
+            { h: 200, s: 80, l: 55 },  // Sky blue
+            { h: 280, s: 70, l: 60 },  // Purple
+            { h: 340, s: 80, l: 65 },  // Pink
+            { h: 160, s: 70, l: 50 },  // Teal
+        ];
+
+        // Particle class
+        class Particle {
+            constructor(x, y, isOrbital = false) {
+                this.x = x;
+                this.y = y;
+                this.isOrbital = isOrbital;
+                this.reset();
+            }
+
+            reset() {
+                if (this.isOrbital) {
+                    this.angle = Math.random() * Math.PI * 2;
+                    this.radius = 100 + Math.random() * 150;
+                    this.speed = 0.005 + Math.random() * 0.01;
+                    this.baseSize = 2 + Math.random() * 4;
+                    this.color = colors[Math.floor(Math.random() * colors.length)];
+                } else {
+                    this.x = Math.random() * canvas.width;
+                    this.y = Math.random() * canvas.height;
+                    this.vx = (Math.random() - 0.5) * 2;
+                    this.vy = (Math.random() - 0.5) * 2;
+                    this.size = 1 + Math.random() * 3;
+                    this.color = colors[Math.floor(Math.random() * colors.length)];
+                    this.life = 1;
+                    this.decay = 0.002 + Math.random() * 0.005;
+                }
+            }
+
+            update() {
+                if (this.isOrbital) {
+                    // Orbital motion around center
+                    const centerX = canvas.width / 2;
+                    const centerY = canvas.height / 2;
+                    
+                    this.angle += this.speed;
+                    this.x = centerX + Math.cos(this.angle) * this.radius;
+                    this.y = centerY + Math.sin(this.angle) * this.radius;
+
+                    // React to mouse
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < 150) {
+                        const force = (150 - dist) / 150;
+                        this.radius += force * 2;
+                        this.speed += force * 0.001;
+                    }
+                    
+                    // Gentle return
+                    if (this.radius > 250) this.radius -= 1;
+                    if (this.speed > 0.02) this.speed -= 0.0001;
+
+                } else {
+                    // Floating particles
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    this.life -= this.decay;
+
+                    // Mouse interaction
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < 100) {
+                        const force = (100 - dist) / 100;
+                        this.vx += (dx / dist) * force * 0.5;
+                        this.vy += (dy / dist) * force * 0.5;
+                    }
+
+                    // Boundary check
+                    if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                    if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+
+                    // Reset if dead
+                    if (this.life <= 0) this.reset();
+                }
+            }
+
+            draw() {
+                const { h, s, l } = this.color;
+                const alpha = this.isOrbital ? 0.8 : this.life;
+                const size = this.isOrbital ? this.baseSize : this.size;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${h}, ${s}%, ${l}%, ${alpha})`;
+                ctx.fill();
+
+                // Glow effect
+                if (this.isOrbital) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, size * 2, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${h}, ${s}%, ${l}%, ${alpha * 0.3})`;
+                    ctx.fill();
+                }
+            }
+        }
+
+        // Geometric shapes
+        class GeometricShape {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height / 2;
+                this.size = 50 + Math.random() * 100;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.02;
+                this.sides = 3 + Math.floor(Math.random() * 5);
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.pulsePhase = Math.random() * Math.PI * 2;
+            }
+
+            update() {
+                this.rotation += this.rotationSpeed;
+                this.pulsePhase += 0.05;
+
+                // Mouse interaction
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 200) {
+                    this.rotationSpeed += 0.001;
+                    if (this.rotationSpeed > 0.05) this.rotationSpeed = 0.05;
+                } else {
+                    this.rotationSpeed *= 0.99;
+                }
+            }
+
+            draw() {
+                const { h, s, l } = this.color;
+                const pulse = 1 + Math.sin(this.pulsePhase) * 0.2;
+                const currentSize = this.size * pulse;
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                ctx.beginPath();
+                for (let i = 0; i < this.sides; i++) {
+                    const angle = (i / this.sides) * Math.PI * 2;
+                    const x = Math.cos(angle) * currentSize;
+                    const y = Math.sin(angle) * currentSize;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+
+                ctx.strokeStyle = `hsla(${h}, ${s}%, ${l}%, 0.6)`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = `hsla(${h}, ${s}%, ${l}%, 0.1)`;
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // Initialize particles and shapes
+        const orbitalParticles = Array.from({ length: 60 }, () => 
+            new Particle(0, 0, true)
+        );
+        const floatingParticles = Array.from({ length: 100 }, () => 
+            new Particle(0, 0, false)
+        );
+        const geometricShapes = Array.from({ length: 8 }, () => 
+            new GeometricShape()
+        );
+
+        // Mouse move handler
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+
+        // Touch support
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.touches[0].clientX - rect.left;
+            mouseY = e.touches[0].clientY - rect.top;
+        });
+
+        // Reset button
+        document.getElementById('reset').addEventListener('click', () => {
+            orbitalParticles.forEach(p => p.reset());
+            floatingParticles.forEach(p => p.reset());
+            geometricShapes.forEach(s => s.reset());
+        });
+
+        // Pause button
+        document.getElementById('pause').addEventListener('click', () => {
+            isPaused = !isPaused;
+            document.getElementById('pause').textContent = isPaused ? 'Play' : 'Pause';
+        });
+
+        // Update time display
+        function updateTime() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('ja-JP', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            document.getElementById('time').textContent = `🕐 ${timeStr}`;
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        // Draw connections between particles
+        function drawConnections(particles) {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 80) {
+                        const alpha = (1 - dist / 80) * 0.3;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            if (!isPaused) {
+                // Clear with fade effect
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                time += 0.01;
+
+                // Draw geometric shapes
+                geometricShapes.forEach(shape => {
+                    shape.update();
+                    shape.draw();
+                });
+
+                // Draw and connect orbital particles
+                orbitalParticles.forEach(particle => {
+                    particle.update();
+                    particle.draw();
+                });
+
+                // Draw floating particles
+                floatingParticles.forEach(particle => {
+                    particle.update();
+                    particle.draw();
+                });
+
+                // Draw connections
+                drawConnections(floatingParticles);
+
+                // Center glow
+                const gradient = ctx.createRadialGradient(
+                    canvas.width / 2, canvas.height / 2, 0,
+                    canvas.width / 2, canvas.height / 2, 200
+                );
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.05)');
+                gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Start animation
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            canvas.width = Math.min(window.innerWidth - 40, 900);
+            canvas.height = Math.min(window.innerHeight - 150, 700);
+        });
+    </script>
+</body>
+</html>
