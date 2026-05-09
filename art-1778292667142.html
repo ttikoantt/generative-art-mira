@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Midday Urban Pulse</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #f5f5f0;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #333;
+            text-align: center;
+            font-size: 14px;
+            opacity: 0.7;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">Midday Urban Pulse — クリックで信号切替</div>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // 都市グリッド（水平・垂直の街路）
+        const roads = [];
+        const roadCount = 5;
+        
+        for (let i = 0; i < roadCount; i++) {
+            // 水平道路
+            roads.push({
+                x1: 0, y1: (height / (roadCount + 1)) * (i + 1),
+                x2: width, y2: (height / (roadCount + 1)) * (i + 1),
+                horizontal: true
+            });
+            // 垂直道路
+            roads.push({
+                x1: (width / (roadCount + 1)) * (i + 1), y1: 0,
+                x2: (width / (roadCount + 1)) * (i + 1), y2: height,
+                horizontal: false
+            });
+        }
+
+        // 交差点の信号
+        const intersections = [];
+        const signalStates = new Map(); // 'horizontal' | 'vertical'
+
+        for (let h = 0; h < roadCount; h++) {
+            for (let v = 0; v < roadCount; v++) {
+                const ix = (width / (roadCount + 1)) * (v + 1);
+                const iy = (height / (roadCount + 1)) * (h + 1);
+                intersections.push({ x: ix, y: iy });
+                signalStates.set(`${ix},${iy}`, Math.random() > 0.5 ? 'horizontal' : 'vertical');
+            }
+        }
+
+        // 粒子（交通流）
+        class Particle {
+            constructor(road, speed) {
+                this.road = road;
+                this.speed = speed;
+                this.size = Math.random() * 4 + 3;
+                this.hue = Math.random() > 0.5 ? 190 : 30; // シアン or オレンジ
+                this.progress = Math.random();
+                this.waiting = false;
+            }
+
+            update() {
+                if (this.waiting) return;
+
+                this.progress += this.speed / 1000;
+
+                // 交差点チェック
+                for (const inter of intersections) {
+                    const atIntersection = this.atIntersection(inter);
+                    if (atIntersection) {
+                        const signal = signalStates.get(`${inter.x},${inter.y}`);
+                        const canPass = (this.road.horizontal && signal === 'horizontal') ||
+                                       (!this.road.horizontal && signal === 'vertical');
+                        if (!canPass) {
+                            this.waiting = true;
+                            setTimeout(() => { this.waiting = false; }, 500);
+                            return;
+                        }
+                    }
+                }
+            }
+
+            atIntersection(inter) {
+                const tolerance = 20;
+                let x, y;
+                if (this.road.horizontal) {
+                    x = this.road.x1 + (this.road.x2 - this.road.x1) * this.progress;
+                    y = this.road.y1;
+                } else {
+                    x = this.road.x1;
+                    y = this.road.y1 + (this.road.y2 - this.road.y1) * this.progress;
+                }
+                return Math.abs(x - inter.x) < tolerance && Math.abs(y - inter.y) < tolerance;
+            }
+
+            draw() {
+                let x, y;
+                if (this.road.horizontal) {
+                    x = this.road.x1 + (this.road.x2 - this.road.x1) * this.progress;
+                    y = this.road.y1;
+                } else {
+                    x = this.road.x1;
+                    y = this.road.y1 + (this.road.y2 - this.road.y1) * this.progress;
+                }
+
+                const glow = ctx.createRadialGradient(x, y, 0, x, y, this.size * 2);
+                glow.addColorStop(0, `hsla(${this.hue}, 80%, 60%, 0.8)`);
+                glow.addColorStop(1, `hsla(${this.hue}, 80%, 60%, 0)`);
+                ctx.fillStyle = glow;
+                ctx.beginPath();
+                ctx.arc(x, y, this.size * 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = `hsl(${this.hue}, 80%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            isOffScreen() {
+                return this.progress > 1;
+            }
+        }
+
+        const particles = [];
+
+        function spawnParticle() {
+            const road = roads[Math.floor(Math.random() * roads.length)];
+            const speed = Math.random() * 2 + 1;
+            particles.push(new Particle(road, speed));
+        }
+
+        // 定期的に粒子を生成
+        setInterval(spawnParticle, 200);
+
+        // 信号の自動切替
+        setInterval(() => {
+            for (const [key, state] of signalStates) {
+                signalStates.set(key, state === 'horizontal' ? 'vertical' : 'horizontal');
+            }
+        }, 3000);
+
+        // 爆発エフェクト
+        const explosions = [];
+
+        function createExplosion(x, y, hue) {
+            for (let i = 0; i < 20; i++) {
+                const angle = (Math.PI * 2 / 20) * i;
+                explosions.push({
+                    x, y,
+                    vx: Math.cos(angle) * (Math.random() * 3 + 2),
+                    vy: Math.sin(angle) * (Math.random() * 3 + 2),
+                    life: 1,
+                    hue
+                });
+            }
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(245, 245, 240, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 道路を描画
+            ctx.strokeStyle = 'rgba(200, 200, 190, 0.3)';
+            ctx.lineWidth = 40;
+            for (const road of roads) {
+                ctx.beginPath();
+                ctx.moveTo(road.x1, road.y1);
+                ctx.lineTo(road.x2, road.y2);
+                ctx.stroke();
+            }
+
+            // 交差点の信号を描画
+            for (const inter of intersections) {
+                const signal = signalStates.get(`${inter.x},${inter.y}`);
+                const color = signal === 'horizontal' ? '#00ff88' : '#ff4444';
+                
+                // 信号ランプ
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(inter.x, inter.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+
+                // グロー
+                const glow = ctx.createRadialGradient(inter.x, inter.y, 0, inter.x, inter.y, 20);
+                glow.addColorStop(0, color);
+                glow.addColorStop(1, 'transparent');
+                ctx.fillStyle = glow;
+                ctx.beginPath();
+                ctx.arc(inter.x, inter.y, 20, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 粒子を更新・描画
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw();
+                if (p.isOffScreen()) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            // 衝突チェック
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const p1 = particles[i];
+                    const p2 = particles[j];
+                    
+                    if (p1.road === p2.road) continue; // 同じ道路は無視
+
+                    let x1, y1, x2, y2;
+                    if (p1.road.horizontal) {
+                        x1 = p1.road.x1 + (p1.road.x2 - p1.road.x1) * p1.progress;
+                        y1 = p1.road.y1;
+                    } else {
+                        x1 = p1.road.x1;
+                        y1 = p1.road.y1 + (p1.road.y2 - p1.road.y1) * p1.progress;
+                    }
+
+                    if (p2.road.horizontal) {
+                        x2 = p2.road.x1 + (p2.road.x2 - p2.road.x1) * p2.progress;
+                        y2 = p2.road.y1;
+                    } else {
+                        x2 = p2.road.x1;
+                        y2 = p2.road.y1 + (p2.road.y2 - p2.road.y1) * p2.progress;
+                    }
+
+                    const dist = Math.sqrt((x1-x2)**2 + (y1-y2)**2);
+                    if (dist < 10 && !p1.waiting && !p2.waiting) {
+                        // 衝突！
+                        createExplosion((x1+x2)/2, (y1+y2)/2, p1.hue);
+                        particles.splice(j, 1);
+                        particles.splice(i, 1);
+                        break;
+                    }
+                }
+            }
+
+            // 爆発を描画
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                const e = explosions[i];
+                e.x += e.vx;
+                e.y += e.vy;
+                e.life -= 0.05;
+                
+                if (e.life <= 0) {
+                    explosions.splice(i, 1);
+                    continue;
+                }
+
+                ctx.fillStyle = `hsla(${e.hue}, 80%, 60%, ${e.life})`;
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, 3 * e.life, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // クリックで信号切替
+        canvas.addEventListener('click', () => {
+            for (const [key, state] of signalStates) {
+                signalStates.set(key, state === 'horizontal' ? 'vertical' : 'horizontal');
+            }
+        });
+
+        animate();
+    </script>
+</body>
+</html>
