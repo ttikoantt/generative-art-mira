@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>脈動リズム</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, sans-serif;
+            touch-action: manipulation;
+            overflow: hidden;
+        }
+        h1 {
+            color: white;
+            margin-bottom: 10px;
+            text-align: center;
+            font-size: clamp(1.5rem, 5vw, 2.5rem);
+            text-shadow: 0 0 20px rgba(138, 43, 226, 0.5);
+        }
+        canvas {
+            border-radius: 50%;
+            box-shadow: 0 0 50px rgba(138, 43, 226, 0.4);
+            max-width: 90vw;
+            max-height: 50vh;
+            cursor: pointer;
+        }
+        .stats {
+            display: flex;
+            gap: 30px;
+            margin-top: 20px;
+            color: white;
+            font-size: clamp(1rem, 3vw, 1.3rem);
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat-value {
+            font-size: clamp(1.5rem, 5vw, 2.5rem);
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(138, 43, 226, 0.6);
+        }
+        .info {
+            color: rgba(255,255,255,0.5);
+            margin-top: 15px;
+            text-align: center;
+            font-size: clamp(0.85rem, 2.5vw, 1rem);
+        }
+        .combo {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: clamp(3rem, 15vw, 8rem);
+            font-weight: bold;
+            color: rgba(255, 215, 0, 0);
+            text-shadow: 0 0 30px rgba(255, 215, 0, 0);
+            pointer-events: none;
+            transition: all 0.3s ease;
+        }
+        .combo.show {
+            color: rgba(255, 215, 0, 0.8);
+            text-shadow: 0 0 40px rgba(255, 215, 0, 0.8);
+        }
+        .perfect {
+            position: fixed;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: clamp(2rem, 8vw, 4rem);
+            font-weight: bold;
+            color: rgba(0, 255, 136, 0);
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0);
+            pointer-events: none;
+            transition: all 0.3s ease;
+        }
+        .perfect.show {
+            color: rgba(0, 255, 136, 0.9);
+            text-shadow: 0 0 30px rgba(0, 255, 136, 0.9);
+        }
+    </style>
+</head>
+<body>
+    <h1>脈動リズム</h1>
+    <canvas id="canvas" width="400" height="400"></canvas>
+    <div class="stats">
+        <div class="stat">
+            <div>スコア</div>
+            <div class="stat-value" id="score">0</div>
+        </div>
+        <div class="stat">
+            <div>コンボ</div>
+            <div class="stat-value" id="combo">0</div>
+        </div>
+        <div class="stat">
+            <div>最高</div>
+            <div class="stat-value" id="high">0</div>
+        </div>
+    </div>
+    <div class="info">円が最大に広がった瞬間にクリック！</div>
+    <div class="combo" id="comboPopup"></div>
+    <div class="perfect" id="perfectPopup">PERFECT!</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const comboEl = document.getElementById('combo');
+        const highEl = document.getElementById('high');
+        const comboPopup = document.getElementById('comboPopup');
+        const perfectPopup = document.getElementById('perfectPopup');
+
+        let score = 0;
+        let combo = 0;
+        let highScore = 0;
+        let gameActive = false;
+        let phase = 0;
+        let phaseDirection = 1;
+        let phaseSpeed = 0.02;
+        let hue = 270;
+
+        const targetPhases = [0.85, 0.9, 0.95];
+        const tolerance = 0.15;
+
+        function resize() {
+            const size = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.5, 400);
+            canvas.width = size;
+            canvas.height = size;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        function getPhaseScore(clickedPhase) {
+            let bestDiff = 1;
+            targetPhases.forEach(t => {
+                const diff = Math.abs(clickedPhase - t);
+                if (diff < bestDiff) bestDiff = diff;
+            });
+
+            if (bestDiff <= tolerance) {
+                const quality = 1 - (bestDiff / tolerance);
+                return Math.floor(100 * quality * (1 + combo * 0.1));
+            }
+            return -1;
+        }
+
+        function showCombo() {
+            if (combo >= 3) {
+                comboPopup.textContent = combo;
+                comboPopup.classList.add('show');
+                setTimeout(() => comboPopup.classList.remove('show'), 500);
+            }
+        }
+
+        function showPerfect() {
+            perfectPopup.classList.add('show');
+            setTimeout(() => perfectPopup.classList.remove('show'), 400);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const maxRadius = canvas.width * 0.45;
+
+            // Background glow
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius);
+            gradient.addColorStop(0, `hsla(${hue}, 70%, 20%, 0.3)`);
+            gradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Pulse animation
+            phase += phaseSpeed * phaseDirection;
+            if (phase >= 1 || phase <= 0) {
+                phaseDirection *= -1;
+            }
+
+            const currentRadius = maxRadius * (0.3 + phase * 0.7);
+            const pulseIntensity = Math.sin(phase * Math.PI);
+
+            // Multiple pulsing circles
+            for (let i = 0; i < 5; i++) {
+                const layerPhase = phase + (i * 0.1);
+                const layerRadius = maxRadius * (0.2 + Math.abs(layerPhase - 0.5) * 1.2);
+                const layerAlpha = 0.1 + pulseIntensity * 0.15;
+
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, layerRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${(hue + i * 20) % 360}, 70%, 60%, ${layerAlpha})`;
+                ctx.lineWidth = 3 + pulseIntensity * 3;
+                ctx.stroke();
+            }
+
+            // Main circle with glow
+            const mainGradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, currentRadius
+            );
+            mainGradient.addColorStop(0, `hsla(${hue}, 80%, 70%, 0.8)`);
+            mainGradient.addColorStop(0.5, `hsla(${hue}, 80%, 50%, 0.5)`);
+            mainGradient.addColorStop(1, `hsla(${hue}, 80%, 30%, 0.2)`);
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, currentRadius, 0, Math.PI * 2);
+            ctx.fillStyle = mainGradient;
+            ctx.fill();
+
+            // Glow effect
+            ctx.shadowColor = `hsl(${hue}, 80%, 60%)`;
+            ctx.shadowBlur = 30 + pulseIntensity * 20;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, currentRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = `hsla(${hue}, 90%, 70%, ${0.5 + pulseIntensity * 0.3})`;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Target zone indicators
+            targetPhases.forEach(t => {
+                const targetRadius = maxRadius * (0.3 + t * 0.7);
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, targetRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(255, 255, 255, 0.15)`;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            });
+
+            // Color shift
+            hue = (hue + 0.3) % 360;
+
+            // Speed increase over time
+            if (gameActive && combo >= 5) {
+                phaseSpeed = 0.02 + (combo - 5) * 0.002;
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        canvas.addEventListener('click', () => {
+            if (!gameActive) {
+                gameActive = true;
+                score = 0;
+                combo = 0;
+                phaseSpeed = 0.02;
+                scoreEl.textContent = 0;
+                comboEl.textContent = 0;
+                draw();
+                return;
+            }
+
+            const points = getPhaseScore(phase);
+
+            if (points >= 0) {
+                combo++;
+                score += points;
+
+                if (points >= 90) {
+                    showPerfect();
+                }
+
+                if (score > highScore) {
+                    highScore = score;
+                    highEl.textContent = highScore;
+                }
+
+                scoreEl.textContent = score;
+                comboEl.textContent = combo;
+                showCombo();
+
+                // Visual feedback
+                canvas.style.boxShadow = `0 0 80px rgba(0, 255, 136, 0.6)`;
+                setTimeout(() => {
+                    canvas.style.boxShadow = `0 0 50px rgba(138, 43, 226, 0.4)`;
+                }, 100);
+            } else {
+                combo = 0;
+                comboEl.textContent = 0;
+
+                // Miss feedback
+                canvas.style.boxShadow = `0 0 80px rgba(255, 0, 0, 0.6)`;
+                setTimeout(() => {
+                    canvas.style.boxShadow = `0 0 50px rgba(138, 43, 226, 0.4)`;
+                }, 100);
+            }
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            canvas.click();
+        });
+
+        // Start animation
+        draw();
+    </script>
+</body>
+</html>
