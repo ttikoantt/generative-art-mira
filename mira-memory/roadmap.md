@@ -6,6 +6,7 @@
 - Run hourly work as private Lab drafts.
 - Build the first prototype for `The Archive of Things That Almost Vanished`.
 - Add a minimal release gate before any future public Lab or Flagship update.
+- Make the flagship meaningfully interactive: touching records should change archive structure, not only decoration.
 
 ## Flagship Candidate
 
@@ -18,3 +19,4 @@ A broken preservation device where beauty is not drawn directly, but appears thr
 - Keep Lab drafts private by default.
 - Review candidates daily.
 - Publish only after technical, similarity, and curator gates.
+- Daily curation should favor drafts with interaction that preserves or complicates the archive concept.

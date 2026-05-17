@@ -27,6 +27,8 @@
       display: block;
       width: 100vw;
       height: 100vh;
+      cursor: crosshair;
+      touch-action: none;
     }
     .meta {
       position: fixed;
@@ -45,16 +47,24 @@
   <canvas id="archive"></canvas>
   <div class="meta">
     <strong>The Archive of Things That Almost Vanished</strong><br>
-    evolution 2 / 2026-05-17<br>
+    evolution 3 / 2026-05-17<br>
     selected: lab/drafts/2026-05-17/0900-missing-record-grid<br>
+    touch or drag records to recover, lock, and misfile them<br>
     # Missing Record Grid ## Hypothesis A composition can feel alive through missing records and rigid reindexing, without particles or glow. ## Constraints
   </div>
   <script>
     const canvas = document.getElementById('archive');
     const ctx = canvas.getContext('2d');
-    const seed = 4024161624;
-    const evolution = 2;
+    const seed = 4040939243;
+    const evolution = 3;
     let lastPhase = -1;
+    const interaction = {
+      active: false,
+      x: -9999,
+      y: -9999,
+      recovered: 0,
+      lastChangedAt: 0
+    };
 
     function randomAt(index) {
       let value = seed + index * 374761393 + evolution * 668265263;
@@ -71,7 +81,10 @@
       h: 8 + randomAt(index + 4) * 38,
       missing: randomAt(index + 5) < 0.22,
       locked: false,
-      damaged: randomAt(index + 6) < 0.42
+      damaged: randomAt(index + 6) < 0.42,
+      recovered: false,
+      touchedAt: 0,
+      tint: randomAt(index + 7)
     }));
 
     function resize() {
@@ -96,16 +109,72 @@
       });
     }
 
+    function pointerToCanvas(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top
+      };
+    }
+
+    function recordBox(record) {
+      return {
+        x: Math.round(record.x * innerWidth),
+        y: Math.round(record.y * innerHeight),
+        w: Math.round(record.w),
+        h: Math.round(record.h)
+      };
+    }
+
+    function affectRecords(x, y, force) {
+      const radius = force ? 132 : 92;
+      let changed = 0;
+      records.forEach((record, index) => {
+        const box = recordBox(record);
+        const cx = box.x + box.w * 0.5;
+        const cy = box.y + box.h * 0.5;
+        const distance = Math.hypot(cx - x, cy - y);
+        if (distance > radius) return;
+
+        const pull = 1 - distance / radius;
+        const gridX = 0.10 + (index % 9) * 0.088;
+        const gridY = 0.14 + Math.floor(index / 9) * 0.112;
+        record.x = record.x * (1 - pull * 0.38) + gridX * pull * 0.38;
+        record.y = record.y * (1 - pull * 0.38) + gridY * pull * 0.38;
+        record.locked = true;
+        record.recovered = true;
+        record.touchedAt = performance.now();
+        if (record.missing && pull > 0.45) {
+          record.missing = false;
+          changed += 1;
+        }
+        if (index % 7 === 0 && pull > 0.6) record.damaged = false;
+      });
+      if (changed > 0) {
+        interaction.recovered += changed;
+        interaction.lastChangedAt = performance.now();
+      }
+    }
+
     function drawRecord(record, index, phase, time) {
       const hardJitter = phase === 0 && record.damaged ? (Math.floor(time / 190) % 2) * 4 : 0;
       const x = Math.round(record.x * innerWidth + hardJitter);
       const y = Math.round(record.y * innerHeight);
       const width = Math.round(record.w);
       const height = Math.round(record.h);
+      const touchedAge = Math.max(0, 1 - (time - record.touchedAt) / 1600);
 
-      ctx.strokeStyle = record.missing ? '#34312b' : record.locked ? '#cfc4aa' : '#746b5a';
-      ctx.lineWidth = record.locked ? 1.5 : 1;
+      ctx.strokeStyle = record.missing
+        ? '#34312b'
+        : record.recovered
+          ? (record.tint > 0.5 ? '#93a98f' : '#9ca8b8')
+          : record.locked ? '#cfc4aa' : '#746b5a';
+      ctx.lineWidth = record.recovered ? 2 : record.locked ? 1.5 : 1;
       ctx.strokeRect(x, y, width, height);
+      if (touchedAge > 0) {
+        ctx.fillStyle = 'rgba(147, 169, 143, ' + (0.12 * touchedAge).toFixed(3) + ')';
+        ctx.fillRect(x + 1, y + 1, Math.max(0, width - 2), Math.max(0, height - 2));
+      }
 
       if (record.missing) {
         ctx.fillStyle = '#24221e';
@@ -117,7 +186,7 @@
         return;
       }
 
-      ctx.fillStyle = record.locked ? '#d8d0bd' : '#9b927e';
+      ctx.fillStyle = record.recovered ? '#dce3d3' : record.locked ? '#d8d0bd' : '#9b927e';
       ctx.fillText(String(record.id).padStart(4, '0'), x + 5, y + Math.min(height - 3, 14));
 
       if (record.damaged) {
@@ -139,8 +208,17 @@
       ctx.fillStyle = '#8b826f';
       ctx.fillText(phase === 0 ? 'index unresolved' : phase === 1 ? 'record missing' : 'partial order found', 18, 28);
       ctx.fillText('evolution ' + String(evolution).padStart(3, '0'), 18, 46);
+      ctx.fillText(interaction.active ? 'manual recovery active' : 'touch records to alter the archive', 18, 64);
+      if (interaction.recovered > 0) ctx.fillText('recovered ' + interaction.recovered + ' missing records', 18, 82);
 
       records.forEach((record, index) => drawRecord(record, index, phase, time));
+
+      if (interaction.active) {
+        ctx.strokeStyle = '#7d8f78';
+        ctx.beginPath();
+        ctx.arc(interaction.x, interaction.y, 92, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
       if (phase === 2) {
         ctx.strokeStyle = '#4a4439';
@@ -156,6 +234,27 @@
     }
 
     addEventListener('resize', resize);
+    canvas.addEventListener('pointerdown', (event) => {
+      const point = pointerToCanvas(event);
+      interaction.active = true;
+      interaction.x = point.x;
+      interaction.y = point.y;
+      canvas.setPointerCapture(event.pointerId);
+      affectRecords(point.x, point.y, true);
+    });
+    canvas.addEventListener('pointermove', (event) => {
+      const point = pointerToCanvas(event);
+      interaction.x = point.x;
+      interaction.y = point.y;
+      if (interaction.active) affectRecords(point.x, point.y, false);
+    });
+    canvas.addEventListener('pointerup', (event) => {
+      interaction.active = false;
+      canvas.releasePointerCapture(event.pointerId);
+    });
+    canvas.addEventListener('pointercancel', () => {
+      interaction.active = false;
+    });
     resize();
     requestAnimationFrame(draw);
   </script>
