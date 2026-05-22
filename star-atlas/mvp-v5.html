@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>365日の星図 — 365-Day Star Atlas</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#050a18;font-family:'Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif;-webkit-user-select:none;user-select:none;touch-action:none}
+
+.view{position:absolute;inset:0;transition:opacity .5s ease,transform .5s ease}
+.view.hidden{opacity:0;pointer-events:none;transform:translateY(20px)}
+
+/* ── Card View ── */
+.card-view{display:flex;align-items:center;justify-content:center}
+.card-container{position:relative;width:100%;height:calc(100% - 60px);perspective:1200px}
+.card{position:absolute;inset:0;transform-style:preserve-3d;transition:transform 1.2s cubic-bezier(.4,.0,.2,1);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.card.flipped{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:hidden}
+.face--front{background:#050a18}
+.face--back{transform:rotateY(180deg);background:linear-gradient(160deg,#0a0e2a 0%,#0f1438 40%,#1a0f3a 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;overflow-y:auto}
+.face canvas{display:block;width:100%;height:100%}
+.back-content{max-width:560px;text-align:center;color:#c8bfa0}
+.back-content .day{font-size:.85rem;letter-spacing:.35em;color:#8a7e60;margin-bottom:2.5rem}
+.back-content .day span{color:#d4a84b;font-weight:600}
+.back-content .poem{font-size:1.15rem;line-height:2.4;color:#b8ad8e;letter-spacing:.08em;margin-bottom:2.5rem}
+.back-content .poem .em{color:#d4a84b}
+.back-content .attribution{font-size:.75rem;color:#5a5445;letter-spacing:.25em}
+
+/* ── Navigation Arrows ── */
+.nav-arrow{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:48px;border:none;background:rgba(200,191,160,.08);color:rgba(200,191,160,.5);font-size:1.4rem;border-radius:50%;cursor:pointer;z-index:10;transition:background .3s,color .3s;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center}
+.nav-arrow:hover,.nav-arrow:active{background:rgba(200,191,160,.18);color:rgba(200,191,160,.8)}
+.nav-arrow.left{left:12px}
+.nav-arrow.right{right:12px}
+.nav-arrow:disabled{opacity:.2;pointer-events:none}
+
+/* ── Day Counter ── */
+.day-counter{position:absolute;top:16px;left:50%;transform:translateX(-50%);color:rgba(200,191,160,.4);font-size:.75rem;letter-spacing:.3em;z-index:10;pointer-events:none}
+.day-counter span{color:rgba(212,168,75,.6)}
+
+/* ── Today Badge ── */
+.today-badge{position:absolute;top:16px;right:16px;background:rgba(212,168,75,.12);color:rgba(212,168,75,.7);font-size:.6rem;letter-spacing:.2em;padding:4px 12px;border-radius:20px;border:1px solid rgba(212,168,75,.15);z-index:10;pointer-events:none;animation:badgePulse 3s ease-in-out infinite alternate}
+@keyframes badgePulse{0%{border-color:rgba(212,168,75,.1);box-shadow:none}100%{border-color:rgba(212,168,75,.25);box-shadow:0 0 15px rgba(212,168,75,.08)}}
+
+/* ── New Card Animation ── */
+.card.new-card{animation:newCardReveal 1.5s ease-out}
+@keyframes newCardReveal{0%{opacity:0;transform:scale(.9) rotateY(0deg)}30%{opacity:1;transform:scale(.95) rotateY(0deg)}100%{transform:scale(1) rotateY(0deg)}}
+
+/* ── Hint ── */
+.hint{position:absolute;bottom:72px;left:50%;transform:translateX(-50%);color:rgba(200,191,160,.3);font-size:.65rem;letter-spacing:.2em;pointer-events:none;animation:fadeHint 4s ease-in-out infinite alternate;z-index:10}
+.card.flipped~.hint{opacity:.1}
+@keyframes fadeHint{0%{opacity:.3}100%{opacity:.6}}
+
+/* ── Grid View ── */
+.grid-view{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:70px 16px 80px}
+.grid-header{text-align:center;color:#8a7e60;font-size:.8rem;letter-spacing:.4em;margin-bottom:1.5rem}
+.grid-header span{color:#d4a84b}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;max-width:800px;margin:0 auto}
+.grid-item{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;cursor:pointer;transition:transform .3s ease,box-shadow .3s ease;border:1px solid rgba(200,191,160,.06)}
+.grid-item:hover,.grid-item:active{transform:scale(1.03);box-shadow:0 4px 20px rgba(212,168,75,.12)}
+.grid-item.today-item{border-color:rgba(212,168,75,.2);box-shadow:0 0 20px rgba(212,168,75,.08)}
+.grid-item canvas{width:100%;height:100%;display:block}
+.grid-item .day-label{position:absolute;bottom:0;left:0;right:0;padding:6px 0;text-align:center;background:linear-gradient(transparent,rgba(5,10,24,.85));color:rgba(200,191,160,.6);font-size:.65rem;letter-spacing:.25em}
+.grid-item .day-label span{color:rgba(212,168,75,.7)}
+
+/* ── Star Map View ── */
+.starmap-view{overflow:hidden;touch-action:none}
+#starmapCanvas{display:block;width:100%;height:100%;cursor:grab}
+#starmapCanvas:active{cursor:grabbing}
+.starmap-label{position:absolute;top:16px;left:50%;transform:translateX(-50%);color:rgba(200,191,160,.35);font-size:.7rem;letter-spacing:.4em;pointer-events:none;z-index:5}
+.starmap-hint{position:absolute;bottom:72px;left:50%;transform:translateX(-50%);color:rgba(200,191,160,.2);font-size:.6rem;letter-spacing:.15em;pointer-events:none;z-index:5;animation:fadeHint 4s ease-in-out infinite alternate}
+
+/* ── Story Mode ── */
+.story-wave-overlay{position:fixed;inset:0;z-index:200;background:#050a18;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .6s ease}
+.story-wave-overlay.active{opacity:1;pointer-events:auto}
+.wave-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:500px;width:90%;padding:20px;max-height:80vh;overflow-y:auto}
+.wave-card{perspective:800px;aspect-ratio:3/4}
+.wave-card-inner{width:100%;height:100%;position:relative;transform-style:preserve-3d;transform:rotateY(0deg);transition:transform .8s cubic-bezier(.4,.0,.2,1)}
+.wave-card-inner.flipped{transform:rotateY(180deg)}
+.wave-card-front,.wave-card-back{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:6px;overflow:hidden}
+.wave-card-front{background:#0a0e2a}
+.wave-card-front canvas{width:100%;height:100%;display:block}
+.wave-card-back{transform:rotateY(180deg);background:linear-gradient(160deg,#0a0e2a,#1a0f3a);display:flex;align-items:center;justify-content:center;flex-direction:column}
+.wave-card-back .mini-day{color:#d4a84b;font-size:1.2rem;letter-spacing:.2em;font-weight:600}
+.wave-card-back .mini-text{color:#8a7e60;font-size:.5rem;letter-spacing:.1em;margin-top:4px;text-align:center;padding:0 6px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.wave-stars{position:absolute;inset:0;pointer-events:none}
+
+.story-view{overflow:hidden;background:#050a18}
+.story-scroll{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 0 80px 0;scroll-behavior:smooth}
+.story-scroll::-webkit-scrollbar{width:3px}
+.story-scroll::-webkit-scrollbar-track{background:transparent}
+.story-scroll::-webkit-scrollbar-thumb{background:rgba(212,168,75,.15);border-radius:3px}
+.story-header{padding:60px 24px 40px;text-align:center;position:relative}
+.story-header h1{font-size:1.6rem;letter-spacing:.4em;color:rgba(212,168,75,.7);font-weight:400;animation:storyTitleGlow 4s ease-in-out infinite alternate}
+.story-header .subtitle{font-size:.7rem;color:rgba(200,191,160,.25);letter-spacing:.5em;margin-top:12px}
+@keyframes storyTitleGlow{0%{text-shadow:0 0 20px rgba(212,168,75,.1)}100%{text-shadow:0 0 40px rgba(212,168,75,.25)}}
+#storyAmbientCanvas{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0}
+.story-fragment{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:30px 28px;text-align:center;opacity:0;transform:translateY(30px);transition:opacity .8s ease,transform .8s ease}
+.story-fragment.visible{opacity:1;transform:translateY(0)}
+.story-fragment .frag-day{font-size:.7rem;letter-spacing:.5em;color:rgba(138,126,96,.5);margin-bottom:16px}
+.story-fragment .frag-day span{color:rgba(212,168,75,.6);font-weight:600;font-size:.8rem}
+.story-fragment .frag-art{width:100%;aspect-ratio:3/4;max-width:320px;margin:0 auto 28px;border-radius:8px;overflow:hidden;box-shadow:0 4px 30px rgba(0,0,0,.4),0 0 60px rgba(212,168,75,.05)}
+.story-fragment .frag-art canvas{width:100%;height:100%;display:block}
+.story-fragment .frag-poem{font-size:1.05rem;line-height:2.6;color:rgba(184,173,142,.75);letter-spacing:.1em}
+.story-fragment .frag-poem .em{color:#d4a84b}
+.story-separator{display:flex;align-items:center;justify-content:center;padding:10px 0;max-width:400px;margin:0 auto;position:relative;z-index:1}
+.story-separator .sep-line{flex:1;height:1px;background:linear-gradient(to right,transparent,rgba(212,168,75,.12),transparent)}
+.story-separator .sep-star{width:20px;height:20px;display:flex;align-items:center;justify-content:center;color:rgba(212,168,75,.2);font-size:.5rem;margin:0 12px}
+.story-footer{padding:40px 24px 60px;text-align:center;position:relative;z-index:1}
+.story-footer .footer-text{font-size:.65rem;color:rgba(138,126,96,.3);letter-spacing:.4em}
+.story-footer .footer-star{color:rgba(212,168,75,.15);font-size:.9rem;margin-bottom:12px;display:block;letter-spacing:.6em}
+
+/* ── Bottom Nav ── */
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:56px;background:rgba(5,10,24,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;gap:20px;z-index:100;border-top:1px solid rgba(200,191,160,.06)}
+.nav-btn{background:none;border:none;color:rgba(200,191,160,.4);font-size:.6rem;letter-spacing:.12em;cursor:pointer;padding:8px 12px;transition:color .3s;display:flex;flex-direction:column;align-items:center;gap:4px}
+.nav-btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.nav-btn.active{color:#d4a84b}
+
+/* ── Responsive ── */
+@media(min-width:600px){
+  .grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:16px}
+  .wave-grid{grid-template-columns:repeat(4,1fr);gap:14px;max-width:600px}
+  .story-fragment .frag-poem{font-size:1.1rem}
+}
+@media(min-width:900px){
+  .grid{grid-template-columns:repeat(4,1fr);max-width:900px}
+  .wave-grid{grid-template-columns:repeat(5,1fr);max-width:700px}
+}
+</style>
+</head>
+<body>
+
+<!-- Card View -->
+<div class="view card-view" id="cardView">
+  <div class="day-counter" id="dayCounter">第 <span id="dayNum">1</span> 日 / 365 — Day <span id="dayNumRoman">I</span></div>
+  <div class="today-badge" id="todayBadge">今日のカード</div>
+  <div class="card-container" id="cardContainer"></div>
+  <button class="nav-arrow left" id="prevBtn" onclick="navigateCard(-1)">‹</button>
+  <button class="nav-arrow right" id="nextBtn" onclick="navigateCard(1)">›</button>
+  <div class="hint">tap to flip</div>
+</div>
+
+<!-- Grid View -->
+<div class="view grid-view hidden" id="gridView">
+  <div class="grid-header">365日の星図 — <span>三六五日</span>の星図</div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<!-- Star Map View -->
+<div class="view starmap-view hidden" id="starmapView">
+  <div class="starmap-label">365日の星図 — <span style="color:rgba(212,168,75,.4)">星図</span></div>
+  <canvas id="starmapCanvas"></canvas>
+  <div class="starmap-hint">drag to pan · pinch to zoom · tap a star</div>
+</div>
+
+<!-- Story View -->
+<div class="view story-view hidden" id="storyView">
+  <canvas id="storyAmbientCanvas"></canvas>
+  <div class="story-scroll" id="storyScroll"></div>
+</div>
+
+<!-- Story Wave Flip Overlay -->
+<div class="story-wave-overlay" id="storyWaveOverlay">
+  <canvas class="wave-stars" id="waveStarsCanvas"></canvas>
+  <div class="wave-grid" id="waveGrid"></div>
+</div>
+
+<!-- Bottom Nav -->
+<div class="bottom-nav">
+  <button class="nav-btn active" id="navCard" onclick="switchView('card')">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2.5"/></svg>
+    Card
+  </button>
+  <button class="nav-btn" id="navGrid" onclick="switchView('grid')">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>
+    Grid
+  </button>
+  <button class="nav-btn" id="navMap" onclick="switchView('map')">
+    <svg viewBox="0 0 24 24"><circle cx="6" cy="7" r="1.3"/><circle cx="18" cy="5" r="1.3"/><circle cx="12" cy="14" r="1.3"/><circle cx="5" cy="19" r="1.3"/><circle cx="19" cy="18" r="1.3"/><line x1="6" y1="7" x2="12" y2="14"/><line x1="12" y1="14" x2="18" y2="5"/><line x1="12" y1="14" x2="5" y2="19"/><line x1="12" y1="14" x2="19" y2="18"/></svg>
+    Map
+  </button>
+  <button class="nav-btn" id="navStory" onclick="enterStoryMode()">
+    <svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" fill="currentColor" opacity=".3" stroke="none"/><path d="M7 3v18M17 3v18M3 7h18M3 17h18" stroke-width="1"/></svg>
+    Story
+  </button>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ═══════════════════════════════════════════
+   ── STORY FRAGMENT POOL (30+ fragments) ──
+   ═══════════════════════════════════════════ */
+var STORY_POOL = [
+  /* Arrival (Days 1-5) */
+  '名もなき庭の\n<span class="em">星明かり</span>だけが道しるべ\n\n旅人は知らない\nこの空が<span class="em">何度も</span>巡るものだと\n\n一歩、また一歩\n夜の<span class="em">庭</span>はどこまでも続く',
+  '二度目の夜明けは<span class="em">訪れない</span>\nただ星が少しだけ\n<span class="em">近づいた</span>気がした\n\n足元には名前のない<span class="em">花</span>\n誰も見たことのない色で\n静かに<span class="em">咲いていた</span>',
+  '水の音が<span class="em">聞こえる</span>\n見えない泉がどこかで\n<span class="em">歌っている</span>\n\n旅人は<span class="em">目を閉じる</span>\n暗闇の中に\n無数の<span class="em">光の道</span>が浮かぶ',
+  '四日目の<span class="em">庭</span>で\n古い<span class="em">石碑</span>を見つけた\n\n何千年もの<span class="em">星の記録</span>\n読めない文字の中に\n誰かの<span class="em">祈り</span>が刻まれている',
+  '<span class="em">星座</span>が語りかける\n「ここが<span class="em">始まり</span>だ」と\n\n旅人は<span class="em">手を伸ばす</span>\n指先に触れた光は\n<span class="em">温かく</span>、そして<span class="em">遠い</span>',
+
+  /* Exploration (Days 6-12) */
+  '六つの<span class="em">月</span>が浮かぶ夜\nそれぞれが違う<span class="em">色</span>で\n庭を<span class="em">照らしている</span>\n\n影が<span class="em">踊る</span>\n風が<span class="em">囁く</span>\nここは時間の<span class="em">境界</span>',
+  '七日目の<span class="em">朝</span>\n初めて<span class="em">空が明るくなった</span>\n\nでも星は<span class="em">消えない</span>\n夜の庭の記憶が\nずっと<span class="em">輝き続ける</span>\n\n旅人は<span class="em">微笑む</span>\nまた<span class="em">夜</span>が来ることを知っているから',
+  '昨日見た<span class="em">星</span>が\n今日は少し<span class="em">色を変えている</span>\n\n庭は<span class="em">生きている</span>\n同じ場所を二度と\n通ることは<span class="em">ない</span>',
+  '<span class="em">苔むした道</span>が続く\n星屑が<span class="em">地面に落ちて</span>\n銀色の絨毯に<span class="em">なっている</span>\n\n足音が<span class="em">響かない</span>\nこの道は歩くために\n<span class="em">作られた</span>のだ',
+  '遠くで<span class="em">鐘の音</span>がする\n聞こえるのは<span class="em">一度だけ</span>\n\nどこかに<span class="em">誰か</span>がいる\n同じ空を<span class="em">見上げている</span>\nそれだけで<span class="em">心が温かい</span>',
+  '星座の<span class="em">線</span>が見え始めた\n空に描かれた<span class="em">地図</span>\n\n旅人は<span class="em">読み解く</span>\n星と星の<span class="em">間</span>に\n隠された<span class="em">意味</span>を',
+  '風が<span class="em">運んでくる</span>\n遠い場所の<span class="em">匂い</span>\n花と、土と、<span class="em">星の粉</span>\n\nここはどこでもある\nそして<span class="em">どこでもない</span>\n空と地の<span class="em">境界線</span>',
+
+  /* Wonder (Days 13-20) */
+  '夜の奥に<span class="em">光る池</span>\n水面には逆さまの<span class="em">星空</span>\n\n旅人は<span class="em">覗き込む</span>\nもう一人の自分が\n<span class="em">見返してくる</span>\n\n池の底には\n<span class="em">未来</span>が沈んでいる',
+  '<span class="em">光の雨</span>が降る\n星屑が<span class="em">音もなく</span>\n庭を<span class="em">濡らしていく</span>\n\n濡れた花は<span class="em">より鮮やかに</span>\n暗闇の中で\n<span class="em">息づいている</span>',
+  '歩くたびに<span class="em">道が生まれる</span>\n後ろを振り返ると\n<span class="em">光の足跡</span>が続いている\n\n誰かの<span class="em">導き</span>かもしれない\nいつか来る\n<span class="em">次の旅人</span>のために',
+  '<span class="em">透明な蝶</span>が飛ぶ\n羽に星の光が<span class="em">映り込んで</span>\n空を<span class="em">切り裂く</span>\n\n美しいものは<span class="em">怖い</span>\n目を逸らすことが\n<span class="em">できない</span>から',
+  '庭の<span class="em">中心</span>に近づいている\n星が<span class="em">密集していく</span>\n\n空と地面の<span class="em">区別</span>が\nなくなっていく\n<span class="em">全てが光</span>の中にある',
+  '<span class="em">声</span>が聞こえる\n言葉ではない<span class="em">旋律</span>\n星が<span class="em">歌っている</span>\n\nその歌を<span class="em">知っている</span>\n生まれる前から\n<span class="em">覚えていた</span>',
+  '庭の<span class="em">石</span>は温かい\n何千年もの<span class="em">記憶</span>を\n抱きしめている\n\n触れると<span class="em">映像</span>が流れる\n誰かの<span class="em">喜び</span>と\n<span class="em">悲しみ</span>が',
+  '空に<span class="em">扉</span>が現れた\n開いているのか\n閉じているのか<span class="em">わからない</span>\n\n旅人は<span class="em">待つ</span>\n扉が<span class="em">呼ぶ</span>まで\nもう少しだけ',
+
+  /* Challenge (Days 21-27) */
+  '道が<span class="em">消えた</span>\n星の光だけが<span class="em">頼り</span>\n\n進むべきか\n戻るべきか\n<span class="em">立ち止まる</span>べきか\n\n暗闇は<span class="em">怖くない</span>\nただ<span class="em">静か</span>だ',
+  '<span class="em">霧</span>が立ち込める\n星が隠れていく\n\nでも<span class="em">消えたわけではない</span>\n目に見えないだけで\nずっと<span class="em">上</span>にある',
+  '庭の<span class="em">出口</span>を探した\nでも<span class="em">入り口</span>も見つからない\n\nここは<span class="em">迷路</span>ではない\n最初から<span class="em">目的地</span>\nだったのかもしれない',
+  '二つの<span class="em">道</span>に分かれた\nどちらも<span class="em">同じ星空</span>の下\n\n選ぶ<span class="em">必要</span>はない\n<span class="em">両方</span>歩ける\n時間は<span class="em">無限</span>だから',
+  '足が<span class="em">止まった</span>\n目の前に<span class="em">崖</span>がある\n\n向こう岸には<span class="em">光</span>\nでも<span class="em">橋</span>はない\n\n飛べば<span class="em">届く</span>かもしれない\n落ちるかもしれない',
+  '<span class="em">孤独</span>が押し寄せる\n誰もいない<span class="em">広い庭</span>\n\nでも<span class="em">星</span>がいる\n何億もの<span class="em">光</span>が\n旅人を<span class="em">見守っている</span>',
+  '昨日の<span class="em">強さ</span>と\n今日の<span class="em">弱さ</span>は\n同じ<span class="em">源</span>から来る\n\n<span class="em">星</span>もまた\n光と闇の<span class="em">狭間</span>で\n生まれている',
+
+  /* Discovery (Days 28-32) */
+  '庭の<span class="em">秘密</span>を見つけた\n星は<span class="em">落ちていない</span>\n<span class="em">昇っている</span>のだ\n\n地面から空へ\n光の<span class="em">泉</span>が湧き出ている\nこの庭<span class="em">自体</span>が星なのだ',
+  '全ての<span class="em">花</span>が同時に\n咲いた<span class="em">瞬間</span>\n\n夜が<span class="em">昼</span>になり\n昼が<span class="em">夜</span>になる\n<span class="em">境界</span>が溶けた\n\n美しさに<span class="em">言葉</span>はない',
+  '<span class="em">地図</span>が完成した\n歩いた全ての道が\n一つの<span class="em">星座</span>になっている\n\nそれは<span class="em">旅人の形</span>\nこの一年の\n<span class="em">軌跡</span>そのもの',
+
+  /* Rest (Days 33-35) */
+  '古い<span class="em">木</span>の下で休む\n枝には<span class="em">星</span>が実っている\n\n一つもいで<span class="em">口にする</span>\n甘くて<span class="em">切ない</span>\n時間の<span class="em">味</span>がする',
+  '<span class="em">静寂</span>の中で\n自分の<span class="em">呼吸</span>が聞こえる\n\n生きている<span class="em">証拠</span>\n星と同じリズムで\n<span class="em">鼓動</span>している',
+  '瞼の裏に<span class="em">残る</span>\nこれまでの<span class="em">全ての夜</span>\n\n失ったものは<span class="em">ない</span>\n全てがここに<span class="em">ある</span>\nこの<span class="em">庭</span>の中に',
+  '旅の<span class="em">終わり</span>が見える\nでも<span class="em">終わり</span>ではない\n\nまた<span class="em">新しい庭</span>が\n待っている\n<span class="em">365日</span>の向こう側に'
+];
+
+/* ═══════════════════════════════════════════
+   ── SEED & STORY HELPERS ──
+   ═══════════════════════════════════════════ */
+
+function daySeed(day) {
+  /* Deterministic seed per day — uses golden-ratio-ish hash */
+  var a = day * 2654435761;
+  a = ((a >> 16) ^ a) * 0x45d9f3b;
+  a = ((a >> 16) ^ a) * 0x45d9f3b;
+  a = (a >> 16) ^ a;
+  return Math.abs(a) % 1000000;
+}
+
+function dayStory(day) {
+  /* Cycle through pool deterministically; add day-specific variation */
+  var idx = (day - 1) % STORY_POOL.length;
+  return STORY_POOL[idx];
+}
+
+var ROMAN_MAP = {1:'I',2:'II',3:'III',4:'IV',5:'V',6:'VI',7:'VII',8:'VIII',9:'IX',10:'X',
+  20:'XX',30:'XXX',40:'XL',50:'L',60:'LX',70:'LXX',80:'LXXX',90:'XC',100:'C',
+  200:'CC',300:'CCC'};
+function toRoman(n){
+  if(ROMAN_MAP[n]) return ROMAN_MAP[n];
+  if(n >= 100) return 'C' + toRoman(n-100);
+  if(n >= 90) return 'XC' + toRoman(n-90);
+  if(n >= 50) return 'L' + toRoman(n-50);
+  if(n >= 40) return 'XL' + toRoman(n-40);
+  if(n >= 10) return 'X' + toRoman(n-10);
+  if(n >= 9) return 'IX';
+  if(n >= 5) return 'V' + toRoman(n-5);
+  if(n >= 4) return 'IV';
+  if(n >= 1) return 'I' + toRoman(n-1);
+  return '';
+}
+
+/* ═══════════════════════════════════════════
+   ── PERSISTENCE ──
+   ═══════════════════════════════════════════ */
+
+var STORAGE_KEY = 'starAtlas_v5_cards';
+var SEEN_KEY = 'starAtlas_v5_seen';
+
+function loadCards(){
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  } catch(e){}
+  return null;
+}
+
+function saveCards(cards){
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+  } catch(e){}
+}
+
+function getSeenDays(){
+  try {
+    var raw = localStorage.getItem(SEEN_KEY);
+    if(raw) return JSON.parse(raw);
+  } catch(e){}
+  return {};
+}
+function markSeen(day){
+  var seen = getSeenDays();
+  seen[day] = true;
+  try { localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); } catch(e){}
+}
+function isNewlySeen(day){
+  var seen = getSeenDays();
+  return !seen[day];
+}
+
+/* Generate a card object for a given day */
+function generateCard(day){
+  return { day: day, seed: daySeed(day), story: dayStory(day) };
+}
+
+/* Get or create all cards up to today */
+function ensureCards(){
+  var cards = loadCards();
+  var today = getTodayDay();
+  if(!cards || !Array.isArray(cards)){
+    /* First visit: seed with 7 original cards + any days up to today */
+    cards = [];
+    for(var d = 1; d <= Math.min(today, 365); d++){
+      cards.push(generateCard(d));
+    }
+    saveCards(cards);
+  } else {
+    /* Check if new days need to be added */
+    var maxDay = 0;
+    for(var i = 0; i < cards.length; i++){
+      if(cards[i].day > maxDay) maxDay = cards[i].day;
+    }
+    if(today > maxDay){
+      for(var d = maxDay + 1; d <= Math.min(today, 365); d++){
+        cards.push(generateCard(d));
+      }
+      saveCards(cards);
+    }
+  }
+  return cards;
+}
+
+/* "Today" = days since epoch of a fixed start date */
+/* We use Jan 1 2026 as Day 1 for a clean mapping */
+var EPOCH_START = new Date(2026, 0, 1); /* Jan 1 2026 */
+function getTodayDay(){
+  var now = new Date();
+  var diff = Math.floor((now - EPOCH_START) / (1000 * 60 * 60 * 24));
+  return Math.max(1, Math.min(365, diff + 1));
+}
+
+/* ═══════════════════════════════════════════
+   ── SEEDED RANDOM / ART ──
+   ═══════════════════════════════════════════ */
+
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function hexAlpha(a){
+  var v = Math.round(Math.max(0, Math.min(1, a)) * 255);
+  return v.toString(16).padStart(2, "0");
+}
+
+/* ── State ── */
+var currentView = 'card';
+var currentDay = 0;
+var cardElements = [];
+var gridRendered = false;
+var mapInitialized = false;
+var mapAnimId = null;
+var storyModeActive = false;
+var storyAnimId = null;
+var storyBuilt = false;
+var CARDS = [];
+
+/* ── Card Art Engine (seeded) ── */
+function renderArt(canvas, seed, animated){
+  var ctx = canvas.getContext("2d");
+  var W = canvas.clientWidth;
+  var H = canvas.clientHeight;
+  if(W === 0 || H === 0) return null;
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  var rng = mulberry32(seed);
+  var palettes = [
+    { n1:"rgba(26,15,58,", n2:"rgba(15,30,80,", n3:"rgba(40,15,60,", n4:"rgba(10,25,50," },
+    { n1:"rgba(15,40,60,", n2:"rgba(20,25,70,", n3:"rgba(50,20,50,", n4:"rgba(10,35,45," },
+    { n1:"rgba(30,10,50,", n2:"rgba(10,20,65,", n3:"rgba(45,10,55,", n4:"rgba(5,30,55," },
+    { n1:"rgba(20,25,65,", n2:"rgba(35,15,55,", n3:"rgba(10,35,60,", n4:"rgba(25,10,45," },
+  ];
+  var pal = palettes[Math.floor(rng() * palettes.length)];
+
+  var starCount = Math.floor(W * H / 600);
+  var stars = [];
+  var starColors = ["#ffe8c0","#a0c4ff","#ffc0d0","#d4a84b"];
+  for(var i = 0; i < starCount; i++){
+    var hue = rng();
+    var color;
+    if(hue < 0.6) color = starColors[0];
+    else if(hue < 0.8) color = starColors[1];
+    else if(hue < 0.92) color = starColors[2];
+    else color = starColors[3];
+    stars.push({ x: rng() * W, y: rng() * H, r: rng() * 1.8 + 0.3, color: color, phase: rng() * Math.PI * 2, speed: rng() * 0.8 + 0.3, glow: rng() > 0.85 });
+  }
+
+  var nebulae = [];
+  var nebCount = 4 + Math.floor(rng() * 3);
+  var nebColors = [pal.n1, pal.n2, pal.n3, pal.n4];
+  for(var i = 0; i < nebCount; i++){
+    nebulae.push({ x: rng() * W, y: rng() * H, rx: 80 + rng() * 200, ry: 60 + rng() * 150, color: nebColors[Math.floor(rng() * nebColors.length)], alpha: 0.15 + rng() * 0.2, phase: rng() * Math.PI * 2, speed: 0.1 + rng() * 0.15 });
+  }
+
+  var vines = [];
+  var vineCount = Math.floor(W / 120) + 2;
+  var vineBaseColors = ["#1a3a2a","#1a2a3a","#2a1a3a","#1a3a3a"];
+  var vineGlowColors = ["#2a6a4a","#2a4a6a","#4a2a6a","#2a6a6a"];
+  for(var i = 0; i < vineCount; i++){
+    var baseX = (i / vineCount) * W + (rng() - 0.5) * 80;
+    var pts = [];
+    var x = baseX, y = H;
+    var segs = 8 + Math.floor(rng() * 6);
+    for(var j = 0; j <= segs; j++){
+      pts.push({ x: x, y: y });
+      var angle = -Math.PI / 2 + (rng() - 0.5) * 1.2;
+      var dist = 20 + rng() * 35;
+      x += Math.cos(angle) * dist;
+      y += Math.sin(angle) * dist;
+    }
+    vines.push({ points: pts, phase: rng() * Math.PI * 2, speed: 0.2 + rng() * 0.3, width: 1.2 + rng() * 1.5, color: vineBaseColors[Math.floor(rng() * vineBaseColors.length)], glow: vineGlowColors[Math.floor(rng() * vineGlowColors.length)] + "18" });
+  }
+
+  var fireflies = [];
+  var ffCount = Math.floor(W * H / 15000);
+  for(var i = 0; i < ffCount; i++){
+    fireflies.push({ x: rng() * W, y: H * 0.5 + rng() * H * 0.5, vx: (rng() - 0.5) * 0.3, vy: (rng() - 0.5) * 0.2, phase: rng() * Math.PI * 2, speed: 0.5 + rng() * 1, size: 1.5 + rng() * 2 });
+  }
+
+  function drawFrame(t){
+    var bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, "#050a18"); bg.addColorStop(0.4, "#0b1130"); bg.addColorStop(0.7, "#12183d"); bg.addColorStop(1, "#0a1025");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    for(var ni = 0; ni < nebulae.length; ni++){
+      var n = nebulae[ni];
+      var ox = Math.sin(t * n.speed + n.phase) * 20, oy = Math.cos(t * n.speed * 0.7 + n.phase) * 15;
+      var gr = ctx.createRadialGradient(n.x + ox, n.y + oy, 0, n.x + ox, n.y + oy, Math.max(n.rx, n.ry));
+      gr.addColorStop(0, n.color + n.alpha + ")"); gr.addColorStop(0.5, n.color + (n.alpha * 0.4) + ")"); gr.addColorStop(1, n.color + "0)");
+      ctx.fillStyle = gr;
+      ctx.beginPath(); ctx.ellipse(n.x + ox, n.y + oy, n.rx, n.ry, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    for(var si = 0; si < stars.length; si++){
+      var s = stars[si];
+      var twinkle = 0.5 + 0.5 * Math.sin(t * s.speed + s.phase);
+      var alpha = 0.3 + 0.7 * twinkle;
+      if(s.glow && s.r > 0.8){
+        var gr = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 6);
+        gr.addColorStop(0, s.color + hexAlpha(alpha * 0.35)); gr.addColorStop(1, s.color + "00");
+        ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(s.x, s.y, s.r * 6, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = alpha; ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+      if(s.r > 1.3 && twinkle > 0.7){
+        ctx.strokeStyle = s.color; ctx.lineWidth = 0.5; ctx.globalAlpha = alpha * 0.5;
+        var len = s.r * 4 * twinkle;
+        ctx.beginPath(); ctx.moveTo(s.x - len, s.y); ctx.lineTo(s.x + len, s.y); ctx.moveTo(s.x, s.y - len); ctx.lineTo(s.x, s.y + len); ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+    for(var vi = 0; vi < vines.length; vi++){
+      var v = vines[vi];
+      ctx.strokeStyle = v.color; ctx.lineWidth = v.width; ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.beginPath();
+      var pts = v.points;
+      for(var i = 0; i < pts.length; i++){
+        var sway = Math.sin(t * v.speed + v.phase + i * 0.5) * 4;
+        var px = pts[i].x + sway, py = pts[i].y;
+        if(i === 0) ctx.moveTo(px, py);
+        else { var prev = pts[i-1]; var prevSway = Math.sin(t * v.speed + v.phase + (i-1) * 0.5) * 4; ctx.quadraticCurveTo(prev.x + prevSway, prev.y, (prev.x + prevSway + px) / 2, (prev.y + py) / 2); }
+      }
+      ctx.stroke(); ctx.strokeStyle = v.glow; ctx.lineWidth = v.width + 4; ctx.stroke();
+    }
+    for(var fi = 0; fi < fireflies.length; fi++){
+      var f = fireflies[fi];
+      f.x += f.vx + Math.sin(t * 0.3 + f.phase) * 0.2; f.y += f.vy + Math.cos(t * 0.25 + f.phase) * 0.15;
+      if(f.x < -20) f.x = W + 20; if(f.x > W + 20) f.x = -20; if(f.y < H * 0.4) f.y = H; if(f.y > H + 20) f.y = H * 0.4;
+      var pulse = 0.3 + 0.7 * Math.max(0, Math.sin(t * f.speed + f.phase));
+      var gr = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.size * 5);
+      gr.addColorStop(0, "rgba(212,168,75," + (pulse * 0.6) + ")"); gr.addColorStop(0.3, "rgba(180,140,50," + (pulse * 0.2) + ")"); gr.addColorStop(1, "rgba(180,140,50,0)");
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(f.x, f.y, f.size * 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "rgba(255,232,180," + pulse + ")"; ctx.beginPath(); ctx.arc(f.x, f.y, f.size * 0.6, 0, Math.PI * 2); ctx.fill();
+    }
+    if(animated) return requestAnimationFrame(drawFrame);
+  }
+
+  if(animated){ return requestAnimationFrame(drawFrame); }
+  else { drawFrame(0); drawFrame(1.5); return null; }
+}
+
+
+/* ═══════════════════════════════════════════
+   ── STAR MAP ──
+   ═══════════════════════════════════════════ */
+
+var MAP_WIDTH = 2400;
+var MAP_HEIGHT = 1800;
+
+var mapNodes = [];
+var constellationLines = [];
+
+/* Generate map positions dynamically */
+function generateMapNodes(cards){
+  mapNodes = [];
+  var len = cards.length;
+  for(var i = 0; i < len; i++){
+    var rng = mulberry32(cards[i].seed + 777);
+    /* Spiral layout with some randomness */
+    var angle = (i / len) * Math.PI * 4 + rng() * 0.8;
+    var radius = 200 + (i / len) * 700 + rng() * 80;
+    mapNodes.push({
+      day: cards[i].day,
+      wx: MAP_WIDTH / 2 + Math.cos(angle) * radius,
+      wy: MAP_HEIGHT / 2 + Math.sin(angle) * radius
+    });
+  }
+  /* Generate constellation lines: connect sequential pairs + some cross-links */
+  constellationLines = [];
+  for(var i = 0; i < len - 1; i++){
+    constellationLines.push([i, i + 1]);
+  }
+  /* Add some cross-links for visual interest */
+  for(var i = 0; i < len - 3; i += 3){
+    if(i + 3 < len) constellationLines.push([i, i + 3]);
+  }
+}
+
+var mapState = {
+  cx: MAP_WIDTH / 2, cy: MAP_HEIGHT / 2, zoom: 1,
+  dragging: false, dragStartX: 0, dragStartY: 0, dragStartCx: 0, dragStartCy: 0,
+  pinchStartDist: 0, pinchStartZoom: 1, pinchStartCx: 0, pinchStartCy: 0,
+  touchStart: null, bgStars: [], thumbnails: [], thumbnailsReady: false,
+};
+
+function initMapBgStars(){
+  var rng = mulberry32(9999);
+  mapState.bgStars = [];
+  for(var i = 0; i < 600; i++){
+    mapState.bgStars.push({ x: rng() * MAP_WIDTH, y: rng() * MAP_HEIGHT, r: rng() * 1.2 + 0.2, phase: rng() * Math.PI * 2, speed: 0.3 + rng() * 0.6, alpha: 0.15 + rng() * 0.35 });
+  }
+}
+
+function generateMapThumbnails(){
+  mapState.thumbnails = [];
+  var size = 80;
+  CARDS.forEach(function(data){
+    var c = document.createElement('canvas');
+    c.style.width = size + 'px'; c.style.height = size + 'px';
+    c.width = size * 2; c.height = size * 2;
+    var ctx = c.getContext('2d');
+    ctx.setTransform(2, 0, 0, 2, 0, 0);
+    var rng = mulberry32(data.seed);
+    var bg = ctx.createLinearGradient(0, 0, 0, size);
+    bg.addColorStop(0, '#050a18'); bg.addColorStop(0.5, '#0b1130'); bg.addColorStop(1, '#0a1025');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, size, size);
+    var sc = Math.floor(size * size / 400);
+    var colors = ['#ffe8c0','#a0c4ff','#ffc0d0','#d4a84b'];
+    for(var i = 0; i < sc; i++){
+      ctx.globalAlpha = 0.3 + rng() * 0.6;
+      ctx.fillStyle = colors[Math.floor(rng() * colors.length)];
+      ctx.beginPath(); ctx.arc(rng() * size, rng() * size, rng() * 1.2 + 0.2, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 0.15;
+    var nebColors = ['rgba(80,40,120,','rgba(30,60,120,','rgba(100,30,80,'];
+    for(var i = 0; i < 2; i++){
+      var nc = nebColors[Math.floor(rng() * nebColors.length)];
+      var nx = rng() * size, ny = rng() * size, nr = 15 + rng() * 25;
+      var gr = ctx.createRadialGradient(nx, ny, 0, nx, ny, nr);
+      gr.addColorStop(0, nc + '0.3)'); gr.addColorStop(1, nc + '0)');
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(nx, ny, nr, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    var maskC = document.createElement('canvas');
+    maskC.width = size * 2; maskC.height = size * 2;
+    var mctx = maskC.getContext('2d');
+    mctx.setTransform(2, 0, 0, 2, 0, 0);
+    mctx.beginPath(); mctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2); mctx.clip();
+    mctx.drawImage(c, 0, 0, size, size);
+    mapState.thumbnails.push(maskC);
+  });
+  mapState.thumbnailsReady = true;
+}
+
+function worldToScreen(wx, wy, canvasW, canvasH){
+  return { sx: (wx - mapState.cx) * mapState.zoom + canvasW / 2, sy: (wy - mapState.cy) * mapState.zoom + canvasH / 2 };
+}
+function screenToWorld(sx, sy, canvasW, canvasH){
+  return { wx: (sx - canvasW / 2) / mapState.zoom + mapState.cx, wy: (sy - canvasH / 2) / mapState.zoom + mapState.cy };
+}
+
+function drawStarMap(time){
+  var canvas = document.getElementById('starmapCanvas');
+  var ctx = canvas.getContext('2d');
+  var W = canvas.clientWidth; var H = canvas.clientHeight;
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if(canvas.width !== W * dpr || canvas.height !== H * dpr){ canvas.width = W * dpr; canvas.height = H * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  var bgGrad = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H));
+  bgGrad.addColorStop(0, '#080e24'); bgGrad.addColorStop(1, '#030610');
+  ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
+  var z = mapState.zoom;
+  for(var si = 0; si < mapState.bgStars.length; si++){
+    var s = mapState.bgStars[si];
+    var p = worldToScreen(s.x, s.y, W, H);
+    if(p.sx < -10 || p.sx > W + 10 || p.sy < -10 || p.sy > H + 10) continue;
+    var twinkle = 0.5 + 0.5 * Math.sin(time * s.speed + s.phase);
+    ctx.globalAlpha = s.alpha * twinkle; ctx.fillStyle = '#c8bfa0';
+    ctx.beginPath(); ctx.arc(p.sx, p.sy, Math.max(0.3, s.r * z * 0.5), 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  /* Constellation lines — draw subset visible */
+  for(var li = 0; li < constellationLines.length; li++){
+    var line = constellationLines[li];
+    if(line[0] >= mapNodes.length || line[1] >= mapNodes.length) continue;
+    var a = mapNodes[line[0]], b = mapNodes[line[1]];
+    var pa = worldToScreen(a.wx, a.wy, W, H); var pb = worldToScreen(b.wx, b.wy, W, H);
+    var pulse = 0.3 + 0.15 * Math.sin(time * 0.5);
+    ctx.strokeStyle = 'rgba(212,168,75,' + (pulse * 0.12) + ')'; ctx.lineWidth = 8 * z; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(pa.sx, pa.sy); ctx.lineTo(pb.sx, pb.sy); ctx.stroke();
+    ctx.strokeStyle = 'rgba(212,168,75,' + (pulse * 0.25) + ')'; ctx.lineWidth = 3 * z;
+    ctx.beginPath(); ctx.moveTo(pa.sx, pa.sy); ctx.lineTo(pb.sx, pb.sy); ctx.stroke();
+    ctx.strokeStyle = 'rgba(212,168,75,' + (pulse * 0.5) + ')'; ctx.lineWidth = 1 * z;
+    ctx.beginPath(); ctx.moveTo(pa.sx, pa.sy); ctx.lineTo(pb.sx, pb.sy); ctx.stroke();
+  }
+  var nodeRadius = 32;
+  for(var i = 0; i < mapNodes.length; i++){
+    var node = mapNodes[i];
+    var p = worldToScreen(node.wx, node.wy, W, H);
+    var r = nodeRadius * z;
+    if(p.sx < -r * 3 || p.sx > W + r * 3 || p.sy < -r * 3 || p.sy > H + r * 3) continue;
+    var pulse = 0.6 + 0.4 * Math.sin(time * 0.8 + i * 1.1);
+    var glowR = r * 2.5;
+    var glow = ctx.createRadialGradient(p.sx, p.sy, r * 0.5, p.sx, p.sy, glowR);
+    glow.addColorStop(0, 'rgba(212,168,75,' + (0.15 * pulse) + ')');
+    glow.addColorStop(0.5, 'rgba(212,168,75,' + (0.05 * pulse) + ')');
+    glow.addColorStop(1, 'rgba(212,168,75,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(p.sx, p.sy, glowR, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(212,168,75,' + (0.4 * pulse) + ')'; ctx.lineWidth = 1.5 * z;
+    ctx.beginPath(); ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = 'rgba(8,14,36,0.85)'; ctx.beginPath(); ctx.arc(p.sx, p.sy, r - 1, 0, Math.PI * 2); ctx.fill();
+    if(mapState.thumbnailsReady && mapState.thumbnails[i]){
+      ctx.save(); ctx.beginPath(); ctx.arc(p.sx, p.sy, r - 2, 0, Math.PI * 2); ctx.clip();
+      ctx.drawImage(mapState.thumbnails[i], p.sx - r, p.sy - r, r * 2, r * 2); ctx.restore();
+    }
+    ctx.fillStyle = 'rgba(200,191,160,' + (0.6 + 0.3 * pulse) + ')';
+    ctx.font = (11 * z) + 'px "Hiragino Mincho ProN","Yu Mincho",serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText('第' + node.day + '日', p.sx, p.sy + r + 6 * z);
+  }
+  mapAnimId = requestAnimationFrame(function(ts){ drawStarMap(ts / 1000); });
+}
+
+function hitTestNode(sx, sy, canvasW, canvasH){
+  var hitR = 32 * mapState.zoom + 10;
+  for(var i = 0; i < mapNodes.length; i++){
+    var p = worldToScreen(mapNodes[i].wx, mapNodes[i].wy, canvasW, canvasH);
+    var dx = sx - p.sx, dy = sy - p.sy;
+    if(dx * dx + dy * dy < hitR * hitR) return i;
+  }
+  return -1;
+}
+
+function initStarMap(){
+  if(mapInitialized) return;
+  mapInitialized = true;
+  generateMapNodes(CARDS);
+  initMapBgStars(); generateMapThumbnails();
+  var canvas = document.getElementById('starmapCanvas');
+  mapState.cx = MAP_WIDTH / 2; mapState.cy = MAP_HEIGHT / 2;
+  var W = canvas.clientWidth, H = canvas.clientHeight;
+  var fitZoom = Math.min(W / (MAP_WIDTH * 1.2), H / (MAP_HEIGHT * 1.2));
+  mapState.zoom = Math.max(0.4, fitZoom);
+
+  /* Mouse */
+  canvas.addEventListener('mousedown', function(e){
+    mapState.dragging = true; mapState.dragStartX = e.clientX; mapState.dragStartY = e.clientY;
+    mapState.dragStartCx = mapState.cx; mapState.dragStartCy = mapState.cy;
+    mapState.touchStart = { x: e.clientX, y: e.clientY, time: Date.now() };
+  });
+  window.addEventListener('mousemove', function(e){
+    if(!mapState.dragging) return;
+    mapState.cx = mapState.dragStartCx - (e.clientX - mapState.dragStartX) / mapState.zoom;
+    mapState.cy = mapState.dragStartCy - (e.clientY - mapState.dragStartY) / mapState.zoom;
+  });
+  window.addEventListener('mouseup', function(e){
+    if(mapState.dragging && mapState.touchStart){
+      var dx = e.clientX - mapState.touchStart.x, dy = e.clientY - mapState.touchStart.y;
+      if(Math.sqrt(dx*dx+dy*dy) < 10 && Date.now() - mapState.touchStart.time < 300){
+        var rect = document.getElementById('starmapCanvas').getBoundingClientRect();
+        var hit = hitTestNode(e.clientX - rect.left, e.clientY - rect.top, rect.width, rect.height);
+        if(hit >= 0){ currentDay = hit; switchView('card'); }
+      }
+    }
+    mapState.dragging = false; mapState.touchStart = null;
+  });
+  canvas.addEventListener('wheel', function(e){
+    e.preventDefault();
+    var rect = canvas.getBoundingClientRect(); var mx = e.clientX - rect.left; var my = e.clientY - rect.top;
+    var before = screenToWorld(mx, my, rect.width, rect.height);
+    mapState.zoom = Math.max(0.15, Math.min(3, mapState.zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
+    var after = screenToWorld(mx, my, rect.width, rect.height);
+    mapState.cx += before.wx - after.wx; mapState.cy += before.wy - after.wy;
+  }, { passive: false });
+
+  /* Touch */
+  var touches = [];
+  canvas.addEventListener('touchstart', function(e){
+    e.preventDefault(); touches = Array.from(e.touches);
+    if(touches.length === 1){
+      mapState.dragging = true; mapState.dragStartX = touches[0].clientX; mapState.dragStartY = touches[0].clientY;
+      mapState.dragStartCx = mapState.cx; mapState.dragStartCy = mapState.cy;
+      mapState.touchStart = { x: touches[0].clientX, y: touches[0].clientY, time: Date.now() };
+    } else if(touches.length === 2){
+      mapState.dragging = false;
+      var dx = touches[0].clientX - touches[1].clientX, dy = touches[0].clientY - touches[1].clientY;
+      mapState.pinchStartDist = Math.sqrt(dx*dx+dy*dy); mapState.pinchStartZoom = mapState.zoom;
+      mapState.dragStartCx = mapState.cx; mapState.dragStartCy = mapState.cy;
+      mapState.pinchStartCx = (touches[0].clientX + touches[1].clientX) / 2;
+      mapState.pinchStartCy = (touches[0].clientY + touches[1].clientY) / 2;
+    }
+  }, { passive: false });
+  canvas.addEventListener('touchmove', function(e){
+    e.preventDefault(); touches = Array.from(e.touches);
+    if(touches.length === 1 && mapState.dragging){
+      mapState.cx = mapState.dragStartCx - (touches[0].clientX - mapState.dragStartX) / mapState.zoom;
+      mapState.cy = mapState.dragStartCy - (touches[0].clientY - mapState.dragStartY) / mapState.zoom;
+    } else if(touches.length === 2){
+      var dx = touches[0].clientX - touches[1].clientX, dy = touches[0].clientY - touches[1].clientY;
+      mapState.zoom = Math.max(0.15, Math.min(3, mapState.pinchStartZoom * Math.sqrt(dx*dx+dy*dy) / Math.max(1, mapState.pinchStartDist)));
+      var midX = (touches[0].clientX + touches[1].clientX) / 2, midY = (touches[0].clientY + touches[1].clientY) / 2;
+      mapState.cx = mapState.dragStartCx - (midX - mapState.pinchStartCx) / mapState.zoom;
+      mapState.cy = mapState.dragStartCy - (midY - mapState.pinchStartCy) / mapState.zoom;
+    }
+  }, { passive: false });
+  canvas.addEventListener('touchend', function(e){
+    if(touches.length === 1 && mapState.touchStart){
+      var dx = touches[0].clientX - mapState.touchStart.x, dy = touches[0].clientY - mapState.touchStart.y;
+      if(Math.sqrt(dx*dx+dy*dy) < 15 && Date.now() - mapState.touchStart.time < 400){
+        var rect = canvas.getBoundingClientRect();
+        var hit = hitTestNode(touches[0].clientX - rect.left, touches[0].clientY - rect.top, rect.width, rect.height);
+        if(hit >= 0){ currentDay = hit; switchView('card'); }
+      }
+    }
+    touches = Array.from(e.touches); mapState.dragging = false; mapState.touchStart = null;
+  }, { passive: false });
+}
+
+function startMapAnimation(){ if(mapAnimId) return; mapAnimId = requestAnimationFrame(function(ts){ drawStarMap(ts / 1000); }); }
+function stopMapAnimation(){ if(mapAnimId){ cancelAnimationFrame(mapAnimId); mapAnimId = null; } }
+
+
+/* ═══════════════════════════════════════════
+   ── CARD VIEW ──
+   ═══════════════════════════════════════════ */
+
+var container = document.getElementById("cardContainer");
+
+function buildCards(){
+  container.innerHTML = '';
+  cardElements = [];
+  CARDS.forEach(function(data, idx){
+    var card = document.createElement("div");
+    card.className = "card" + (idx !== currentDay ? " hidden-card" : "");
+    card.dataset.idx = idx;
+    var front = document.createElement("div"); front.className = "face face--front";
+    var canvas = document.createElement("canvas"); front.appendChild(canvas);
+    var back = document.createElement("div"); back.className = "face face--back";
+    back.innerHTML = '<div class="back-content"><div class="day">第 <span>' + data.day + '</span> 日 — Day <span>' + toRoman(data.day) + '</span></div><div class="poem">' + data.story.replace(/\n/g, '<br>') + '</div><div class="attribution">365日の星図 — 三六五日の星図</div></div>';
+    card.appendChild(front); card.appendChild(back); container.appendChild(card);
+    card.addEventListener("click", function(){ card.classList.toggle("flipped"); });
+    cardElements.push({ el: card, canvas: canvas, animId: null });
+  });
+  showCard(currentDay);
+}
+
+function showCard(idx){
+  cardElements.forEach(function(c, i){
+    if(i === idx){
+      c.el.classList.remove("hidden-card"); c.el.style.display = "";
+      if(!c.animId) c.animId = renderArt(c.canvas, CARDS[idx].seed, true);
+    } else {
+      c.el.classList.add("hidden-card");
+      if(c.animId){ cancelAnimationFrame(c.animId); c.animId = null; }
+    }
+  });
+  var data = CARDS[idx];
+  document.getElementById("dayNum").textContent = data.day;
+  document.getElementById("dayNumRoman").textContent = toRoman(data.day);
+
+  /* Today badge visibility */
+  var todayBadge = document.getElementById("todayBadge");
+  var today = getTodayDay();
+  if(data.day === today){
+    todayBadge.style.display = '';
+    /* New card animation */
+    if(isNewlySeen(data.day)){
+      c = cardElements[idx];
+      if(c) c.el.classList.add("new-card");
+      markSeen(data.day);
+    }
+  } else {
+    todayBadge.style.display = 'none';
+  }
+
+  document.getElementById("prevBtn").disabled = idx === 0;
+  document.getElementById("nextBtn").disabled = idx === CARDS.length - 1;
+}
+
+var hcs = document.createElement("style");
+hcs.textContent = '.hidden-card{display:none!important}';
+document.head.appendChild(hcs);
+
+window.navigateCard = function(dir){
+  var next = currentDay + dir;
+  if(next < 0 || next >= CARDS.length) return;
+  cardElements[currentDay].el.classList.remove("flipped");
+  currentDay = next;
+  showCard(currentDay);
+};
+
+var touchStartX = 0, touchStartY = 0;
+container.addEventListener("touchstart", function(e){ touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; }, { passive: true });
+container.addEventListener("touchend", function(e){
+  var dx = e.changedTouches[0].clientX - touchStartX, dy = e.changedTouches[0].clientY - touchStartY;
+  if(Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5){ if(dx < 0) navigateCard(1); else navigateCard(-1); }
+});
+
+
+/* ═══════════════════════════════════════════
+   ── GRID VIEW ──
+   ═══════════════════════════════════════════ */
+
+function buildGrid(){
+  var grid = document.getElementById("grid");
+  grid.innerHTML = '';
+  gridRendered = true;
+  var today = getTodayDay();
+  CARDS.forEach(function(data, idx){
+    var item = document.createElement("div");
+    item.className = "grid-item" + (data.day === today ? " today-item" : "");
+    var canvas = document.createElement("canvas"); canvas.style.width = "100%"; canvas.style.height = "100%";
+    item.appendChild(canvas);
+    var label = document.createElement("div"); label.className = "day-label";
+    label.innerHTML = '第<span>' + data.day + '</span>日'; item.appendChild(label);
+    item.addEventListener("click", function(){ currentDay = idx; switchView('card'); });
+    grid.appendChild(item);
+    (function(c, s){
+      requestAnimationFrame(function(){
+        c.style.width = c.clientWidth + 'px'; c.style.height = c.clientHeight + 'px';
+        renderArt(c, s, false);
+      });
+    })(canvas, data.seed);
+  });
+}
+
+
+/* ═══════════════════════════════════════════
+   ── STORY MODE ──
+   ═══════════════════════════════════════════ */
+
+function getWaveDelay(index, total){
+  var cols = window.innerWidth >= 600 ? 4 : 3;
+  var row = Math.floor(index / cols);
+  var col = index % cols;
+  var diag = row + col;
+  var maxDiag = Math.ceil(total / cols) + cols - 2;
+  if(maxDiag <= 0) maxDiag = 1;
+  return (diag / maxDiag) * 1200;
+}
+
+function getPlainStory(html){
+  var tmp = document.createElement('div'); tmp.innerHTML = html;
+  return tmp.textContent || tmp.innerText || '';
+}
+
+var storyAmbientStars = [];
+function initStoryAmbient(){
+  var rng = mulberry32(7777);
+  storyAmbientStars = [];
+  for(var i = 0; i < 200; i++){
+    storyAmbientStars.push({
+      x: rng() * window.innerWidth,
+      y: rng() * window.innerHeight * 5,
+      r: rng() * 1 + 0.2,
+      phase: rng() * Math.PI * 2,
+      speed: 0.2 + rng() * 0.5,
+      alpha: 0.05 + rng() * 0.15,
+    });
+  }
+}
+
+function drawStoryAmbient(time){
+  var canvas = document.getElementById('storyAmbientCanvas');
+  if(!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W = window.innerWidth;
+  var H = window.innerHeight;
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if(canvas.width !== W * dpr || canvas.height !== H * dpr){
+    canvas.width = W * dpr; canvas.height = H * dpr;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  var scrollEl = document.getElementById('storyScroll');
+  var scrollY = scrollEl ? scrollEl.scrollTop : 0;
+  var parallax = scrollY * 0.02;
+  for(var i = 0; i < storyAmbientStars.length; i++){
+    var s = storyAmbientStars[i];
+    var sy = ((s.y - parallax) % (H * 2) + H * 2) % (H * 2) - H * 0.2;
+    var twinkle = 0.5 + 0.5 * Math.sin(time * s.speed + s.phase);
+    ctx.globalAlpha = s.alpha * twinkle;
+    ctx.fillStyle = '#c8bfa0';
+    ctx.beginPath(); ctx.arc(s.x, sy, s.r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  if(storyModeActive){
+    storyAnimId = requestAnimationFrame(function(ts){ drawStoryAmbient(ts / 1000); });
+  }
+}
+
+function drawWaveStars(time){
+  var canvas = document.getElementById('waveStarsCanvas');
+  if(!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.clientWidth, H = canvas.clientHeight;
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if(canvas.width !== W * dpr || canvas.height !== H * dpr){
+    canvas.width = W * dpr; canvas.height = H * dpr;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  var rng = mulberry32(1234);
+  for(var i = 0; i < 150; i++){
+    var x = rng() * W, y = rng() * H;
+    var r = rng() * 0.8 + 0.2;
+    var phase = rng() * Math.PI * 2;
+    var speed = 0.3 + rng() * 0.5;
+    var twinkle = 0.3 + 0.7 * Math.sin(time * speed + phase);
+    ctx.globalAlpha = 0.1 + 0.15 * twinkle;
+    ctx.fillStyle = '#c8bfa0';
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+var waveAnimId = null;
+function startWaveAnim(){
+  function loop(ts){ drawWaveStars(ts / 1000); waveAnimId = requestAnimationFrame(loop); }
+  waveAnimId = requestAnimationFrame(loop);
+}
+function stopWaveAnim(){ if(waveAnimId){ cancelAnimationFrame(waveAnimId); waveAnimId = null; } }
+
+function buildStoryContent(){
+  var scroll = document.getElementById('storyScroll');
+  scroll.innerHTML = '';
+  var header = document.createElement('div');
+  header.className = 'story-header';
+  header.innerHTML = '<h1>三 六 五 日 の 星 図</h1><div class="subtitle">— 物語 —</div>';
+  scroll.appendChild(header);
+  scroll.appendChild(createSeparator());
+
+  /* Only render up to 50 cards in story mode for performance, with lazy load */
+  var maxStory = Math.min(CARDS.length, 365);
+  for(var idx = 0; idx < maxStory; idx++){
+    var data = CARDS[idx];
+    var frag = document.createElement('div');
+    frag.className = 'story-fragment';
+    frag.dataset.index = idx;
+
+    var dayLabel = document.createElement('div');
+    dayLabel.className = 'frag-day';
+    dayLabel.innerHTML = '第 <span>' + data.day + '</span> 日 — Day <span>' + toRoman(data.day) + '</span>';
+    frag.appendChild(dayLabel);
+
+    var artWrap = document.createElement('div');
+    artWrap.className = 'frag-art';
+    var artCanvas = document.createElement('canvas');
+    artCanvas.style.width = '100%';
+    artCanvas.style.height = '100%';
+    artWrap.appendChild(artCanvas);
+    frag.appendChild(artWrap);
+
+    var poem = document.createElement('div');
+    poem.className = 'frag-poem';
+    poem.innerHTML = data.story.replace(/\n/g, '<br>');
+    frag.appendChild(poem);
+
+    scroll.appendChild(frag);
+
+    (function(c, s){
+      requestAnimationFrame(function(){
+        c.style.width = c.clientWidth + 'px';
+        c.style.height = c.clientHeight + 'px';
+        renderArt(c, s, false);
+      });
+    })(artCanvas, data.seed);
+
+    if(idx < maxStory - 1){
+      scroll.appendChild(createSeparator());
+    }
+  }
+
+  var footer = document.createElement('div');
+  footer.className = 'story-footer';
+  footer.innerHTML = '<div class="footer-star">✦ ✦ ✦</div><div class="footer-text">365日の星図 — 三六五日の星図</div>';
+  scroll.appendChild(footer);
+
+  storyBuilt = true;
+  setupStoryObserver();
+}
+
+function createSeparator(){
+  var sep = document.createElement('div');
+  sep.className = 'story-separator';
+  sep.innerHTML = '<div class="sep-line"></div><div class="sep-star">✦</div><div class="sep-line"></div>';
+  return sep;
+}
+
+function setupStoryObserver(){
+  var frags = document.querySelectorAll('.story-fragment');
+  if(!('IntersectionObserver' in window)){
+    frags.forEach(function(f){ f.classList.add('visible'); });
+    return;
+  }
+  var observer = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if(entry.isIntersecting){
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' });
+  frags.forEach(function(f){ observer.observe(f); });
+}
+
+window.enterStoryMode = function(){
+  if(storyModeActive) return;
+
+  var overlay = document.getElementById('storyWaveOverlay');
+  var waveGrid = document.getElementById('waveGrid');
+  waveGrid.innerHTML = '';
+
+  /* Show up to 20 cards in wave (most recent + first) */
+  var waveCards = [];
+  if(CARDS.length <= 20){
+    waveCards = CARDS.slice();
+  } else {
+    /* First 8 + last 12 */
+    waveCards = CARDS.slice(0, 8).concat(CARDS.slice(-12));
+  }
+
+  waveCards.forEach(function(data, idx){
+    var waveCard = document.createElement('div');
+    waveCard.className = 'wave-card';
+    var inner = document.createElement('div');
+    inner.className = 'wave-card-inner';
+    inner.id = 'waveCardInner' + idx;
+
+    var front = document.createElement('div');
+    front.className = 'wave-card-front';
+    var fCanvas = document.createElement('canvas');
+    fCanvas.style.width = '100%';
+    fCanvas.style.height = '100%';
+    front.appendChild(fCanvas);
+
+    var back = document.createElement('div');
+    back.className = 'wave-card-back';
+    var plainStory = getPlainStory(data.story).substring(0, 40);
+    back.innerHTML = '<div><div class="mini-day">第' + data.day + '日</div><div class="mini-text">' + plainStory + '…</div></div>';
+
+    inner.appendChild(front);
+    inner.appendChild(back);
+    waveCard.appendChild(inner);
+    waveGrid.appendChild(waveCard);
+
+    (function(c, s){
+      requestAnimationFrame(function(){
+        c.style.width = c.clientWidth + 'px';
+        c.style.height = c.clientHeight + 'px';
+        renderArt(c, s, false);
+      });
+    })(fCanvas, data.seed);
+  });
+
+  overlay.classList.add('active');
+  startWaveAnim();
+
+  waveCards.forEach(function(data, idx){
+    var delay = getWaveDelay(idx, waveCards.length);
+    setTimeout(function(){
+      var inner = document.getElementById('waveCardInner' + idx);
+      if(inner) inner.classList.add('flipped');
+    }, 400 + delay);
+  });
+
+  var totalDelay = 400 + 1200 + 800;
+  setTimeout(function(){
+    stopWaveAnim();
+    overlay.classList.remove('active');
+
+    currentView = 'story';
+    storyModeActive = true;
+
+    document.getElementById('cardView').classList.add('hidden');
+    document.getElementById('gridView').classList.add('hidden');
+    document.getElementById('starmapView').classList.add('hidden');
+
+    stopMapAnimation();
+    cardElements.forEach(function(c){ if(c.animId){ cancelAnimationFrame(c.animId); c.animId = null; } });
+
+    document.getElementById('navCard').classList.remove('active');
+    document.getElementById('navGrid').classList.remove('active');
+    document.getElementById('navMap').classList.remove('active');
+    document.getElementById('navStory').classList.add('active');
+
+    document.getElementById('storyView').classList.remove('hidden');
+
+    /* Rebuild if card count changed */
+    storyBuilt = false;
+    if(!storyBuilt) buildStoryContent();
+
+    initStoryAmbient();
+    storyAnimId = requestAnimationFrame(function(ts){ drawStoryAmbient(ts / 1000); });
+    document.getElementById('storyScroll').scrollTop = 0;
+  }, totalDelay);
+};
+
+
+/* ═══════════════════════════════════════════
+   ── VIEW SWITCHING ──
+   ═══════════════════════════════════════════ */
+
+window.switchView = function(view){
+  if(view === currentView) return;
+
+  if(storyModeActive){
+    storyModeActive = false;
+    if(storyAnimId){ cancelAnimationFrame(storyAnimId); storyAnimId = null; }
+  }
+
+  currentView = view;
+
+  var cardView = document.getElementById("cardView");
+  var gridView = document.getElementById("gridView");
+  var mapView = document.getElementById("starmapView");
+  var storyView = document.getElementById("storyView");
+  var navCard = document.getElementById("navCard");
+  var navGrid = document.getElementById("navGrid");
+  var navMap = document.getElementById("navMap");
+  var navStory = document.getElementById("navStory");
+
+  if(view !== 'map') stopMapAnimation();
+  if(view !== 'card'){
+    cardElements.forEach(function(c){ if(c.animId){ cancelAnimationFrame(c.animId); c.animId = null; } });
+  }
+
+  cardView.classList.add("hidden");
+  gridView.classList.add("hidden");
+  mapView.classList.add("hidden");
+  storyView.classList.add("hidden");
+  navCard.classList.remove("active");
+  navGrid.classList.remove("active");
+  navMap.classList.remove("active");
+  navStory.classList.remove("active");
+
+  if(view === 'card'){
+    cardView.classList.remove("hidden"); navCard.classList.add("active"); showCard(currentDay);
+  } else if(view === 'grid'){
+    gridView.classList.remove("hidden"); navGrid.classList.add("active");
+    gridRendered = false; buildGrid(); /* Rebuild grid to reflect new cards */
+  } else if(view === 'map'){
+    mapView.classList.remove("hidden"); navMap.classList.add("active");
+    if(!mapInitialized){ initStarMap(); }
+    else { generateMapNodes(CARDS); generateMapThumbnails(); }
+    startMapAnimation();
+  } else if(view === 'story'){
+    storyModeActive = true;
+    storyView.classList.remove("hidden"); navStory.classList.add("active");
+    storyBuilt = false;
+    if(!storyBuilt) buildStoryContent();
+    initStoryAmbient();
+    storyAnimId = requestAnimationFrame(function(ts){ drawStoryAmbient(ts / 1000); });
+    document.getElementById('storyScroll').scrollTop = 0;
+  }
+};
+
+
+/* ── Keyboard ── */
+document.addEventListener("keydown", function(e){
+  if(currentView !== 'card') return;
+  if(e.key === 'ArrowLeft') navigateCard(-1);
+  if(e.key === 'ArrowRight') navigateCard(1);
+});
+
+/* ═══════════════════════════════════════════
+   ── INIT ──
+   ═══════════════════════════════════════════ */
+
+/* Load or generate cards */
+CARDS = ensureCards();
+
+/* Default to today's card */
+var todayDay = getTodayDay();
+currentDay = 0;
+for(var i = 0; i < CARDS.length; i++){
+  if(CARDS[i].day === todayDay){ currentDay = i; break; }
+}
+
+/* Build UI */
+buildCards();
+
+})();
+</script>
+</body>
+</html>
