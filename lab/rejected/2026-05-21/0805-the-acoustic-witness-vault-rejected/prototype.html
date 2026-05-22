@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Acoustic Witness Vault</title>
+  <style>
+    :root { color-scheme: dark; --bg:#151513; --ink:#d8d0bd; --muted:#817867; --line:#4b453a; --found:#9fb18e; --warn:#b7a36f; }
+    * { box-sizing: border-box; }
+    html, body { margin:0; width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    main { position:relative; width:100vw; height:100vh; touch-action:none; }
+    svg { position:absolute; inset:0; width:100%; height:100%; }
+    .meta { position:absolute; left:18px; top:16px; font-size:11px; color:var(--muted); line-height:1.5; max-width:min(540px, calc(100vw - 36px)); pointer-events:none; }
+    .columns { position:absolute; inset:86px 24px 24px; display:grid; grid-template-columns: 1.2fr 1fr 1.1fr; gap:14px; }
+    .column { border:1px solid var(--line); padding:10px; min-width:0; }
+    .column h2 { margin:0 0 10px; font-size:11px; color:var(--muted); font-weight:500; }
+    .record { user-select:none; border:1px solid var(--line); color:var(--ink); padding:7px 8px; margin:7px 0; min-height:28px; background:#1b1a17; cursor:grab; transition: transform 160ms linear, border-color 160ms linear, background 160ms linear; }
+    .record small { color:var(--muted); margin-left:8px; }
+    .record.missing { color:#6f695c; border-style:dashed; }
+    .record.recovered { border-color:var(--found); background:#20241d; }
+    .record.locked { outline:1px solid var(--warn); }
+    .record.dragging { transform: translate(var(--dx, 0px), var(--dy, 0px)); cursor:grabbing; z-index:4; }
+    .status { position:absolute; right:18px; bottom:16px; font-size:11px; color:var(--muted); text-align:right; }
+  </style>
+</head>
+<body>
+  <main id="stage">
+    <svg id="map" aria-hidden="true"></svg>
+    <div class="meta">
+      <strong>The Acoustic Witness Vault</strong><br>
+      When archive records carry audible identity—tones that distort and decay with each access—the loss becomes visceral. Sound degradation communicates archival decay more immediately than visual wear alone, and the knowledge that closing the tab erases everything creates genuine urgency around preservation.<br>
+      Drag, scrub, or click records to alter custody.
+    </div>
+    <section class="columns" id="columns">
+      <div class="column" data-column="lost"><h2>lost index</h2></div>
+      <div class="column" data-column="witness"><h2>witness shelf</h2></div>
+      <div class="column" data-column="locked"><h2>locked recovery</h2></div>
+    </section>
+    <div class="status" id="status">unrecovered</div>
+  </main>
+  <script>
+    const draftKey = "mira-lab-the-acoustic-witness-vault-2026-05-21-0805";
+    const records = [{"id":"R01","parent":0,"loss":0.489,"x":8.62,"y":32.33},{"id":"R02","parent":3,"loss":0.727,"x":23.88,"y":63.54},{"id":"R03","parent":3,"loss":0.293,"x":8.42,"y":69.27},{"id":"R04","parent":2,"loss":0.721,"x":28.09,"y":54.46},{"id":"R05","parent":3,"loss":0.305,"x":41.33,"y":16.56},{"id":"R06","parent":1,"loss":0.682,"x":60.9,"y":50.38},{"id":"R07","parent":0,"loss":0.255,"x":20.65,"y":21.66},{"id":"R08","parent":3,"loss":0.228,"x":78.43,"y":46.99},{"id":"R09","parent":0,"loss":0.689,"x":36.68,"y":50.06},{"id":"R10","parent":1,"loss":0.847,"x":16.34,"y":28.57},{"id":"R11","parent":1,"loss":0.281,"x":38.9,"y":33.28},{"id":"R12","parent":0,"loss":0.072,"x":69.16,"y":32.45},{"id":"R13","parent":1,"loss":0.108,"x":46.39,"y":48.15}];
+    const state = JSON.parse(localStorage.getItem(draftKey) || '{"moves":0,"recovered":[],"locked":[]}');
+    let active = null;
+
+    function save() { localStorage.setItem(draftKey, JSON.stringify(state)); }
+    function columnFor(record, index) {
+      if (state.locked.includes(record.id)) return 'locked';
+      if (state.recovered.includes(record.id)) return 'witness';
+      return record.loss > 0.62 || index % 5 === 0 ? 'lost' : 'witness';
+    }
+    function render() {
+      document.querySelectorAll('.column').forEach(column => column.querySelectorAll('.record').forEach(node => node.remove()));
+      records.forEach((record, index) => {
+        const node = document.createElement('div');
+        node.className = 'record' + (record.loss > 0.62 ? ' missing' : '') + (state.recovered.includes(record.id) ? ' recovered' : '') + (state.locked.includes(record.id) ? ' locked' : '');
+        node.dataset.id = record.id;
+        node.textContent = record.id + ' / parent ' + record.parent;
+        const small = document.createElement('small');
+        small.textContent = record.loss > 0.62 ? 'label damaged' : 'partial';
+        node.appendChild(small);
+        document.querySelector('[data-column="' + columnFor(record, index) + '"]').appendChild(node);
+      });
+      document.getElementById('status').textContent = state.moves + ' archive changes / ' + state.recovered.length + ' recovered / ' + state.locked.length + ' locked';
+      drawMap();
+    }
+    function drawMap() {
+      const svg = document.getElementById('map');
+      svg.innerHTML = '';
+      records.forEach(record => {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', record.x + '%');
+        line.setAttribute('y1', record.y + '%');
+        line.setAttribute('x2', (record.x + record.parent * 7 + state.moves % 9) + '%');
+        line.setAttribute('y2', (record.y + 9 + state.recovered.length) + '%');
+        line.setAttribute('stroke', state.recovered.includes(record.id) ? '#9fb18e' : '#3a362f');
+        line.setAttribute('stroke-width', state.locked.includes(record.id) ? '2' : '1');
+        svg.appendChild(line);
+      });
+    }
+    function changeRecord(id, lock) {
+      if (!state.recovered.includes(id)) state.recovered.push(id);
+      if (lock && !state.locked.includes(id)) state.locked.push(id);
+      state.moves += 1;
+      save();
+      render();
+    }
+    document.addEventListener('pointerdown', event => {
+      const record = event.target.closest('.record');
+      if (!record) return;
+      active = { id: record.dataset.id, x: event.clientX, y: event.clientY, node: record };
+      record.classList.add('dragging');
+      record.setPointerCapture?.(event.pointerId);
+    });
+    document.addEventListener('pointermove', event => {
+      if (!active) return;
+      const dx = event.clientX - active.x;
+      const dy = event.clientY - active.y;
+      active.node.style.setProperty('--dx', dx + 'px');
+      active.node.style.setProperty('--dy', dy + 'px');
+      if (Math.hypot(dx, dy) > 48) changeRecord(active.id, false);
+    });
+    document.addEventListener('pointerup', event => {
+      if (!active) return;
+      changeRecord(active.id, event.clientX > innerWidth * 0.62);
+      active = null;
+    });
+    document.addEventListener('click', event => {
+      const record = event.target.closest('.record');
+      if (record) changeRecord(record.dataset.id, event.shiftKey);
+    });
+    render();
+  </script>
+</body>
+</html>
