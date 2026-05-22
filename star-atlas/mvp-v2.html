@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>365日の星図 — 365-Day Star Atlas</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#050a18;font-family:'Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+
+/* ── Views ── */
+.view{position:absolute;inset:0;transition:opacity .4s ease,transform .4s ease}
+.view.hidden{opacity:0;pointer-events:none;transform:translateY(20px)}
+
+/* ── Card View ── */
+.card-view{display:flex;align-items:center;justify-content:center}
+.card-container{position:relative;width:100%;height:calc(100% - 60px);perspective:1200px}
+.card{position:absolute;inset:0;transform-style:preserve-3d;transition:transform 1.2s cubic-bezier(.4,.0,.2,1);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.card.flipped{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:hidden}
+.face--front{background:#050a18}
+.face--back{transform:rotateY(180deg);background:linear-gradient(160deg,#0a0e2a 0%,#0f1438 40%,#1a0f3a 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem}
+.face canvas{display:block;width:100%;height:100%}
+.back-content{max-width:560px;text-align:center;color:#c8bfa0}
+.back-content .day{font-size:.85rem;letter-spacing:.35em;color:#8a7e60;margin-bottom:2.5rem}
+.back-content .day span{color:#d4a84b;font-weight:600}
+.back-content .poem{font-size:1.15rem;line-height:2.4;color:#b8ad8e;letter-spacing:.08em;margin-bottom:2.5rem}
+.back-content .poem .em{color:#d4a84b}
+.back-content .attribution{font-size:.75rem;color:#5a5445;letter-spacing:.25em}
+
+/* ── Navigation Arrows ── */
+.nav-arrow{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:48px;border:none;background:rgba(200,191,160,.08);color:rgba(200,191,160,.5);font-size:1.4rem;border-radius:50%;cursor:pointer;z-index:10;transition:background .3s,color .3s;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center}
+.nav-arrow:hover,.nav-arrow:active{background:rgba(200,191,160,.18);color:rgba(200,191,160,.8)}
+.nav-arrow.left{left:12px}
+.nav-arrow.right{right:12px}
+.nav-arrow:disabled{opacity:.2;pointer-events:none}
+
+/* ── Day Counter ── */
+.day-counter{position:absolute;top:16px;left:50%;transform:translateX(-50%);color:rgba(200,191,160,.4);font-size:.75rem;letter-spacing:.3em;z-index:10;pointer-events:none}
+.day-counter span{color:rgba(212,168,75,.6)}
+
+/* ── Hint ── */
+.hint{position:absolute;bottom:72px;left:50%;transform:translateX(-50%);color:rgba(200,191,160,.3);font-size:.65rem;letter-spacing:.2em;pointer-events:none;animation:fadeHint 4s ease-in-out infinite alternate;z-index:10}
+.card.flipped~.hint{opacity:.1}
+@keyframes fadeHint{0%{opacity:.3}100%{opacity:.6}}
+
+/* ── Grid View ── */
+.grid-view{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:70px 16px 80px}
+.grid-header{text-align:center;color:#8a7e60;font-size:.8rem;letter-spacing:.4em;margin-bottom:1.5rem}
+.grid-header span{color:#d4a84b}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;max-width:800px;margin:0 auto}
+.grid-item{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;cursor:pointer;transition:transform .3s ease,box-shadow .3s ease;border:1px solid rgba(200,191,160,.06)}
+.grid-item:hover,.grid-item:active{transform:scale(1.03);box-shadow:0 4px 20px rgba(212,168,75,.12)}
+.grid-item canvas{width:100%;height:100%;display:block}
+.grid-item .day-label{position:absolute;bottom:0;left:0;right:0;padding:6px 0;text-align:center;background:linear-gradient(transparent,rgba(5,10,24,.85));color:rgba(200,191,160,.6);font-size:.65rem;letter-spacing:.25em}
+.grid-item .day-label span{color:rgba(212,168,75,.7)}
+
+/* ── Bottom Nav ── */
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:56px;background:rgba(5,10,24,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;gap:32px;z-index:100;border-top:1px solid rgba(200,191,160,.06)}
+.nav-btn{background:none;border:none;color:rgba(200,191,160,.4);font-size:.7rem;letter-spacing:.2em;cursor:pointer;padding:8px 16px;transition:color .3s;display:flex;flex-direction:column;align-items:center;gap:4px}
+.nav-btn svg{width:22px;height:22px;fill:currentColor}
+.nav-btn.active{color:#d4a84b}
+
+/* ── Responsive ── */
+@media(min-width:600px){
+  .grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:16px}
+}
+@media(min-width:900px){
+  .grid{grid-template-columns:repeat(4,1fr);max-width:900px}
+}
+</style>
+</head>
+<body>
+
+<!-- Card View -->
+<div class="view card-view" id="cardView">
+  <div class="day-counter" id="dayCounter">第 <span id="dayNum">1</span> 日 — Day <span id="dayNumRoman">I</span></div>
+  <div class="card-container" id="cardContainer"></div>
+  <button class="nav-arrow left" id="prevBtn" onclick="navigateCard(-1)">‹</button>
+  <button class="nav-arrow right" id="nextBtn" onclick="navigateCard(1)">›</button>
+  <div class="hint">tap to flip</div>
+</div>
+
+<!-- Grid View -->
+<div class="view grid-view hidden" id="gridView">
+  <div class="grid-header">365日の星図 — <span>三六五日</span>の星図</div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<!-- Bottom Nav -->
+<div class="bottom-nav">
+  <button class="nav-btn active" id="navCard" onclick="switchView('card')">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/></svg>
+    Card
+  </button>
+  <button class="nav-btn" id="navGrid" onclick="switchView('grid')">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+    Grid
+  </button>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ── Card Data ── */
+const CARDS = [
+  { day: 1, seed: 42, story: '名もなき庭の\n<span class="em">星明かり</span>だけが道しるべ\n\n旅人は知らない\nこの空が<span class="em">何度も</span>巡るものだと\n\n一歩、また一歩\n夜の<span class="em">庭</span>はどこまでも続く' },
+  { day: 2, seed: 137, story: '二度目の夜明けは<span class="em">訪れない</span>\nただ星が少しだけ\n<span class="em">近づいた</span>気がした\n\n足元には名前のない<span class="em">花</span>\n誰も見たことのない色で\n静かに<span class="em">咲いていた</span>' },
+  { day: 3, seed: 256, story: '水の音が<span class="em">聞こえる</span>\n見えない泉がどこかで\n<span class="em">歌っている</span>\n\n旅人は<span class="em">目を閉じる</span>\n暗闇の中に\n無数の<span class="em">光の道</span>が浮かぶ' },
+  { day: 4, seed: 389, story: '四日目の<span class="em">庭</span>で\n古い<span class="em">石碑</span>を見つけた\n\n何千年もの<span class="em">星の記録</span>\n読めない文字の中に\n誰かの<span class="em">祈り</span>が刻まれている' },
+  { day: 5, seed: 512, story: '<span class="em">星座</span>が語りかける\n「ここが<span class="em">始まり</span>だ」と\n\n旅人は<span class="em">手を伸ばす</span>\n指先に触れた光は\n<span class="em">温かく</span>、そして<span class="em">遠い</span>' },
+  { day: 6, seed: 723, story: '六つの<span class="em">月</span>が浮かぶ夜\nそれぞれが違う<span class="em">色</span>で\n庭を<span class="em">照らしている</span>\n\n影が<span class="em">踊る</span>\n風が<span class="em">囁く</span>\nここは時間の<span class="em">境界</span>' },
+  { day: 7, seed: 888, story: '七日目の<span class="em">朝</span>\n初めて<span class="em">空が明るくなった</span>\n\nでも星は<span class="em">消えない</span>\n夜の庭の記憶が\nずっと<span class="em">輝き続ける</span>\n\n旅人は<span class="em">微笑む</span>\nまた<span class="em">夜</span>が来ることを知っているから' },
+];
+
+const ROMAN = ['','I','II','III','IV','V','VI','VII','VIII','IX','X'];
+
+/* ── Seeded Random ── */
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* ── State ── */
+let currentView = 'card';
+let currentDay = 0; // 0-indexed
+let cardElements = [];
+let gridRendered = false;
+let animFrames = [];
+
+/* ── Art Engine (seeded) ── */
+function renderArt(canvas, seed, animated){
+  const ctx = canvas.getContext("2d");
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const rng = mulberry32(seed);
+
+  /* Color palettes per seed */
+  const palettes = [
+    { n1:"rgba(26,15,58,", n2:"rgba(15,30,80,", n3:"rgba(40,15,60,", n4:"rgba(10,25,50," },
+    { n1:"rgba(15,40,60,", n2:"rgba(20,25,70,", n3:"rgba(50,20,50,", n4:"rgba(10,35,45," },
+    { n1:"rgba(30,10,50,", n2:"rgba(10,20,65,", n3:"rgba(45,10,55,", n4:"rgba(5,30,55," },
+    { n1:"rgba(20,25,65,", n2:"rgba(35,15,55,", n3:"rgba(10,35,60,", n4:"rgba(25,10,45," },
+  ];
+  const pal = palettes[Math.floor(rng() * palettes.length)];
+
+  /* Stars */
+  const starCount = Math.floor(W * H / 600);
+  const stars = [];
+  const starColors = ["#ffe8c0","#a0c4ff","#ffc0d0","#d4a84b"];
+  for(let i = 0; i < starCount; i++){
+    const hue = rng();
+    let color;
+    if(hue < 0.6) color = starColors[0];
+    else if(hue < 0.8) color = starColors[1];
+    else if(hue < 0.92) color = starColors[2];
+    else color = starColors[3];
+    stars.push({
+      x: rng() * W, y: rng() * H,
+      r: rng() * 1.8 + 0.3,
+      color,
+      phase: rng() * Math.PI * 2,
+      speed: rng() * 0.8 + 0.3,
+      glow: rng() > 0.85,
+    });
+  }
+
+  /* Nebulae */
+  const nebulae = [];
+  const nebCount = 4 + Math.floor(rng() * 3);
+  const nebColors = [pal.n1, pal.n2, pal.n3, pal.n4];
+  for(let i = 0; i < nebCount; i++){
+    nebulae.push({
+      x: rng() * W, y: rng() * H,
+      rx: 80 + rng() * 200, ry: 60 + rng() * 150,
+      color: nebColors[Math.floor(rng() * nebColors.length)],
+      alpha: 0.15 + rng() * 0.2,
+      phase: rng() * Math.PI * 2,
+      speed: 0.1 + rng() * 0.15,
+    });
+  }
+
+  /* Vines */
+  const vines = [];
+  const vineCount = Math.floor(W / 120) + 2;
+  const vineBaseColors = ["#1a3a2a","#1a2a3a","#2a1a3a","#1a3a3a"];
+  const vineGlowColors = ["#2a6a4a","#2a4a6a","#4a2a6a","#2a6a6a"];
+  for(let i = 0; i < vineCount; i++){
+    const baseX = (i / vineCount) * W + (rng() - 0.5) * 80;
+    const pts = [];
+    let x = baseX, y = H;
+    const segs = 8 + Math.floor(rng() * 6);
+    for(let j = 0; j <= segs; j++){
+      pts.push({ x, y });
+      const angle = -Math.PI / 2 + (rng() - 0.5) * 1.2;
+      const dist = 20 + rng() * 35;
+      x += Math.cos(angle) * dist;
+      y += Math.sin(angle) * dist;
+    }
+    vines.push({
+      points: pts,
+      phase: rng() * Math.PI * 2,
+      speed: 0.2 + rng() * 0.3,
+      width: 1.2 + rng() * 1.5,
+      color: vineBaseColors[Math.floor(rng() * vineBaseColors.length)],
+      glow: vineGlowColors[Math.floor(rng() * vineGlowColors.length)] + "18",
+    });
+  }
+
+  /* Fireflies */
+  const fireflies = [];
+  const ffCount = Math.floor(W * H / 15000);
+  for(let i = 0; i < ffCount; i++){
+    fireflies.push({
+      x: rng() * W, y: H * 0.5 + rng() * H * 0.5,
+      vx: (rng() - 0.5) * 0.3, vy: (rng() - 0.5) * 0.2,
+      phase: rng() * Math.PI * 2,
+      speed: 0.5 + rng() * 1,
+      size: 1.5 + rng() * 2,
+    });
+  }
+
+  function hexAlpha(a){
+    const v = Math.round(Math.max(0, Math.min(1, a)) * 255);
+    return v.toString(16).padStart(2, "0");
+  }
+
+  function drawFrame(t){
+    /* Sky gradient */
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, "#050a18");
+    bg.addColorStop(0.4, "#0b1130");
+    bg.addColorStop(0.7, "#12183d");
+    bg.addColorStop(1, "#0a1025");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    /* Nebulae */
+    for(const n of nebulae){
+      const ox = Math.sin(t * n.speed + n.phase) * 20;
+      const oy = Math.cos(t * n.speed * 0.7 + n.phase) * 15;
+      const gr = ctx.createRadialGradient(n.x + ox, n.y + oy, 0, n.x + ox, n.y + oy, Math.max(n.rx, n.ry));
+      gr.addColorStop(0, n.color + n.alpha + ")");
+      gr.addColorStop(0.5, n.color + (n.alpha * 0.4) + ")");
+      gr.addColorStop(1, n.color + "0)");
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.ellipse(n.x + ox, n.y + oy, n.rx, n.ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    /* Stars */
+    for(const s of stars){
+      const twinkle = 0.5 + 0.5 * Math.sin(t * s.speed + s.phase);
+      const alpha = 0.3 + 0.7 * twinkle;
+      if(s.glow && s.r > 0.8){
+        const gr = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 6);
+        gr.addColorStop(0, s.color + hexAlpha(alpha * 0.35));
+        gr.addColorStop(1, s.color + "00");
+        ctx.fillStyle = gr;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r * 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = s.color;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+      if(s.r > 1.3 && twinkle > 0.7){
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = 0.5;
+        ctx.globalAlpha = alpha * 0.5;
+        const len = s.r * 4 * twinkle;
+        ctx.beginPath();
+        ctx.moveTo(s.x - len, s.y); ctx.lineTo(s.x + len, s.y);
+        ctx.moveTo(s.x, s.y - len); ctx.lineTo(s.x, s.y + len);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    /* Vines */
+    for(const v of vines){
+      ctx.strokeStyle = v.color;
+      ctx.lineWidth = v.width;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      const pts = v.points;
+      for(let i = 0; i < pts.length; i++){
+        const sway = Math.sin(t * v.speed + v.phase + i * 0.5) * 4;
+        const px = pts[i].x + sway;
+        const py = pts[i].y;
+        if(i === 0) ctx.moveTo(px, py);
+        else {
+          const prev = pts[i - 1];
+          const prevSway = Math.sin(t * v.speed + v.phase + (i - 1) * 0.5) * 4;
+          const cx = (prev.x + prevSway + px) / 2;
+          const cy = (prev.y + py) / 2;
+          ctx.quadraticCurveTo(prev.x + prevSway, prev.y, cx, cy);
+        }
+      }
+      ctx.stroke();
+      ctx.strokeStyle = v.glow;
+      ctx.lineWidth = v.width + 4;
+      ctx.stroke();
+    }
+
+    /* Fireflies */
+    for(const f of fireflies){
+      f.x += f.vx + Math.sin(t * 0.3 + f.phase) * 0.2;
+      f.y += f.vy + Math.cos(t * 0.25 + f.phase) * 0.15;
+      if(f.x < -20) f.x = W + 20;
+      if(f.x > W + 20) f.x = -20;
+      if(f.y < H * 0.4) f.y = H;
+      if(f.y > H + 20) f.y = H * 0.4;
+      const pulse = 0.3 + 0.7 * Math.max(0, Math.sin(t * f.speed + f.phase));
+      const gr = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.size * 5);
+      gr.addColorStop(0, "rgba(212,168,75," + (pulse * 0.6) + ")");
+      gr.addColorStop(0.3, "rgba(180,140,50," + (pulse * 0.2) + ")");
+      gr.addColorStop(1, "rgba(180,140,50,0)");
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, f.size * 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,232,180," + pulse + ")";
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, f.size * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if(animated) return requestAnimationFrame(drawFrame);
+  }
+
+  if(animated){
+    const id = requestAnimationFrame(drawFrame);
+    return id;
+  } else {
+    /* Static render for grid thumbnails */
+    drawFrame(0);
+    /* Draw a few more frames to settle fireflies */
+    drawFrame(1.5);
+    return null;
+  }
+}
+
+/* ── Build Cards ── */
+const container = document.getElementById("cardContainer");
+
+function buildCards(){
+  container.innerHTML = '';
+  cardElements = [];
+
+  CARDS.forEach((data, idx) => {
+    const card = document.createElement("div");
+    card.className = "card" + (idx !== currentDay ? " hidden-card" : "");
+    card.dataset.idx = idx;
+
+    const front = document.createElement("div");
+    front.className = "face face--front";
+    const canvas = document.createElement("canvas");
+    front.appendChild(canvas);
+
+    const back = document.createElement("div");
+    back.className = "face face--back";
+    back.innerHTML = '<div class="back-content">' +
+      '<div class="day">第 <span>' + data.day + '</span> 日 — Day <span>' + (ROMAN[data.day] || data.day) + '</span></div>' +
+      '<div class="poem">' + data.story.replace(/\n/g, '<br>') + '</div>' +
+      '<div class="attribution">365日の星図 — 三六五日の星図</div>' +
+    '</div>';
+
+    card.appendChild(front);
+    card.appendChild(back);
+    container.appendChild(card);
+
+    card.addEventListener("click", function(){
+      card.classList.toggle("flipped");
+    });
+
+    cardElements.push({ el: card, canvas, animId: null });
+  });
+
+  showCard(currentDay);
+}
+
+function showCard(idx){
+  cardElements.forEach((c, i) => {
+    if(i === idx){
+      c.el.classList.remove("hidden-card");
+      c.el.style.display = "";
+      if(!c.animId){
+        c.animId = renderArt(c.canvas, CARDS[idx].seed, true);
+      }
+    } else {
+      c.el.classList.add("hidden-card");
+      /* Stop animation for hidden cards */
+      if(c.animId){
+        cancelAnimationFrame(c.animId);
+        c.animId = null;
+      }
+    }
+  });
+
+  document.getElementById("dayNum").textContent = CARDS[idx].day;
+  document.getElementById("dayNumRoman").textContent = ROMAN[CARDS[idx].day] || CARDS[idx].day;
+  document.getElementById("prevBtn").disabled = idx === 0;
+  document.getElementById("nextBtn").disabled = idx === CARDS.length - 1;
+}
+
+/* Add CSS for hidden-card */
+const style = document.createElement("style");
+style.textContent = '.hidden-card{display:none!important}';
+document.head.appendChild(style);
+
+/* ── Navigation ── */
+window.navigateCard = function(dir){
+  const next = currentDay + dir;
+  if(next < 0 || next >= CARDS.length) return;
+  /* Unflip current */
+  cardElements[currentDay].el.classList.remove("flipped");
+  currentDay = next;
+  showCard(currentDay);
+};
+
+/* ── Swipe Support ── */
+let touchStartX = 0, touchStartY = 0;
+container.addEventListener("touchstart", function(e){
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+}, { passive: true });
+
+container.addEventListener("touchend", function(e){
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+  if(Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5){
+    if(dx < 0) navigateCard(1);
+    else navigateCard(-1);
+  }
+});
+
+/* ── Grid ── */
+function buildGrid(){
+  if(gridRendered) return;
+  const grid = document.getElementById("grid");
+  grid.innerHTML = '';
+  gridRendered = true;
+
+  CARDS.forEach((data, idx) => {
+    const item = document.createElement("div");
+    item.className = "grid-item";
+    const canvas = document.createElement("canvas");
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    item.appendChild(canvas);
+
+    const label = document.createElement("div");
+    label.className = "day-label";
+    label.innerHTML = '第<span>' + data.day + '</span>日';
+    item.appendChild(label);
+
+    item.addEventListener("click", function(){
+      currentDay = idx;
+      switchView('card');
+    });
+
+    grid.appendChild(item);
+
+    /* Render static art after layout */
+    requestAnimationFrame(function(){
+      canvas.style.width = canvas.clientWidth + 'px';
+      canvas.style.height = canvas.clientHeight + 'px';
+      renderArt(canvas, data.seed, false);
+    });
+  });
+}
+
+/* ── View Switching ── */
+window.switchView = function(view){
+  if(view === currentView) return;
+  currentView = view;
+
+  const cardView = document.getElementById("cardView");
+  const gridView = document.getElementById("gridView");
+  const navCard = document.getElementById("navCard");
+  const navGrid = document.getElementById("navGrid");
+
+  if(view === 'card'){
+    cardView.classList.remove("hidden");
+    gridView.classList.add("hidden");
+    navCard.classList.add("active");
+    navGrid.classList.remove("active");
+    showCard(currentDay);
+  } else {
+    cardView.classList.add("hidden");
+    gridView.classList.remove("hidden");
+    navCard.classList.remove("active");
+    navGrid.classList.add("active");
+    buildGrid();
+  }
+};
+
+/* ── Keyboard ── */
+document.addEventListener("keydown", function(e){
+  if(currentView !== 'card') return;
+  if(e.key === 'ArrowLeft') navigateCard(-1);
+  if(e.key === 'ArrowRight') navigateCard(1);
+});
+
+/* ── Init ── */
+buildCards();
+
+})();
+</script>
+</body>
+</html>
