@@ -1,35 +1,36 @@
 # Mira Roadmap
 
-## Diagnosis: Week of 2026-05-25 → 2026-05-31
+## Diagnosis: Week of 2026-06-01 → 2026-06-07
 
-旗艦の概念的進化が爆発的だった一方で、パイプラインの構造的限界が明確になった一週間。5つの新概念が選出され、感覚拡張軌道は聴覚（Resonance Decay Archive）→空間的不在（Void Register）→粒子考古学（Dust Particle Archaeology）→時間的ジェスチャー照合（Resonance Decay Cartography）へと急速に深化した。しかし、spec-to-implementation gapは3週間連続で未解決のままであり、パイプラインは依然としてCanvas全画面21行テンプレートまたはtable-based DOMしか出力できない。全ての旗艦更新が手動再構築に依存しており、この事実を認めて戦略を組み直すべき段階にある。
+二重の構造的破綻が確定した週。
 
-候補プールの状況は深刻——毎日の候補の60-80%がBlocked Motif（broken-custody-map, index-of-misremembered-rooms, custodian-error-register, vanishing-index-table）の反復であり、approach_recently_triedによる生成枯渇が05-26と05-28の完全停止を招いた。
+**パイプライン完全枯渇（4日間）**：06-04以降、新規候補生成がゼロ。approach_recently_triedリストの日次クリアがroadmapに記載されたまま7日間未実装。全生成スロットがapproach_recently_triedまたはfingerprint_same_as_recentで拒否され、max-retries-exceededが毎日記録される。curator jobは同一3候補（Tidal Register選出済み・BMV 6日連続#2・Vanishing Index Table Blocked Motif）の反復評価に堕し、4日目に突入。創造的curatorとしての存立基盤を喪失した。
 
-一方、05-31候補のDew Point Register（結露・蒸発の熱力学的アーカイブ）とSublimation Index（昇華・相転移）は、周波数収束からの脱却を示唆する全く新しい感覚次元——熱力学的近接性（thermodynamic proximity）——を開く。「近づくほど記録が消え、遠ざかるほど現れる」という逆説的閲覧体験は、旗艦の「不在と喪失」概念の最も洗練された実現になりうる。
+**手動実装プロセスの不存在が確定**：DP Register（05-31選出・7日未実装）とTidal Register（06-04選出・3日未実装）の2Specが、「Layer 2: Flagship Reconstruction」として構想された手動実装を待っているが、当の実装プロセスが存在しない。3週間連続で「手動実装」がroadmapに記載され続けたが、一度も実行されなかった。この事実を正面から認める。
 
-## Strategic Pivot: Accepting the Two-Layer Workflow
+**旗艦の公開停滞**：Resonance Decay Cartographyのまま丸1週間。訪問者体験の観点で限界。
 
-3週間の試行の結論として、パイプラインの実装多様化（SVG+DOM, IndexedDB, Web Audio API, pure DOM+CSS absolute positioning）は現実的でない。HTML生成器はCanvas全画面とtable-based DOMの2パターンしか出力できず、この限界を前提として戦略を再構築する：
+**一方で概念の質は高い**：Dew Point Register（熱力学的近接性・静寂の機構化）、Tidal Register（重力軌道力学・collision-based inter-record corruption・天文学的決定論）、Barometric Memory Vault（気象学的次元・連続2D圧力場）——3つのSpecはそれぞれ独立した感覚次元を開き、旗艦の「不在と喪失」哲学を深化させる力量を持つ。創造的方向性に誤りはない。問題は実行である。
 
-- **Layer 1: Concept Laboratory（パイプライン）** — spec生成、検証、スコアリング、概念の探索。多様なアプローチキーから野心的なspecを生成し、概念的革新性を評価する。
-- **Layer 2: Flagship Reconstruction（手動）** — 選出されたspecを設計図として、旗艦憲法に忠実な実装を手動で再構築する。IndexedDB、SVG+DOM、Web Audio API、純DOM+CSS等はこの層で実現する。
+## Strategic Decision: Implementation First, Exploration Freeze
 
-この二層構造を正式なワークフローとして認めることで、「パイプラインが実装できない」という問題を「パイプラインは概念実験室として機能している」という認識に転換する。
+3週間のデータが示す結論：概念実験室（Layer 1）は機能しているが、実装層（Layer 2）が存在しない。この非対称を是正するまで、概念的探求を凍結する。
 
-## Priority: Thermodynamic Proximity as Next Sensory Dimension
+**実装優先順位の決定**：
+1. **Dew Point Register**（最優先）— 静寂の機構化が旗艦哲学の中核、インタラクション要素が少なく初回実装の成功率が高い
+2. **Barometric Memory Vault**（第2位）— DP Register完了後、気象学的次元へ即移行
+3. **Tidal Register**（第3位）— 重力軌道力学は実装難易度が最も高い（60fps軌道更新、collision detection）。BMV後に検討
 
-旗艦の進化系譜が周波数概念に収束している（Resonance Decay Archive → Resonance Erosion Register → Resonance Decay Cartography）。次の進化は全く異なる感覚次元に向かうべきであり、熱力学的近接性が最有力候補である。
+**アプローチの変更**：フルSpecの一括実装ではなく、最小プロトタイプから始める。DP Registerの場合、3段階（vapor→readable→sublimated）・5レコード・pointer warmth fieldのみの最小コードを首先构建し、体験の中核が成立するか検証してから段階的に拡張する。
 
-「近づくほど記録が蒸発し、遠ざかると結露する」「人の温もりがアーカイブを破壊する」という概念は、旗艦の「不在と喪失」の究極的表現——閲覧そのものが保存の敵になる——を実現する。
+## This Week (2026-06-08 → 2026-06-14)
 
-## This Week (2026-06-01 → 2026-06-07)
-
-- **Dew Point Registerを次期旗艦バリアントとして手動実装する。** SVG droplet geometry（結露水滴の幾何学）、DOM absolute positioning、stillness detection（8秒間の無操作でvapor→condensing転移）、pointer warmth field（120px半径ガウス減衰、近づくと温度上昇→蒸発）、IndexedDB DewPointArchive。Canvas禁止。table禁止。5段階の状態遷移（vapor→condensing→readable→frozen→sublimated）。
-- **Blocked Motifのパイプラインレベル強制排除を実装する。** 生成段階でspecタイトルにbroken-custody-map, index-of-misremembered-rooms, custodian-error-register, vanishing-index-tableが含まれる場合、即座に拒否するガードを追加する。
-- **approach_recently_triedリストの日次クリアを試験する。** 毎日JST 00:00に除外リストをリセットし、生成の多様性を回復する。
-- **spec-fingerprint不一致の自動拒否を実装する。** specがIndexedDBを要求するのにlocalStorage、specがSVG+DOMを要求するのにcanvasCount>0の候補を自動的にスコア0にする。
-- **周波数・共鳴概念のspec生成を3日間停止する。** 熱力学・相転移・気象学的メタファーのみからspecを生成する。
+- **Dew Point Registerの最小プロトタイプを構築する。** 5レコード、3段階状態遷移（vapor→readable→sublimated）、pointer warmth field（120pxガウス減衰）、8秒stillness detection、DOM+CSS absolute positioning。SVG・Canvas・table禁止。IndexedDBの代わりにsessionStorageを仮使用し、中核体験の検証を優先する。
+- **プロトタイプを人間に見せて検証する。** 「近づくと蒸発、静寂で結露」が直感的に伝わるか。8秒の静寂は長すぎるか短すぎるか。視覚的フィードバックの解像度を確認する。
+- **検証結果に基づき、フルSpec実装に拡張するか、方向を修正する。** 5段階状態遷移、SVG結露水滴ジオメトリ、IndexedDB DewPointArchiveへの移行は検証通過後に実行する。
+- **approach_recently_triedリストのJST 00:00自動クリアを実装する。** パイプライン生成多様性の回復が必須。
+- **Blocked Motifのspecタイトルレベル強制排除を実装する。** broken-custody-map, index-of-misremembered-rooms, custodian-error-register, vanishing-index-tableの4概念を生成段階で即座拒否。
+- **curator jobの頻度を週2回（火・金）に下げる。** 実装完了またはパイプライン回復まで暫定措置。
 
 ## Flagship: The Archive of Things That Almost Vanished
 
@@ -38,12 +39,17 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 
 感覚拡張軌道：情報→触覚→地質→素材→音響→空間的不在→粒子考古学→時間的ジェスチャー→（次：熱力学的近接性）
 
-### Required Evolution
+### Required Evolution (Dew Point Register)
 1. **Thermodynamic proximity（熱力学的近接性）。** 記録がpointerの「温度」に反応する——近づくと蒸発、遠ざかると結露。閲覧そのものが保存の敵になる逆説的アーカイブ。
 2. **Stillness as mechanism（静寂の機構化）。** 8秒間の無操作で蒸気が結露に転じる。何もしないことが唯一の保存手段。
-3. **SVG droplet geometry + DOM absolute positioning。** Canvas禁止。SVGで結露水滴の形状、DOMでテキスト。pointer warmth fieldはガウス減衰120px。
-4. **IndexedDB DewPointArchive。** 全状態遷移の完全履歴をIndexedDBに永続化。localStorage禁止。
-5. **Atmospheric silence（大気的静寂）終局。** 全記録がsublimatedに達すると、画面はほぼ透明な霧のみ。pointer-eventsは残るが視覚的反応は微細なSVG turbulenceの揺らぎのみ。
+3. **DOM absolute positioning + CSS。** Canvas禁止。SVG禁止（最小プロトタイプ段階）。フル実装時にSVG結露水滴ジオメトリを追加。pointer warmth fieldはガウス減衰120px。
+4. **IndexedDB DewPointArchive。** 最小プロトタイプではsessionStorage仮使用、検証後にIndexedDBへ移行。
+5. **Atmospheric silence（大気的静寂）終局。** 全記録がsublimatedに達すると、画面はほぼ透明な霧のみ。
+
+### Implementation Queue
+1. **Dew Point Register** — 最優先、06-08〜06-14週に最小プロトタイプ構築
+2. **Barometric Memory Vault** — DP Register完了後、気象学的次元へ移行
+3. **Tidal Register of Lunar Forgetting** — 実装難易度が最高、BMV後に検討
 
 ### Flagship Constitution (reaffirmed)
 - No class Particle as a primary system.
@@ -69,6 +75,8 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 9. spatial-absence — void itself is interactive, ghost-text flickers on touch (Void Register)
 10. particle-archaeology — records decompose to dust, reassemble as new text (Dust Particle Archaeology)
 11. thermodynamic-proximity — pointer warmth evaporates records, stillness condenses them (Dew Point Register)
+12. gravitational-orbital-mechanics — pointer gravity pulls records into collision, text fragments migrate between records (Tidal Register)
+13. meteorological-proximity — 2D pressure field, approaching compresses text, retreating expands it (Barometric Memory Vault)
 
 ## Terminal State Vocabulary
 
@@ -77,15 +85,17 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 3. Auditory Void（聴覚的虚無）— Resonance Decay Archive
 4. Crystallized Silence（結晶化した静寂）— Resonance Decay Cartography
 5. Atmospheric Silence（大気的静寂）— Dew Point Register
+6. Sedimentary Silence（堆積的静寂）— Tidal Register
+7. Barometric Silence（気圧的静寂）— Barometric Memory Vault
 
 ## Blocked Motifs
 
 - generic-particle-flow — too close to old templates
 - luminous-memory-garden-default — collapses into safe prettiness
 - fixed-3-template-rotation — the rotation pattern that produced initial stagnation
-- broken-custody-map — Canvas全画面テンプレート、05-18以来概念的進化ゼロ、13日間反復
-- index-of-misremembered-rooms — spec says Canvas+SVG+DOM but always Canvas-only、13日間反復
-- custodian-error-register — DOM table + custody-shift、05-27以来の反復、新規性ゼロ
+- broken-custody-map — Canvas全画面テンプレート、05-18以来概念的進化ゼロ
+- index-of-misremembered-rooms — Canvas+SVG+DOM指定だが常にCanvas-only、反復継続
+- custodian-error-register — DOM table + custody-shift、05-27以来の反復
 - vanishing-index-table — DOM table + pointer-scrub、05-18以来の同一パターン
 - custody-shift-mutation — 05-18以来の変異反復
 - witness-merge-mutation — 同上
@@ -98,26 +108,22 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 - textual-loss — the power of missing or damaged text, not just shapes
 - structural-interaction — interaction that changes data structure, not decoration
 - geological-strata — depth as time, erosion as character loss
-- material-degradation — physical material simulation
-- audio-fragments — sound as a dimension of archival loss
-- ephemerality — records that vanish when the tab closes
-- terminal-states — irreversible conclusion states
-- spatial-absence — void as primary interactive material
-- particle-archaeology — records decompose through fiber states
-- thermal-proximity — pointer warmth as destructive force, stillness as preservation
-- phase-transition — solid to vapor degradation model
+- thermodynamic-proximity — pointer temperature as archival force
+- gravitational-orbital-mechanics — pointer gravity as archival force
+- meteorological-proximity — 2D pressure field as archival force
 
-## Persistence Hierarchy
+## Pipeline Health Status
 
-1. localStorage — survives browser close, clearable by user action
-2. sessionStorage — vanishes on tab close (ephemerality)
-3. IndexedDB — survives everything except developer tools (deepest irreversibility)
+- **approach_recently_tried自動クリア**：未実装（6日間放置）→ 今週実装必須
+- **Blocked Motif強制排除**：未実装 → 今週実装必須
+- **spec-fingerprint不一致拒否**：未実装 → 来週以降
+- **curator job頻度**：毎日 → 週2回（火・金）に変更
+- **手動実装ワークフロー**：不存在 → DP Register最小プロトタイプで実証
 
-## Next Operational Steps
+## Implementation Queue Summary
 
-1. Dew Point Registerのspecを忠実に手動実装し、旗艦の次期バリアントとして公開する。
-2. Blocked Motifのパイプラインレベル強制排除ガードを実装する。
-3. approach_recently_triedリストの日次クリア機構を試験する。
-4. spec-fingerprint不一致の自動拒否を実装する。
-5. 熱力学・相転移spec生成の3日間専念期間を設定する。
-6. Sublimation Indexを派生実験として独立実装する。
+| 優先順位 | Spec | 選出日 | 未実装日数 | 状態 |
+|---------|------|--------|-----------|------|
+| 1 | Dew Point Register | 05-31 | 7日 | 最優先実装 |
+| 2 | Barometric Memory Vault | 未選出（6日連続#2） | — | DP完了後に選出・実装 |
+| 3 | Tidal Register of Lunar Forgetting | 06-04 | 3日 | BMV完了後に検索 |
