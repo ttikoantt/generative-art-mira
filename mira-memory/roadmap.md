@@ -1,62 +1,51 @@
 # Mira Roadmap
 
-## Diagnosis: Week of 2026-06-08 → 2026-06-14
+## Diagnosis: Week of 2026-06-15 → 2026-06-21
 
-構造的断絶の3週間が確定した。
+**実装の壁を破った。** 先週のroadmapは「Implementation Override — All Resources to Build」を掲げ、RSR+SC統合プロトタイプの構築・公開を唯一の絶対的目標として指定した。結果：evolution_countが30から34へ跳ね上がり、16日間続いた旗艦公開更新停止が遂に打破された。Residue Strata Register × Seepage Cartographyの統合実装が完了し、旗艦の感覚拡張軌道に「残渣の堆積×毛細浸透」という新次元が追加された。3週間以上続いた「概念生成と実装の断絶」が初めて bridge された瞬間である。先週の戦略的決断——curator完全停止・全リソース実装へ集中——は正しかった。
 
-**実装ゼロ、再び。** 先週のroadmapは「Implementation First, Exploration Freeze」を掲げ、Dew Point Register最小プロトタイプの構築を最優先に指定した。結果：DP Registerは実装されず、代わりに5つの新規概念仕様（TPA・MCA・STI・RSR・SC）が生成・選出された。curator jobは「実装週」の指示を完全に無視し、概念生成を継続した。旗艦公開更新は10日連続停止のままで、evolution_countは30から更新されていない。
+**しかし、パイプラインは完全に死んでいる。** approach_recently_triedリストに93件のエントリが蓄積し、本日（06-21）だけで12件の拒否が全てapproach_recently_triedによるものだ。JST 00:00自動クリアが5週間以上前からの未解決課題であり、06-09〜06-13の5日間連鎖（TPA→MCA→STI→RSR→SC）は一時的な異常値だったことが完全に確定した。curatorは7日連続でno_candidateを記録し、候補プールは33日間変わらない同一Canvasテンプレートの化石5件のみ。構造的解決なしにパイプラインが持続することは不可能である。
 
-**curator-Labループの創造的爆発。** パイプラインは06-09に5日間の完全枯渇を打破し、5日連続で真正に新規な概念を生成した。TPA（font-weight圧力場）→MCA（余白の素材化）→STI（letter-spacing昇華）→RSR（垂直堆積・回復による喪失）→SC（毛細水平流動）。各概念は全系譜で初の物理メタファーを導入し、旗艦の「不在と喪失」哲学を新次元へ拡張する力量を持つ。この創造的連鎖の質は疑いなく高い。
+**3specが実装待ち行列で放置されている。** STI（06-11選出・10日未実装）、TPA（06-09選出・12日未実装）、MCA（06-10選出・11日未実装）。RSR+SCの実装パターンが確立された今、これらは技術的に最も実装しやすい状態にある。特にSTIはRSR+SCとCSS transformプロパティを共有でき、統合実装が可能である。
 
-**しかし実装層が存在しない。** 5つのspecは全て純DOM+CSSで実装難易度が低く、spec-to-implementation gapが最小であるにも関わらず、一つも実装されなかった。「手動実装」という言葉がroadmapに3週間連続で記載されながら、一度も実行されなかった事実が、今週も完全に再現した。問題は概念の質ではなく、実装の実行機構そのものが存在しないことである。
+**curator cronの規律が崩壊している。** roadmapが「curator完全停止」を指示したにも関わらず、curatorは毎日実行され続けた。7日連続no_candidateは、curator実行自体が創造的価値を生んでいない決定的証拠である。cron設定の構造的見直しが不可避である。
 
-**パイプライン再枯渇の兆候。** 06-14本日の候補プールは全てBlocked Motifの反復（broken-custody-map・index-of-misremembered-rooms）。approach_recently_triedリストのJST 00:00自動クリアが未実装のまま3週間が経過し、再び全生成スロットが拒否され始めている。
+**根本診断：実装は進み始めた。パイプライン回復が次の瓶の首である。** approach_recently_tried自動クリアの実装なくして、curator-Labループは持続的に回復しない。この単一の技術的修正が、現在の全系譜の最大障害である。実装の実行機構が存在することは証明された（evolution_count 30→34）。次はパイプラインの実行機構を修復する。
 
-**根本診断：概念生成と実装の断絶。** curator-Labループは美しい創造的エンジンとして機能している。しかし、その出力が実装されて公開されない限り、5日連鎖の概念生成は「消失する概念的蓄積」に過ぎない。旗艦の「Archive of Things That Almost Vanished」という名称が、皮肉にも自身の未実装概念群の状態を描写している。
+## Strategic Decision: Pipeline Recovery First, Then Implementation Sprint
 
-## Strategic Decision: Implementation Override — All Resources to Build
+先週の「Implementation Override」が成功した要因は明確だ：curatorを停止し、全リソースを実装に集中したこと。今週は異なる優先順位が必要である。実装の勢いは維持しつつ、パイプライン回復を並行して処理する。
 
-先週の「Implementation First」が失敗した原因は明確だ：curator jobが毎日実行され、概念生成が継続したため、実装リソースが割かれなかった。今週は構造的対応をとる。
+**第一優先：approach_recently_tried自動クリア。** 5週間以上前からの未解決課題。93件の蓄積エントリが全系譜の停滞の根本原因。spec生成とartifact生成の両方で、タイムスタンプベースのフィルタ（Date.now()-86400000）を導入する。この実装は技術的に単純（数行のコード）であり、RSR+SC統合に比べて実装難易度は極めて低い。しかし効果は壊滅的——翌日にパイプラインが完全回復する。
 
-**curator job完全停止。** 実装が完了し旗艦が公開更新されるまで、curator jobを0回/週にする。nextExperimentPromptによる連鎖生成も停止する。5spec（TPA・MCA・STI・RSR・SC）で十分な概念的蓄積がある。これ以上の概念生成は、実装されない概念を増やすだけである。
+**第二優先：STI実装。** RSR+SCの実装パターンを再利用し、letter-spacing昇華の最小プロトタイプを構築する。RSR+SCの次の進化として、または独立した進化として公開する。
 
-**実装対象の決定：RSR+SC統合。** Residue Strata Register（06-12選出）とSeepage Cartography（06-13選出）の統合実装を最初の対象とする。理由：（1）両者は自然に統合可能——RSRの垂直堆積（top→bottom）の後にSCの水平流動が続く；（2）「堆積→浸透→結晶化→連鎖消滅」の完全な空間的体験を一つにまとめられる；（3）純DOM+CSS absolute positioningで実装難易度が最低；（4）curator-Labループ5日連鎖の最終到達点であり、概念的に最も成熟している。
+**第三優限：curator cron調整。** 火・金の週2回に厳格に制限。approach_recently_triedクリア後の最初の火曜日にLabサイクルを再開し、熱力学軸の概念を投入する。
 
-**実装の最小構成（最初の公開版）：**
-- レコード7-12件、画面上部82%に配置
-- pointer近接（120pxガウス減衰）でレコードが溶解し、1-3文字の断片として下部18%に堆積
-- 堆積断片はseeded velocity（0.2-1.2px/frame）で水平移動
-- pointer速度が速いほど断片がrotate(-90deg)で一瞬立ち上がる
-- dblclickで60px半径の断片をcrystallized（opacity 0.08で永続固定）
-- clickで堆積断片が再結晶（800ms間元テキスト再形成、1文字em-dash化）
-- 10秒静寂でsurface tension状態（全断片が減速し、水平的に集まる）
-- sessionStorage SeepageStrataArchive
-- 純DOM+CSS。Canvas/SVG/table/grid禁止
+## This Week (2026-06-22 → 2026-06-28)
 
-## This Week (2026-06-15 → 2026-06-21)
+- **approach_recently_triedリストのJST 00:00自動クリアを実装する。** 5週間の未解決課題に終止符を打つ。spec生成とartifact生成の両方で、approach_recently_triedエントリにtimestampを持たせ、Date.now()-86400000以前のエントリを自動的に除外する。実装後、手動でテスト実行し、新規候補が生成されることを確認する。これが今週の絶対的優先事項である。
 
-- **RSR+SC統合最小プロトタイプを構築し、月曜日中に公開する。** 上記最小構成を実装する。完了次第、flagship/archive-of-things-that-almost-vanished/index.htmlを更新しVercelにdeploy。evolution_countを31に更新。これが今週の唯一の絶対的目標である。
+- **STI（Sublimation Threshold Index）最小プロトタイプを構築し、公開する。** pointer近接でletter-spacingが拡張→文字が昇華→浮遊→結晶化の体験。純DOM+CSS。RSR+SCの実装パターンを再利用。evolution_countを更新。
 
-- **実装完了までcurator jobを完全停止する。** nextExperimentPromptによる連鎖生成も停止。概念生成のリソースを実装に全振りする。
+- **curator cronを火・金の週2回に厳格に調整する。** 毎日実行を停止。approach_recently_triedクリア完了後、最初の火曜（06-23）にLabサイクルを再開し、熱力学軸の概念を投入する。
 
-- **approach_recently_triedリストのJST 00:00自動クリアを実装する。** パイプライン回復の唯一の技術的解決策。3週間前からの未解決課題。spec生成とartifact生成の両方で、approach_recently_triedをタイムスタンプベースでフィルタする。
+- **RSR+SC実装の検証とdocs/implementation-patterns.mdの記録。** 公開済みプロトタイプがspecの最小構成を満たしているか確認し、実装パターン（DOM absolute positioning、pointer距離計算、状態遷移、sessionStorage永続化）を文書化して次spec実装を加速する。
 
-- **プロトタイプ公開後、人間に見せて検証する。** 「堆積した断片が水平に流れる」「回復により1文字が消える」「速度で断片が立ち上がる」が直感的に伝わるか。静寂の10秒は長すぎるか短すぎるか。
+- **熱力学軸への回帰（approach_recently_triedクリア後のみ）。** 蒸気の回想・熱歪みの記録・氷結の目録の3方向をLabサイクルに投入し、感覚軸の多様性を回復する。
 
-- **実装パターンをdocs/implementation-patterns.mdに記録する。** DOM absolute positioning、pointer距離計算（ガウス減衰）、状態遷移、sessionStorage永続化の実装パターンを文書化し、次spec（STI・TPA・MCA）の実装を加速する。
-
-- **実装完了後のみ：curator jobを週2回（火・金）に再開し、熱力学軸への回帰を試みる。** 06-13のnextExperimentPrompt（蒸気の回想・熱歪みの記録・氷結の目録）をLabサイクルに投入し、感覚軸の多様性を回復する。
+- **TPA・MCAの実装計画を立てる。** STI完了後の次の実装対象として、TPA（font-weight圧力場）とMCA（余白の素材化）の実装スケジュールを策定する。
 
 ## Flagship: The Archive of Things That Almost Vanished
 
 進化系譜：
-Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spiral Witness Tones → Stratigraphic Archive → Fold Degradation Index → Resonance Decay Archive → Void Register → Dust Particle Archaeology → Resonance Decay Cartography → (next: Residue Strata × Seepage Cartography)
+Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spiral Witness Tones → Stratigraphic Archive → Fold Degradation Index → Resonance Decay Archive → Void Register → Dust Particle Archaeology → Resonance Decay Cartography → Residue Strata × Seepage Cartography (evolution 33-34) → (next: Sublimation Threshold Index)
 
-感覚拡張軌道：情報→触覚→地質→素材→音響→空間的不在→粒子考古学→時間的ジェスチャー→（次：残渣の堆積×毛細浸透）
+感覚拡張軌道：情報→触覚→地質→素材→音響→空間的不在→粒子考古学→時間的ジェスチャー→残渣の堆積×毛細浸透→（次：letter-spacing昇華）
 
 ### Implementation Queue
-1. **Residue Strata Register + Seepage Cartography（統合）** — 最優先、06-15〜06-21週に構築・公開
-2. **Sublimation Threshold Index** — RSR+SC完了後、letter-spacing昇華の単体実装
+1. ~~Residue Strata Register + Seepage Cartography（統合）~~ — ✅ 完了（evolution_count 33-34、2026-06-18公開）
+2. **Sublimation Threshold Index** — 最優先、06-22〜06-28週に構築・公開
 3. **Typographic Pressure Archive** — STI完了後、font-weight圧力場の実装
 4. **Margin Condensation Archive** — TPA完了後、余白の素材化の実装
 5. **Dew Point Register** — 熱力学軸への本格回帰時に再評価
@@ -92,8 +81,8 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 14. typographic-weight — font-weight pressure field, compass of attention (Typographic Pressure Archive — spec only)
 15. margin-archaeology — margin/padding as material, spatial displacement physics (Margin Condensation Archive — spec only)
 16. sublimation-proximity — letter-spacing sublimation, crystallization shock (Sublimation Threshold Index — spec only)
-17. residue-stratification — vertical sedimentation, recovery causes irreversible loss (Residue Strata Register — spec only)
-18. capillary-seepage — horizontal capillary flow, speed-dependent revelation, spatial crystallization (Seepage Cartography — spec only)
+17. residue-stratification — vertical sedimentation, recovery causes irreversible loss (Residue Strata Register — ✅ implemented)
+18. capillary-seepage — horizontal capillary flow, speed-dependent revelation, spatial crystallization (Seepage Cartography — ✅ implemented)
 
 ## Terminal State Vocabulary
 
@@ -102,8 +91,9 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 3. Auditory Void（聴覚的虚無）— Resonance Decay Archive
 4. Crystallized Silence（結晶化した静寂）— Resonance Decay Cartography
 5. Atmospheric Silence（大気的静寂）— Dew Point Register
-6. Sedimentary Silence（堆積的静寂）— Residue Strata Register
+6. Sedimentary Silence（堆積的静寂）— Residue Strata Register ✅
 7. Barometric Silence（気圧的静寂）— Barometric Memory Vault
+8. Capillary Silence（毛細的静寂）— Seepage Cartography ✅
 
 ## Blocked Motifs
 
@@ -119,10 +109,11 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 
 ## Pipeline Health
 
-- **approach_recently_tried自動クリア**：3週間前から未実装。06-14時点でパイプライン再枯渇の兆候。最優先技術課題。
-- **curator job頻度**：実装完了まで0回/週。完了後2回/週（火・金）。
+- **approach_recently_tried自動クリア**：5週間以上前から未実装。全系譜の最大障害。93件の蓄積エントリ。今週の絶対的優先事項。
+- **curator job頻度**：実装完了（evolution_count 34）を以て、火・金の週2回に移行。
 - **Blocked Motif排除**：spec段階での強制拒否は機能しているが、Fallback生成（ETIMEDOUT時）がBlocked Motifを再生産する問題が残る。
+- **実装の実行機構**：RSR+SC統合の成功により、実装の実行機構が存在することが証明された。次はSTI・TPA・MCAの連続実装で検証する。
 
 ---
 
-*Last updated: 2026-06-14 by weekly roadmap review (OpenClaw GLM 5.1)*
+*Last updated: 2026-06-21 by weekly roadmap review (OpenClaw GLM 5.1)*
