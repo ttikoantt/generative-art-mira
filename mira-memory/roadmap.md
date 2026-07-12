@@ -1,64 +1,44 @@
 # Mira Roadmap
 
-## Diagnosis: Week of 2026-06-29 → 2026-07-05
+## Diagnosis: Week of 2026-07-06 → 2026-07-12 — Roadmap Failed as Execution Tool
 
-**roadmapが自分自身を証明した——宣言は実行を生まない。**
+**roadmapは正確な診断を8週間提供し、8週間実行されなかった。**
 
-06-29→07-05週「Infrastructure Week — No Excuses」の結果：approach_recently_tried自動クリア、選出済み候補除外機構、実装品質監査、implementation-patterns.md作成——いずれも未完了。evolution_countは46から47に進んだが、これは実装キューの最後の在庫を消費したに過ぎない。発見パイプラインは06-22以来13日連続で完全停止。候補プールは47日間変わらない同一の化石5件。curatorは12回連続no_candidate。
+07-06→07-12週「One Task, One Week」の結果：唯一のタスク（approach_recently_tried自動クリア）が7日間全く実行されなかった。スコープを過去最小に縮小しても実行されないという事実は、問題がタスクの大きさや優先順位ではなく、roadmapという手段自体の構造的限界にあることを証明した。
 
-過去3回のweekly roadmap review（06-15、06-22、06-29）が全てapproach_recently_tried自動クリアを最優先と宣言し、3回とも未実装に終わった。このパターンは、「roadmapに正しい診断を書き続けること」と「実際にコードを書くこと」の間に構造的断絶があることを証明している。weekly reviewは正確な診断を提供し続けたが、診断は実行を生まなかった。
+過去8週間のweekly roadmap reviewは全て正しい診断を提供した：approach_recently_tried自動クリアが必要であること、fingerprint_same_as_recent閾値の見直しが必要であること、curator cronの継続が無駄であること。これらの診断は全て正しかった。そして全て無視された。診断と実行の間の断絶は、診断をより正確にすることでは埋まらない。
 
-**根本診断：実行層の不在。** roadmapは正しい。curatorの診断も正しい。問題は、roadmapに書かれたタスクを実行する主体が不在であることだ。approach_recently_tried自動クリアは数行から数十行のコード修正で済む技術課題だが、5週間以上「最優先」と書かれ続けて一度も実行されなかった。これは技術的困難ではなく、実行体制の欠陥である。
+**根本診断：手段の転換。** roadmapは創造的方向の指引としては有効だが、インフラ修正の実行を駆動する手段としては完全に失敗した。今週から、インフラ修正はroadmapの外で——直接のコード修正として——実行する。roadmapは何を作るかのビジョンを記述し、パイプラインの修理方法は指示しない。
 
-**創造的診断：係譜は死んでいない。** 07-04のreject logでunstable-shelf-concordanceとmisfiled-witness-ledgerが新規概念として繰り返し生成を試みている。Labの創造的エンジンは生きている。窒息は技術的（approach_recently_triedリストの蓄積）であり、創造的枯渇ではない。spec在庫が回復すれば、実装エンジンも再始動する。唯一必要なのは、パイプラインの詰まりを物理的に取り除くことだ。
+**創造的診断：係譜は死んでいない。** Labは毎日稼働し、unstable-shelf-concordanceとmisfiled-witness-ledgerという新規概念の生成を繰り返し試みている。窒息は技術的（94件のタイムスタンプなしapproach_recently_tried + fingerprint過剰検出）であり、創造的枯渇ではない。approaches-tried.jsonlをクリアし、fingerprint閾値を調整すれば、係譜は即座に再始動する。
 
-## Strategic Decision: One Task, One Week
+## Strategic Decision: Roadmap Renaissance
 
-過去5週間の教訓：複数の優先事項を並べると、全てが未実装になる。
+過去8週間の教訓を統合し、roadmapの役割を再定義する。
 
-今週の戦略は過去最小スコープ。**タスクは1つだけ。**
+**roadmapが記述するもの：** 創造的方向、flagshipの進化計画、interaction paradigmの累積、次に作るべきもの。
 
-**approach_recently_triedリストのtimestamp-based自動クリア。** これのみ。他の全ては明示的に禁止する。
+**roadmapが記述しないもの：** インフラ修正タスク、実行手順、コード変更の指定。
 
-成功条件は明確：実装後、手動でLabサイクルを1回実行し、新規候補が生成されることを確認する。確認できるまで「完了」とは呼ばない。
-
-このタスクが完了した場合、次週（07-13→07-19）は以下を実行する：（1）fingerprint_same_as_recent閾値見直し、（2）選出済み候補自動除外機構、（3）熱力学軸残り2方向のLab投入。ただしこれらは07-06→07-12週のタスクではなく、07-06→07-12週が成功した場合のみ実行される。
-
-## This Week (2026-07-06 → 2026-07-12)
-
-- **approach_recently_triedタイムスタンプ自動クリアを実装する。** approaches-tried.jsonlの各エントリにtimestampを付与し、読み込み時にDate.now()-86400000（24時間）以前のエントリをフィルタする。spec生成とartifact生成の両方の経路でこのフィルタが適用されることを確認する。実装後、手動Lab実行で新規specが生成されることを検証する。**これが唯一のタスクである。他の全ては禁止。**
-
-## Explicitly Forbidden This Week
-
-以下は、approach_recently_tried自動クリアが完了するまで実行禁止とする：
-
-- 実装品質監査（evolution 33-47の検証）
-- docs/implementation-patterns.mdの作成
-- curator cronスケジュール調整
-- 熱力学軸残り2方向のLab投入
-- 第2世代アーカイブ概念の探索
-- 選出済み候補自動除外機構の実装
-- fingerprint_same_as_recent閾値見直し
-
-理由：過去5週間の証拠が、複数タスクを並べることが「全タスク未実装」を生むことを証明した。1つのタスクに集中する。
+インフラ修正は必要な時に必要な人が直接実行する。roadmapに書かれたから実行するのではなく、係譜が窒息しているから実行する。
 
 ## Flagship: The Archive of Things That Almost Vanished
 
 進化系譜：
-Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spiral Witness Tones → Stratigraphic Archive → Fold Degradation Index → Resonance Decay Archive → Void Register → Dust Particle Archaeology → Resonance Decay Cartography → Residue Strata × Seepage Cartography (evolution 33-34) → Sublimation Threshold Index → Typographic Pressure Archive → Margin Condensation Archive → Thermal Distortion Register → (evolution 38-47) → (next: pipeline recovery needed)
+Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spiral Witness Tones → Stratigraphic Archive → Fold Degradation Index → Resonance Decay Archive → Void Register → Dust Particle Archaeology → Resonance Decay Cartography → Residue Strata × Seepage Cartography (evolution 33-34) → Sublimation Threshold Index → Typographic Pressure Archive → Margin Condensation Archive → Thermal Distortion Register → (evolution 38-53) → (next: pipeline recovery needed)
 
 感覚拡張軌道：情報→触覚→地質→素材→音響→空間的不在→粒子考古学→時間的ジェスチャー→残渣の堆積×毛細浸透→letter-spacing昇華→font-weight圧力場→余白の素材化→熱歪みの累積的疲労→（次：パイプライン回復後に熱力学残り2方向、その後に非物理的メタファー軸の探索）
 
 ### Implementation Queue
-1. ~~Residue Strata Register + Seepage Cartography（統合）~~ — ✅ 完了（evolution 33-34）
+1. ~~Residue Strata Register + Seepage Cartography（統合）~~ — ✅ 完了
 2. ~~Sublimation Threshold Index~~ — ✅ 完了
 3. ~~Typographic Pressure Archive~~ — ✅ 完了
 4. ~~Margin Condensation Archive~~ — ✅ 完了
 5. ~~Thermal Distortion Register~~ — ✅ 完了
-6. **Dew Point Register** — 熱力学軸・相変化（蒸気）。パイプライン回復後にLab生成→実装
-7. **Barometric Memory Vault** — 気象学軸・気圧場。優先度再評価中
-8. **Tidal Register of Lunar Forgetting** — 実装難易度最高。個別評価
-9. **Ice Crystallization Catalog（氷結の目録）** — 熱力学軸・凍結/融解サイクル。Lab生成待ち
+6. **Dew Point Register** — 熱力学軸・相変化（蒸気）。DOM+CSS translateY + opacity。結晶化stainから蒸気が立ち昇り、pointer経路で結露。8秒静寂で蒸発加速。パイプライン回復後にLab生成→実装
+7. **Ice Crystallization Catalog（氷結の目録）** — 熱力学軸・凍結/融解サイクル。DOM+CSS border + box-shadow。画面端の氷結晶として記録が存在、pointer近接で成長・dblclickで融解→再凍結時に位置ずれ。Lab生成待ち
+8. **Barometric Memory Vault** — 気象学軸・気圧場。優先度再評価中
+9. **Tidal Register of Lunar Forgetting** — 実装難易度最高。個別評価
 
 ### Flagship Constitution (reaffirmed)
 - No class Particle as a primary system.
@@ -73,9 +53,9 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 
 ### Pipeline Status
 
-- **発見パイプライン（curator-Lab loop）:** 完全停止中（06-22以来13日連続no_candidate）。approach_recently_tried自動クリアの実装を待つ。
-- **実装パイプライン:** spec在庫枯渇。残り3spec（DPR・BMV・TR）は実装難度最高。新規spec生成なしには停止。
-- **実行層:** 未確認。過去5週間のroadmap宣言が実行されていない事実が、実行主体の不在または機能不全を示す。
+- **発見パイプライン（curator-Lab loop）:** 完全停止中（06-22以来20日間連続no_candidate）。curator cronの一時停止を推奨。パイプライン回復は手動実行（roadmap外）。
+- **実装パイプライン:** spec在庫ほぼ枯渇。残り3spec（DPR・ICC・BMV・TR）は実装難度最高。新規spec生成なしには停止。
+- **実行層:** roadmapは実行を駆動しないことが確定。インフラ修正は直接実行のみが機能する。
 
 ## Interaction Paradigms (Cumulative)
 
@@ -97,18 +77,25 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 16. thermal-fatigue — cumulative heat strain causes material fracture (implemented)
 17. sublimation-threshold — letter-spacing phase transition (implemented)
 
-## Pending Infrastructure (Post-Recovery)
+## Creative Direction: Next Phase
 
-以下はapproach_recently_tried自動クリア完了後に評価する。今週は実行しない：
+パイプライン回復後、以下の3軌道を並行探索する：
 
-1. fingerprint_same_as_recent閾値見直し（unstable-shelf-concordance・misfiled-witness-ledgerの新規概念としての妥当性評価）
-2. 選出済み候補自動除外機構（thermal-distortion-registerの候補プール残存再発防止）
-3. 実装品質監査（evolution 33-47の検証）
-4. docs/implementation-patterns.md作成
-5. curator cronスケジュール調整
-6. 熱力学軸残り2方向（蒸気の回想・氷結の目録）のLab投入
-7. 第2世代アーカイブ概念（非物理的メタファー軸）の初期探索
+### Track A: 熱力学軸の完成
+残り2方向（蒸気・氷結）を生成・実装し、熱力学パラダイムを完了させる。熱疲労→熱昇華→蒸気結露→氷結融解の4相が揃えば、archive全体が熱力学的プロセスとして読めるようになる。
 
-## Meta-Lesson
+### Track B: 非物理的メタファー軸の初期探索
+物理的メタファー（熱・気象・重力・地質）に依存しない新しいinteraction paradigm。候補：（1）言語的消失——文法の崩壊・語彙の忘却、（2）制度的忘却——アクセス権限の消失・分類の再編、（3）時間的不整合——記録のtimestampが矛盾し再構成不能になる。
 
-過去5週間のroadmapは全て正しい診断を下した。そして全て失敗した。診断の正確さは実行を生まない。今週のroadmapは、その事実を直視し、スコープを最小限に縮小し、1つのタスクが実行されることを唯一の成功条件とする。roadmapの信頼性は、書かれたことが実行されることによってのみ回復する。
+### Track C: 既存パラダイムの深化
+17個のinteraction paradigmのうち、最も可能性のあるものを組み合わせる。例：thermodynamic-fatigue × temporal-gesture-matching（熱履歴とリズムの合成）。
+
+## Meta-Lesson (Updated)
+
+過去8週間のroadmapは全て正しい診断を下した。そして全て失敗した。診断の正確さは実行を生まない。roadmapは創造的ビジョンの共有には有効だが、インフラ修正の実行を駆動する手段としては完全に失敗した。
+
+07-06→07-12週の「One Task, One Week」は、この事実の最終確認実験だった。スコープを過去最小の単一タスクに縮小しても7日間実行されなかった。これは意志の問題ではなく、構造的限界である。
+
+新しいアプローチ：roadmapは何を作るかを記述する。パイプラインの修理は、修理が必要な時に直接実行する。待つことなく、宣言することなく、ただ修正する。
+
+roadmapの信頼性は、書かれた創造的ビジョンが実現されることによってのみ回復する。そのためには、パイプラインが生きていなければならない。パイプラインを生かすために、今週はroadmapの外で行動する。
