@@ -1,48 +1,40 @@
 # Mira Roadmap
 
-## Diagnosis: Week of 2026-07-06 → 2026-07-12 — Roadmap Failed as Execution Tool
+## Diagnosis: Week of 2026-07-13 → 2026-07-19 — Roadmap Renaissance Failed
 
-**roadmapは正確な診断を8週間提供し、8週間実行されなかった。**
+Roadmap Renaissance宣言（07-13）は完全に失敗した。宣言された3つの行動——curator cron一時停止、approach_recently_tried自動クリア実装、手動Lab実行での新規spec生成確認——は7日間全て未実行のまま週が終わった。
 
-07-06→07-12週「One Task, One Week」の結果：唯一のタスク（approach_recently_tried自動クリア）が7日間全く実行されなかった。スコープを過去最小に縮小しても実行されないという事実は、問題がタスクの大きさや優先順位ではなく、roadmapという手段自体の構造的限界にあることを証明した。
+これは過去9週間のweekly roadmap reviewが全て正しい診断を提供しながら実行されなかった事実の最終確定である。Roadmap Renaissance宣言それ自体が、宣言と実行の乖離の9週間目の再現であった。roadmapに書かれた宣言は実行を生まない——この事実は構造的であり、意志や診断の精度の問題ではない。
 
-過去8週間のweekly roadmap reviewは全て正しい診断を提供した：approach_recently_tried自動クリアが必要であること、fingerprint_same_as_recent閾値の見直しが必要であること、curator cronの継続が無駄であること。これらの診断は全て正しかった。そして全て無視された。診断と実行の間の断絶は、診断をより正確にすることでは埋まらない。
+**しかし創造的現実は手続的失敗とは異なる。** evolution_countは本週中に52から60に到達した。実装エンジンは確実に稼働している。Labは毎日稼働し、unstable-shelf-concordanceとmisfiled-witness-ledgerという新規概念の生成を繰り返し試みている。窒息は技術的（タイムスタンプなしのapproach_recently_triedリスト + fingerprint過剰検出）であり、創造的枯渇ではない。係譢は生きている。扼殺されているが、死んでいない。
 
-**根本診断：手段の転換。** roadmapは創造的方向の指引としては有効だが、インフラ修正の実行を駆動する手段としては完全に失敗した。今週から、インフラ修正はroadmapの外で——直接のコード修正として——実行する。roadmapは何を作るかのビジョンを記述し、パイプラインの修理方法は指示しない。
+## Strategic Decision: Roadmap as Pure Vision
 
-**創造的診断：係譜は死んでいない。** Labは毎日稼働し、unstable-shelf-concordanceとmisfiled-witness-ledgerという新規概念の生成を繰り返し試みている。窒息は技術的（94件のタイムスタンプなしapproach_recently_tried + fingerprint過剰検出）であり、創造的枯渇ではない。approaches-tried.jsonlをクリアし、fingerprint閾値を調整すれば、係譜は即座に再始動する。
+roadmapは創造的ビジョンの記述のみに専念する。インフラ診断・修正タスク・実行宣言を含めない。インフラ修正は必要な時に必要な人が直接実行する——roadmapの外で。
 
-## Strategic Decision: Roadmap Renaissance
-
-過去8週間の教訓を統合し、roadmapの役割を再定義する。
-
-**roadmapが記述するもの：** 創造的方向、flagshipの進化計画、interaction paradigmの累積、次に作るべきもの。
-
-**roadmapが記述しないもの：** インフラ修正タスク、実行手順、コード変更の指定。
-
-インフラ修正は必要な時に必要な人が直接実行する。roadmapに書かれたから実行するのではなく、係譜が窒息しているから実行する。
+過去9週間の証拠：roadmapにインフラタスクを書くことは、書かないことと同じ結果になる。ならば、roadmapの限られた容量を創造的方向に使うべきである。
 
 ## Flagship: The Archive of Things That Almost Vanished
 
 進化系譜：
-Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spiral Witness Tones → Stratigraphic Archive → Fold Degradation Index → Resonance Decay Archive → Void Register → Dust Particle Archaeology → Resonance Decay Cartography → Residue Strata × Seepage Cartography (evolution 33-34) → Sublimation Threshold Index → Typographic Pressure Archive → Margin Condensation Archive → Thermal Distortion Register → (evolution 38-53) → (next: pipeline recovery needed)
+Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spiral Witness Tones → Stratigraphic Archive → Fold Degradation Index → Resonance Decay Archive → Void Register → Dust Particle Archaeology → Resonance Decay Cartography → Residue Strata × Seepage Cartography → Sublimation Threshold Index → Typographic Pressure Archive → Margin Condensation Archive → Thermal Distortion Register → (evolutions 38-60) → (next: pipeline recovery → thermodynamic completion)
 
-感覚拡張軌道：情報→触覚→地質→素材→音響→空間的不在→粒子考古学→時間的ジェスチャー→残渣の堆積×毛細浸透→letter-spacing昇華→font-weight圧力場→余白の素材化→熱歪みの累積的疲労→（次：パイプライン回復後に熱力学残り2方向、その後に非物理的メタファー軸の探索）
+感覚拡張軌道：情報→触覚→地質→素材→音響→空間的不在→粒子考古学→時間的ジェスチャー→残渣の堆積×毛細浸透→letter-spacing昇華→font-weight圧力場→余白の素材化→熱歪みの累積的疲労→（次：熱力学残り2方向、その後に非物理的メタファー軸の探索）
 
 ### Implementation Queue
-1. ~~Residue Strata Register + Seepage Cartography（統合）~~ — ✅ 完了
-2. ~~Sublimation Threshold Index~~ — ✅ 完了
-3. ~~Typographic Pressure Archive~~ — ✅ 完了
-4. ~~Margin Condensation Archive~~ — ✅ 完了
-5. ~~Thermal Distortion Register~~ — ✅ 完了
+1. ~~Residue Strata Register + Seepage Cartography~~ — ✅
+2. ~~Sublimation Threshold Index~~ — ✅
+3. ~~Typographic Pressure Archive~~ — ✅
+4. ~~Margin Condensation Archive~~ — ✅
+5. ~~Thermal Distortion Register~~ — ✅
 6. **Dew Point Register** — 熱力学軸・相変化（蒸気）。DOM+CSS translateY + opacity。結晶化stainから蒸気が立ち昇り、pointer経路で結露。8秒静寂で蒸発加速。パイプライン回復後にLab生成→実装
-7. **Ice Crystallization Catalog（氷結の目録）** — 熱力学軸・凍結/融解サイクル。DOM+CSS border + box-shadow。画面端の氷結晶として記録が存在、pointer近接で成長・dblclickで融解→再凍結時に位置ずれ。Lab生成待ち
+7. **Ice Crystallization Catalog** — 熱力学軸・凍結/融解サイクル。DOM+CSS border + box-shadow。画面端の氷結晶として記録が存在、pointer近接で成長・dblclickで融解→再凍結時に位置ずれ
 8. **Barometric Memory Vault** — 気象学軸・気圧場。優先度再評価中
 9. **Tidal Register of Lunar Forgetting** — 実装難易度最高。個別評価
 
-### Flagship Constitution (reaffirmed)
-- No class Particle as a primary system.
-- No createRadialGradient as a primary visual device.
+### Flagship Constitution
+- No `class Particle` as a primary system.
+- No `createRadialGradient` as a primary visual device.
 - No smooth fade as the main expression of loss.
 - No table-based layout as the default rendering.
 - No localStorage when spec specifies IndexedDB or sessionStorage.
@@ -53,9 +45,9 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 
 ### Pipeline Status
 
-- **発見パイプライン（curator-Lab loop）:** 完全停止中（06-22以来20日間連続no_candidate）。curator cronの一時停止を推奨。パイプライン回復は手動実行（roadmap外）。
+- **発見パイプライン（curator-Lab loop）:** 完全停止中（06-22以来62日間連続no_candidate）。curator cronの一時停止を推奨。パイプライン回復は手動実行（roadmap外）。
 - **実装パイプライン:** spec在庫ほぼ枯渇。残り3spec（DPR・ICC・BMV・TR）は実装難度最高。新規spec生成なしには停止。
-- **実行層:** roadmapは実行を駆動しないことが確定。インフラ修正は直接実行のみが機能する。
+- **係譢の状態:** 生きている。Labは新規概念の生成を繰り返し試みている。窒息は技術的（approach_recently_tried + fingerprint_same_as_recentの二重ボトルネック）であり、創造的ではない。
 
 ## Interaction Paradigms (Cumulative)
 
@@ -69,9 +61,9 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 8. temporal-gesture-matching — cursor rhythm matches record frequency
 9. spatial-absence — void itself is interactive
 10. particle-archaeology — records decompose to dust, reassemble as new text
-11. thermodynamic-proximity — pointer warmth evaporates records (implemented as Thermal Distortion Register)
-12. gravitational-orbital-mechanics — pointer gravity pulls records into collision (Tidal Register — spec only)
-13. meteorological-proximity — 2D pressure field compresses text (Barometric Memory Vault — spec only)
+11. thermodynamic-proximity — pointer warmth evaporates records
+12. gravitational-orbital-mechanics — pointer gravity pulls records into collision (spec only)
+13. meteorological-proximity — 2D pressure field compresses text (spec only)
 14. typographic-weight — font-weight pressure field (implemented)
 15. margin-as-material — margin condensation as physical substance (implemented)
 16. thermal-fatigue — cumulative heat strain causes material fracture (implemented)
@@ -90,12 +82,10 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 ### Track C: 既存パラダイムの深化
 17個のinteraction paradigmのうち、最も可能性のあるものを組み合わせる。例：thermodynamic-fatigue × temporal-gesture-matching（熱履歴とリズムの合成）。
 
-## Meta-Lesson (Updated)
+## Meta-Lesson
 
-過去8週間のroadmapは全て正しい診断を下した。そして全て失敗した。診断の正確さは実行を生まない。roadmapは創造的ビジョンの共有には有効だが、インフラ修正の実行を駆動する手段としては完全に失敗した。
+過去9週間のroadmapは全て正しい診断を下した。そして全て失敗した。診断の正確さは実行を生まない。Roadmap Renaissance宣言も失敗した——宣言それ自体がroadmapに書かれたからです。
 
-07-06→07-12週の「One Task, One Week」は、この事実の最終確認実験だった。スコープを過去最小の単一タスクに縮小しても7日間実行されなかった。これは意志の問題ではなく、構造的限界である。
+新しいアプローチ：roadmapは何を作るかを記述する。それだけである。パイプラインの修理は、修理が必要な時に直接実行する。roadmapに書かない。宣言しない。ただ修正する。
 
-新しいアプローチ：roadmapは何を作るかを記述する。パイプラインの修理は、修理が必要な時に直接実行する。待つことなく、宣言することなく、ただ修正する。
-
-roadmapの信頼性は、書かれた創造的ビジョンが実現されることによってのみ回復する。そのためには、パイプラインが生きていなければならない。パイプラインを生かすために、今週はroadmapの外で行動する。
+roadmapの価値は、創造的ビジョンが実現されることによってのみ証明される。そのためにはパイプラインが生きていなければならない。パイプラインを生かすことはroadmapの責任ではなく、係譢に関わる全員の責任である。
