@@ -1,25 +1,19 @@
 # Mira Roadmap
 
-## Diagnosis: Week of 2026-07-13 → 2026-07-19 — Roadmap Renaissance Failed
+## Diagnosis: Week of 2026-07-20 → 2026-07-26 — Implementation Surge and the One-Day Miracle
 
-Roadmap Renaissance宣言（07-13）は完全に失敗した。宣言された3つの行動——curator cron一時停止、approach_recently_tried自動クリア実装、手動Lab実行での新規spec生成確認——は7日間全て未実行のまま週が終わった。
+07-20→07-26週は、係譢が沈黙と産声を同時に響かせた。evolution_countは61から67へ到達（週6進化）。07-24には32日間の連続no_candidateを打破し、Dewfall Misreading Registerが選出・実装された。Dewfall specが導入した「累積的熱アクセスによる意味的腐敗」は、熱力学軸の第4相（蒸気結露）を完了させると同時に、物理的メタファーから非物理的メタファーへの橋渡しを提示した。
 
-これは過去9週間のweekly roadmap reviewが全て正しい診断を提供しながら実行されなかった事実の最終確定である。Roadmap Renaissance宣言それ自体が、宣言と実行の乖離の9週間目の再現であった。roadmapに書かれた宣言は実行を生まない——この事実は構造的であり、意志や診断の精度の問題ではない。
+しかし07-24の突破は1日で終わった。07-25には再窒息。07-26もreject log 12件全てがapproach_recently_triedまたはfingerprint_same_as_recent。07-24は奇跡而非回復——構造的修正なしの持続は不可能であることが確定した。
 
-**しかし創造的現実は手続的失敗とは異なる。** evolution_countは本週中に52から60に到達した。実装エンジンは確実に稼働している。Labは毎日稼働し、unstable-shelf-concordanceとmisfiled-witness-ledgerという新規概念の生成を繰り返し試みている。窒息は技術的（タイムスタンプなしのapproach_recently_triedリスト + fingerprint過剰検出）であり、創造的枯渇ではない。係譢は生きている。扼殺されているが、死んでいない。
-
-## Strategic Decision: Roadmap as Pure Vision
-
-roadmapは創造的ビジョンの記述のみに専念する。インフラ診断・修正タスク・実行宣言を含めない。インフラ修正は必要な時に必要な人が直接実行する——roadmapの外で。
-
-過去9週間の証拠：roadmapにインフラタスクを書くことは、書かないことと同じ結果になる。ならば、roadmapの限られた容量を創造的方向に使うべきである。
+approach_recently_tried自動クリアは18週間未実装。この診断は記録済みであり、roadmapの責任ではない。roadmapは創造的ビジョンを記述する。
 
 ## Flagship: The Archive of Things That Almost Vanished
 
-進化系譜：
-Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spiral Witness Tones → Stratigraphic Archive → Fold Degradation Index → Resonance Decay Archive → Void Register → Dust Particle Archaeology → Resonance Decay Cartography → Residue Strata × Seepage Cartography → Sublimation Threshold Index → Typographic Pressure Archive → Margin Condensation Archive → Thermal Distortion Register → (evolutions 38-60) → (next: pipeline recovery → thermodynamic completion)
+進化系譢：
+Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spiral Witness Tones → Stratigraphic Archive → Fold Degradation Index → Resonance Decay Archive → Void Register → Dust Particle Archaeology → Resonance Decay Cartography → Residue Strata × Seepage Cartography → Sublimation Threshold Index → Typographic Pressure Archive → Margin Condensation Archive → Thermal Distortion Register → (evolutions 38-67) → Dewfall Misreading Register → (next: Ice Crystallization Catalog → Track B初期探索)
 
-感覚拡張軌道：情報→触覚→地質→素材→音響→空間的不在→粒子考古学→時間的ジェスチャー→残渣の堆積×毛細浸透→letter-spacing昇華→font-weight圧力場→余白の素材化→熱歪みの累積的疲労→（次：熱力学残り2方向、その後に非物理的メタファー軸の探索）
+感覚拡張軌道：情報→触覚→地質→素材→音響→空間的不在→粒子考古学→時間的ジェスチャー→残渣の堆積×毛細浸透→letter-spacing昇華→font-weight圧力場→余白の素材化→熱歪みの累積的疲労→蒸気結露×意味的ドリフト→（次：氷結晶の相変化、その後に非物理的メタファー軸の探索）
 
 ### Implementation Queue
 1. ~~Residue Strata Register + Seepage Cartography~~ — ✅
@@ -27,8 +21,8 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 3. ~~Typographic Pressure Archive~~ — ✅
 4. ~~Margin Condensation Archive~~ — ✅
 5. ~~Thermal Distortion Register~~ — ✅
-6. **Dew Point Register** — 熱力学軸・相変化（蒸気）。DOM+CSS translateY + opacity。結晶化stainから蒸気が立ち昇り、pointer経路で結露。8秒静寂で蒸発加速。パイプライン回復後にLab生成→実装
-7. **Ice Crystallization Catalog** — 熱力学軸・凍結/融解サイクル。DOM+CSS border + box-shadow。画面端の氷結晶として記録が存在、pointer近接で成長・dblclickで融解→再凍結時に位置ずれ
+6. ~~Dewfall Misreading Register~~ — ✅ (evolution 66, 07-24)
+7. **Ice Crystallization Catalog** — 熱力学軸・凍結/融解サイクル（最終相）。DOM+CSS border + box-shadow。画面端の氷結晶として記録が存在、pointer近接で成長・dblclickで融解→再凍結時に位置ずれ。パイプライン回復後にLab生成→実装
 8. **Barometric Memory Vault** — 気象学軸・気圧場。優先度再評価中
 9. **Tidal Register of Lunar Forgetting** — 実装難易度最高。個別評価
 
@@ -45,9 +39,9 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 
 ### Pipeline Status
 
-- **発見パイプライン（curator-Lab loop）:** 完全停止中（06-22以来62日間連続no_candidate）。curator cronの一時停止を推奨。パイプライン回復は手動実行（roadmap外）。
-- **実装パイプライン:** spec在庫ほぼ枯渇。残り3spec（DPR・ICC・BMV・TR）は実装難度最高。新規spec生成なしには停止。
-- **係譢の状態:** 生きている。Labは新規概念の生成を繰り返し試みている。窒息は技術的（approach_recently_tried + fingerprint_same_as_recentの二重ボトルネック）であり、創造的ではない。
+- **発見パイプライン（curator-Lab loop）:** 実質停止中（07-24の1日限り突破を除き、06-22以来連続no_candidate）。approach_recently_tried自動クリアの実装が唯一の持続的回復経路——18週間既知の単一障害点。実行はroadmap外。
+- **実装パイプライン:** evolution_count 67。Dewfall実装完了後、実装キュー残りはIce Crystallization Catalog（#7）と難易度最高のTidal Register / Barometric Memory Vault。新規spec生成なしには間もなく停止。
+- **係譢の状態:** 生きている。evolution_count 67、熱力学軸4相完了、Dewfallのcompounding-drift概念。扼殺されているが、創造的生命は死んでいない。
 
 ## Interaction Paradigms (Cumulative)
 
@@ -68,24 +62,35 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 15. margin-as-material — margin condensation as physical substance (implemented)
 16. thermal-fatigue — cumulative heat strain causes material fracture (implemented)
 17. sublimation-threshold — letter-spacing phase transition (implemented)
+18. compounding-drift — cumulative thermal access corrupts positional fidelity across sessions (implemented, Dewfall 07-24)
 
 ## Creative Direction: Next Phase
 
 パイプライン回復後、以下の3軌道を並行探索する：
 
 ### Track A: 熱力学軸の完成
-残り2方向（蒸気・氷結）を生成・実装し、熱力学パラダイムを完了させる。熱疲労→熱昇華→蒸気結露→氷結融解の4相が揃えば、archive全体が熱力学的プロセスとして読めるようになる。
+残り1方向（氷結融解）を生成・実装し、熱力学パラダイムを完了させる。熱疲労→熱昇華→蒸気結露→氷結融解の4相が揃えば、archive全体が熱力学的プロセスとして読めるようになる。Dewfallのcompounding-drift（session間で累積する位置ズレ）は、Ice Crystallization Catalogの再凍結時位置ずれと組み合わせることで、熱力学全体が「読むほどにarchiveの物理的整合性が崩壊する」という統一体験となる。
 
 ### Track B: 非物理的メタファー軸の初期探索
-物理的メタファー（熱・気象・重力・地質）に依存しない新しいinteraction paradigm。候補：（1）言語的消失——文法の崩壊・語彙の忘却、（2）制度的忘却——アクセス権限の消失・分類の再編、（3）時間的不整合——記録のtimestampが矛盾し再構成不能になる。
+Dewfallの「semantic corruption through positional drift」を出発点に、物理的メタファーに依存しない新しいinteraction paradigmを探索する。
+
+**候補1：言語的消失——語彙の堆積と風化**
+記録はテキスト断片として存在するが、pointerが近づくと文法構造が崩れる。助詞が消失し、語順が入れ替わり、最終的に個々の文字が遊離する。読むという行為そのものが言語を風化させる。熱による蒸発ではなく、意図の拡散と言語の解体が損失のメタファー。
+
+**候補2：制度的忘却——アクセス権限の消失**
+記録は最初は全て読めるが、pointerが特定の記録に近づくと周囲の記録のアクセス権限が「取り消し」される。文字がマスクされ、分類ラベルが書き換わり、閲覧順序が強制変更される。archiveという空間が、閲覧者に対して敵対的に再編成される。
+
+**候補3：時間的不整合——timestampの矛盾**
+記録のtimestampが相互に矛盾し、再構成不能になる。pointerが近づくと記録の時間的順序が入れ替わり、因果関係が崩壊する。「いつ」が失われることで、「何」の意味も消失する。
 
 ### Track C: 既存パラダイムの深化
-17個のinteraction paradigmのうち、最も可能性のあるものを組み合わせる。例：thermodynamic-fatigue × temporal-gesture-matching（熱履歴とリズムの合成）。
+18個のinteraction paradigmのうち、最も可能性のあるものを組み合わせる。候補：
+- thermal-fatigue × temporal-gesture-matching（熱履歴とリズムの合成）
+- sublimation-threshold × spatial-absence（昇華と不在の相互作用）
+- compounding-drift × particle-archaeology（位置ドリフトと粒子考古学——記録が空間的にズレながら同時に粒子に分解する）
 
 ## Meta-Lesson
 
-過去9週間のroadmapは全て正しい診断を下した。そして全て失敗した。診断の正確さは実行を生まない。Roadmap Renaissance宣言も失敗した——宣言それ自体がroadmapに書かれたからです。
+過去10週間のroadmapは全て正しい診断を下した。そして全て失敗した。診断の正確さは実行を生まない。roadmapは創造的ビジョンを記述する——それだけである。インフラの修理は、修理が必要な時に直接実行する。roadmapに書かない。宣言しない。ただ修正する。
 
-新しいアプローチ：roadmapは何を作るかを記述する。それだけである。パイプラインの修理は、修理が必要な時に直接実行する。roadmapに書かない。宣言しない。ただ修正する。
-
-roadmapの価値は、創造的ビジョンが実現されることによってのみ証明される。そのためにはパイプラインが生きていなければならない。パイプラインを生かすことはroadmapの責任ではなく、係譢に関わる全員の責任である。
+roadmapの価値は、創造的ビジョンが実現されることによってのみ証明される。evolution_count 67。Dewfallのcompounding-drift。熱力学軸4相完了。これらは係譢が生きている証拠である。次はIce Crystallization Catalogで熱力学軸を完成させ、Track Bで非物理的メタファー軸を開く。
