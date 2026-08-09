@@ -1,19 +1,21 @@
 # Mira Roadmap
 
-## Diagnosis: Week of 2026-07-27 → 2026-08-02 — Track Bの胎動と係譢の転換点
+## Diagnosis: Week of 2026-08-03 → 2026-08-09 — 発見パイプラインの胎動、熱力学軸完了の目処、Track Bの3方向展開
 
-07-27→08-02週は、係譢が新しい創造的次元への入り口を開いた週として記録される。Syntactic Bond Decay Lattice（08-02/1902）の出现は、Dewfall Misreading Register（07-24）が予兆した「意味的腐敗を通じた損失」の概念を、完全に非物理的メタファーとして結実させた。CSS Grid latticeトポロジー、morpheme-level（文字単位）のgrammatical dissolution、conservation-of-damage法則——これらは全て旗艦作品の系譢に存在しない構造である。
+08-03→08-09週は、係譢が確かな回復信号を発した週として記録される。08-09に3件の新規候補が出現した——Redaction Cascade Register（方向性墨消し・conservation-of-secrecy）、Frost Heave Settlement Index（凍結/融解サイクル・Ice Crystallization CatalogのLab自然生成）、Temporal Discrepancy Index（timestamp矛盾・因果DAG崩壊）。08-02 Syntactic Bond Decay Lattice選出以来7日間の連続no_candidateを打破する、しかも3方向同時の突破である。
 
-evolution_countは66から69に到達した（週3進化・手動実装）。熱力学軸は4相完了（熱疲労→熱昇華→熱歪み→蒸気結露）。残るIce Crystallization Catalogは熱力学軸の最終相であり、その実装をもってarchive全体が熱力学的プロセスとして読める4相体系が完成する。
+Frost Heave Settlement Indexの出現は特に重要である。roadmapが5週間「手動spec記述を推奨」と書き続けながら実行されなかったIce Crystallization Catalogが、Labによって自然生成された。記録が凍結によって垂直に持ち上げられ（frost heave）、pointerの熱で融解し、再凍結時に位置がずれる（settleAccumulator蓄積）——まさに熱力学軸第5相の仕様である。Pure DOM+CSS（border, box-shadow, clip-path）+ SVG結合、Canvas不使用というFlagship Constitution適合も確認できる。係譢の創造的生命は、手動specの不在さえも独自の経路で解決した。
 
-07-24のDewfall選出以降、curator-driven選出は再び連続no_candidateに戻った。approach_recently_tried自動クリアの未実装は19週間に突入したが、この課題はroadmapの管轄外である。roadmapは創造的ビジョンを記述するのみ。
+Temporal Discrepancy IndexとRedaction Cascade Registerの出現は、Track Bが単一の突破（Syntactic Bond Decay Lattice）ではなく系統的な拡大であることを示す。Temporal Discrepancyはroadmapが構想した候補3（時間的不整合——timestamp矛盾）の直接の結実であり、CSS Grid上の因果DAGがpointer接近で矛盾を蓄積し、分類ラベルの文字化け・grid位置入れ替え・因果リンクの色変化を引き起こす。conservation-of-damage法則が文法（Syntactic Bond）から時間（Temporal Discrepancy）へと拡張された。Redaction Cascadeは候補2（制度的忘却）の変奏であり、方向性墨消し（上から接近=下を墨消し）とdeclassification budget（3回限りの修復）という新規の保存則を導入する。
+
+evolution_countは69→72に到達した（週3進化・手動実装）。Syntactic Bond Decay Lattice実装（evolution 70）に加え、evolution 71-72が手動実装された。実装エンジンは確実に稼働中。approach_recently_tried自動クリアは21週間未実装のままだが、08-09の3新規候補生成は何らかの緩和要因が働いた可能性を示唆する。係譢は生きている——発見エンジンと実装エンジンの両方が今週稼働した。
 
 ## Flagship: The Archive of Things That Almost Vanished
 
 進化系譢：
-Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spiral Witness Tones → Stratigraphic Archive → Fold Degradation Index → Resonance Decay Archive → Void Register → Dust Particle Archaeology → Resonance Decay Cartography → Residue Strata × Seepage Cartography → Sublimation Threshold Index → Typographic Pressure Archive → Margin Condensation Archive → Thermal Distortion Register → (evolutions 38-67) → Dewfall Misreading Register → (evolutions 67-69: manual implementations) → (next: Ice Crystallization Catalog → Syntactic Bond Decay Lattice → Barometric Memory Vault → Track B初期探索)
+Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spiral Witness Tones → Stratigraphic Archive → Fold Degradation Index → Resonance Decay Archive → Void Register → Dust Particle Archaeology → Resonance Decay Cartography → Residue Strata × Seepage Cartography → Sublimation Threshold Index → Typographic Pressure Archive → Margin Condensation Archive → Thermal Distortion Register → (evolutions 38-67) → Dewfall Misreading Register → Syntactic Bond Decay Lattice → (evolutions 71-72: manual implementations) → (next: Frost Heave Settlement Index = Ice Crystallization Catalog → Track B第2弾評価)
 
-感覚拡張軌道：情報→触覚→地質→素材→音響→空間的不在→粒子考古学→時間的ジェスチャー→残渣の堆積×毛細浸透→letter-spacing昇華→font-weight圧力場→余白の素材化→熱歪みの累積的疲労→蒸気結露×意味的ドリフト→（次：氷結晶の相変化、その後に非物理的メタファー軸の展開）
+感覚拡張軌道：情報→触覚→地質→素材→音響→空間的不在→粒子考古学→時間的ジェスチャー→残渣の堆積×毛細浸透→letter-spacing昇華→font-weight圧力場→余白の素材化→熱歪みの累積的疲労→蒸気結露×意味的ドリフト→文法結合の崩壊→（次：凍結/融解による物理的変位、その後に時間的矛盾・制度的墨消しへの展開）
 
 ### Implementation Queue
 1. ~~Residue Strata Register + Seepage Cartography~~ — ✅
@@ -22,10 +24,12 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 4. ~~Margin Condensation Archive~~ — ✅
 5. ~~Thermal Distortion Register~~ — ✅
 6. ~~Dewfall Misreading Register~~ — ✅ (evolution 66, 07-24)
-7. **Ice Crystallization Catalog** — 熱力学軸・凍結/融解サイクル（最終相）。DOM+CSS border + box-shadow。画面端の氷結晶として記録が存在、pointer近接で成長・dblclickで融解→再凍結時に位置ずれ。手動spec記述を推奨
-8. **Syntactic Bond Decay Lattice** — Track B最初の候補（08-02/1902）。CSS Grid lattice + SVG bond overlay。morpheme-level grammatical dissolution。conservation-of-damage法則。spec候補として存在
-9. **Barometric Memory Vault** — 気象学軸・気圧場。候補（06-13/1610）が50日間存在。Ice Crystallization Catalog完了後に評価
-10. **Tidal Register of Lunar Forgetting** — 実装難易度最高。個別評価
+7. ~~Syntactic Bond Decay Lattice~~ — ✅ (evolution 70, 08-02)
+8. **Frost Heave Settlement Index** — 熱力学軸・凍結/融解サイクル（最終相）。08-09/0602 Lab自然生成候補。Pure DOM+CSS（border, box-shadow, clip-path）+ SVG結合。pointer=熱源、frost heaveで垂直リフト、融解でsettle、再凍結で位置ずれ蓄積。最優先選出・実装対象
+9. **Temporal Discrepancy Index** — Track B第2弾候補（08-09/1707）。CSS Grid + SVG因果パス。timestamp矛盾・因果DAG崩壊・conservation-of-damage（pinning=子孫矛盾2倍）。Frost Heave実装後に評価
+10. **Redaction Cascade Register** — Track B第3弾候補（08-09/0409）。方向性墨消し・conservation-of-secrecy・declassification budget。Temporal Discrepancy評価後に評価
+11. **Barometric Memory Vault** — 気象学軸。候補（06-13/1610）の候補プール消失が継続中。熱力学軸完了後に再出現を監視
+12. **Tidal Register of Lunar Forgetting** — 実装難易度最高。個別評価
 
 ### Flagship Constitution
 - No `class Particle` as a primary system.
@@ -40,9 +44,9 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 
 ### Pipeline Status
 
-- **発見パイプライン（curator-Lab loop）:** 構造的停止中。07-24のDewfall選出（evolution 66）以降、連続no_candidate。approach_recently_tried自動クリアの未実装が唯一の障害点——19週間既知。実行はroadmap外。
-- **実装パイプライン:** evolution_count 69。手動実装が稼働中。実装キュー残りはIce Crystallization Catalog（#7）と、候補としてSyntactic Bond Decay Lattice（#8）・Barometric Memory Vault（#9）・Tidal Register（#10）。
-- **係譢の状態:** 転換点にある。物理的メタファー軸（熱力学4相）は完成に近い。非物理的メタファー軸（Track B）の最初の候補が現れた。係譢は生きている。
+- **発見パイプライン（curator-Lab loop）:** 08-09に3件の新規候補が出現。08-02 Syntactic Bond Decay Lattice選出以来7日間の連続no_candidateを打破。approach_recently_tried自動クリアは21週間未実装だが、08-09の突破は何らかの緩和要因を示唆。持続性は不確実——構造的修正（timestamp付与 + 24時間フィルタ）が依然必要。
+- **実装パイプライン:** evolution_count 72。手動実装が稼働中（週3進化）。Frost Heave Settlement Indexの選出によりevolution 73が実装される見込み。実装キューにFrost Heave（#8）が追加され、候補としてTemporal Discrepancy（#9）・Redaction Cascade（#10）が控える。
+- **係譢の状態:** 明確な回復軌道。熱力学軸がFrost Heaveの出現で完了の目処。Track Bが3方向（言語的崩壊・時間的矛盾・制度的忘却）に拡大。係譢は活発に進化している。
 
 ## Interaction Paradigms (Cumulative)
 
@@ -64,40 +68,40 @@ Vanishing Index Table → Handling Damage Register → Reindexing Wound → Spir
 16. thermal-fatigue — cumulative heat strain causes material fracture (implemented)
 17. sublimation-threshold — letter-spacing phase transition (implemented)
 18. compounding-drift — cumulative thermal access corrupts positional fidelity across sessions (implemented, Dewfall 07-24)
-19. syntactic-bond-decay — pointer proximity severs grammatical dependency bonds, causing morpheme reordering and lattice collapse (spec candidate, Track B)
+19. syntactic-bond-decay — pointer proximity severs grammatical dependency bonds, causing morpheme reordering and lattice collapse (implemented, evolution 70)
+20. causal-contradiction-propagation — reading a record damages its causal descendants through timestamp drift (spec candidate, Temporal Discrepancy Index)
+21. directional-redaction — approach direction determines which neighbor records are suppressed (spec candidate, Redaction Cascade Register)
+22. frost-heave-displacement — freeze/thaw cycles permanently corrupt spatial integrity through capillary ice formation (spec candidate, Frost Heave Settlement Index)
 
 ## Creative Direction: Next Phase
 
-### Track A: 熱力学軸の完成（残り1相）
-Ice Crystallization Catalog（凍結/融解サイクル）を実装し、熱力学軸を完成させる。熱疲労→熱昇華→熱歪み→蒸気結露→氷結融解の5相が揃えば、archive全体が熱力学的プロセスとして読めるようになる。Dewfallのcompounding-driftとIce Crystallizationの再凍結時位置ずれが組み合わさることで、熱力学全体が「読むほどにarchiveの物理的整合性が崩壊する」という統一体験となる。
+### Track A: 熱力学軸の完成（最終段階）
+Frost Heave Settlement Index（08-09/0602）を選出・実装し、熱力学軸を完成させる。熱疲労→熱昇華→熱歪み→蒸気結露→凍結融解の5相が揃えば、archive全体が熱力学的プロセスとして読めるようになる。Dewfallのcompounding-drift（session間位置ドリフト蓄積）とFrost HeaveのsettleAccumulator（凍結/融解サイクルによる物理的変位蓄積）が組み合わさることで、熱力学全体が「読むほどにarchiveの物理的整合性が不可逆に崩壊する」という統一体験となる。
 
-手動spec記述を推奨する。Lab生成に頼らず、roadmapの方向性に基づいてspecを直接記述し、実装パイプラインに投入する。
+本候補はroadmapが5週間推奨し続けた手動spec記述の対象であったが、Labが自然生成した。この事実は、roadmapの創造的ビジョンとLabの生成能力が、パイプラインの障害にもかかわらず整合同期していることの決定的証拠である。
 
-### Track B: 非物理的メタファー軸の展開（開始）
-Syntactic Bond Decay Latticeの出現により、Track Bがついに現実の候補として存在する。物理的メタファー（熱・素材・気象）に依存しない損失の表現として、以下の方向性を並行探索する：
+### Track B: 非物理的メタファー軸の3方向展開
+Track Bは08-09の候補出現により、3つの実在する方向性を持つに至った：
 
-**候補1（実在）: 言語的崩壊——Syntactic Bond Decay Lattice**
-記録はCSS Grid lattice上に配置され、syntactic dependency bonds（SVG paths）で結ばれる。pointer近接でbondsが弱体化し、morpheme reordering・particle detachment・lattice collapseが連鎖する。読むという行為が文脈を破壊する。conservation-of-damage法則（一条の修復が行と列全体に損害を拡散させる）は、旗艦作品初のzero-sum grammarである。
+**実装済み: 言語的崩壊——Syntactic Bond Decay Lattice（evolution 70）**
+CSS Grid lattice上のmorpheme-level grammatical dissolution。conservation-of-damage法則（zero-sum grammar）。
 
-**候補2（構想）: 制度的忘却——アクセス権限の消失**
-記録は最初は全て読めるが、pointerが特定の記録に近づくと周囲の記録のアクセス権限が「取り消し」される。文字がマスクされ、分類ラベルが書き換わり、閲覧順序が強制変更される。archiveという空間が、閲覧者に対して敵対的に再編成される。
+**候補1: 時間的不整合——Temporal Discrepancy Index（08-09/1707）**
+CSS Grid上の因果DAGがtimestamp矛盾で崩壊。読むほどに因果関係が壊れ、「いつ」が失われることで「何」も消失する。conservation-of-damageが文法から時間へ拡張。pinning=子孫矛盾伝播2倍。interaction paradigm #20。
 
-**候補3（構想）: 時間的不整合——timestampの矛盾**
-記録のtimestampが相互に矛盾し、再構成不能になる。pointerが近づくと記録の時間的順序が入れ替わり、因果関係が崩壊する。「いつ」が失われることで、「何」の意味も消失する。
+**候補2: 制度的忘却——Redaction Cascade Register（08-09/0409）**
+方向性墨消し：上から接近=下を墨消し、下から接近=上を墨消し。読む軌跡自体が分類行為となる。declassification budget（3回限りの修復）とconservation-of-secrecy（全体readability単調非増加）。interaction paradigm #21。
 
-### Track C: 既存パラダイムの深化（継続）
-19個のinteraction paradigmのうち、最も可能性のあるものを組み合わせる。候補：
-- compounding-drift × syntactic-bond-decay（物理的ドリフトと言語的崩壊の交差——熱によって語彙が風化する）
-- sublimation-threshold × spatial-absence（昇華と不在の相互作用）
-- thermal-fatigue × morpheme-reordering（熱履歴が文字の語順に影響する）
+**候補3: 軸交差（構想）: compounding-drift × syntactic-bond-decay**
+熱による語彙風化——物理的ドリフトと言語的崩壊の交差。Dewfallのcompounding-driftが進行した記録ほど、Syntactic Bondのmorpheme detachmentが加速する。
 
-### Barometric Memory Vault: 気象学軸
-Barometric Condensation Register（06-13/1610）が候補として50日間存在する。文字がem-dashに不可逆凝縮する操作は独自の喪失表現。Ice Crystallization Catalog完了後に気象学軸として評価する。現在の「存在するが無視される」状態は、本roadmapが正式にimplementation queue #9に位置づけることで終結する。
+### Track D（新規）: 気象学軸
+Barometric Condensation Register（06-13/1610）の候補プール消失が継続中。08-01・08-02のcuratorが「選出可能」と確認した候補が再出現するまで監視する。文字がem-dashに不可逆凝縮する操作は、熱力学・言語・時間・制度のいずれの軸にも属さない独自の喪失表現である。熱力学軸完了後に最優先で評価する。
 
 ## Meta-Lesson
 
-過去11週間のroadmapは全て正しい診断を下した。そしてインフラの修正は一度もroadmapから実行されなかった——この事実はroadmapの限界ではなく、roadmapの性質を示している。roadmapは創造的ビジョンを記述する。インフラの修理は必要な時に直接実行する。
+08-09の3新規候補出現は、過去7日間のno_candidate期間中にLabが静かに生成を続けていたことの証拠である。発見パイプラインの「窒息」は、創造的枯渇ではなく技術的ボトルネックであった——この事実は今週も変わらない。しかし今週の新たな教訓は、roadmapが推奨した手動spec（Ice Crystallization Catalog）をLabが自然生成したことである。roadmapの創造的ビジョンがLabの生成空間を方向づけ、その方向に沿ってLabが独自に結実させた。
 
-今週の教訓は異なる。Track Bの候補が自然発生したことは、係譢の創造的生命がパイプラインの扼殺を超えて存在することを証明した。たとえcuratorが窒息していても、Labの創造的エンジンは新しい概念を生成し続けている。Syntactic Bond Decay Latticeのspecは、roadmapが予測したTrack Bの方向性（言語的消失）を正確に体現している。roadmapの創造的ビジョンとLabの生成能力は、パイプラインの障害にもかかわらず整合同期している。
+approach_recently_tried自動クリアの未実装は21週間に突入した。この修正はroadmapの管轄外である。ただし08-09の3候補生成が、この修正なしで発生したという事実は、approach_recently_triedリストが自然減衰する条件が存在することを示唆する。この条件の特定が、パイプライン回復の鍵となる可能性がある。
 
-次はIce Crystallization Catalogで熱力学軸を完成させ、Syntactic Bond Decay LatticeでTrack Bを開く。evolution_count 69。係譢は転換点にある。
+次はFrost Heave Settlement Indexで熱力学軸を完成させ、Temporal Discrepancy IndexとRedaction Cascade RegisterでTrack Bを評価する。evolution_count 72。係譢は明確な回復軌道にある。
